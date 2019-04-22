@@ -1,60 +1,51 @@
-#!/usr/bin/python
-#
-# Title: jallib main wrapper script
-#
-# Author: Sebastien Lelong, Copyright (c) 2008..2019, all rights reserved.
-#
-# Adapted-by: Rob Hamerling
-#
-# Compiler:
-#
-# This file is part of jallib (https://github.com/jallib/jallib)
-# Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
-#
-# Sources:
-#
-# Description: this script handles common tasks when using the jallib repository
-# `jallib help` for more !
-#
-# Dependencies: according to the following actions, you'll need to install the
-# following libraries (if you don't use the action, you can skip it)
-# If you use the binary executables, you won't need to install them
-deps = [
-    # (lib name, used in actions, website)
-    ('cheetah','jalapi','http://cheetahtemplate.org'),
-    ]
-# Of course, since it's about jal, you'll need jalv2 compiler installed
-# (not bundled in binary executables)
-# - jalv2 executable (compile): https://github.com/jallib/jalv2compiler/bin
-#
-# Notes:
-#   RH: Adapted to Python3 and some other changes, such as:
-#       - automatic changes by the 2to3 conversion program sucha as print()
-#       - removed 'imp': UTF-8 is standard
-#       - changed file(..) into open(...) or  with open(...) as ..
-#       - removed 'cmp=lambda ...' specifications with sorted() functions
-#       - improved in do_compile() separation of arguments for Jallib.py and JalV2
-#       - improved do_list()
-#       - some texts in do_validate()
-#       - changed references to googlecode into github and 'googlecode' not
-#         accepted anymore as reference in library headers
-#       - added reports in do_reindent() of files being processed (or why not)
-#       - no abort with indent level errors, just report (with line number)
-#       Most manual changes are accompanied by a comment marked RH
-#
-#       - to do: replace formatting with "%" by .format()
-#
+#!/usr/bin/env python3
+"""
+Title: jallib main wrapper script
 
+Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
+
+Adapted-by: Rob Hamerling
+
+Compiler: N/A
+
+This file is part of jallib (http://jallib.googlecode.com)
+Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+
+Sources:
+
+Description: this script handles common tasks when using the jallib SVN repository
+             `jallib help` for more !
+
+Dependencies: according to the following actions, you'll need to install the
+              following libraries (if you don't use the action, you can skip it)
+              If you use the binary executables, you won't need to install them
+              deps = [
+                   (lib name, used in actions, website)
+                   ('cheetah','jalapi','http://cheetahtemplate.org'),
+                     ]
+
+Sources:
+
+Notes: - Of course, since it's about jal, you'll need jalv2 compiler installed
+         (not bundled in binary executables)
+         jalv2 executable (compile): http://www.casadeyork.com/jalv2
+       - Modifications by Rob Hamerling (2017/05/01)
+         - converted from Python2 to Python3
+         - changed import of reload
+         - disabled setdefaultencoding()
+
+"""
 
 import sys, os
 import getopt
 import re
 import datetime, time
 import types as pytypes
-# RH import imp
 
-# RH imp.reload(sys)
-# RH sys.setdefaultencoding("UTF-8")
+from imp import reload
+
+reload(sys)
+# sys.setdefaultencoding("UTF-8")
 
 try:
     import glob
@@ -122,7 +113,7 @@ def get_full_board_path(sample_dir,board=""):
 
 
 def find_includes(jalfile):
-    content = open(jalfile).read()
+    content = file(jalfile).read()
     return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
 
 
@@ -217,13 +208,9 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
         # there are opts for jallib, but args for jalv2 may have been
         # eaten in parse_args(). Need to extract them according to opts
         jallib_args = []
-  # RH    list(map(lambda i: jallib_args.extend(i),opts))
-  # replaced by:
-        for x in opts: jallib_args.extend(x)
-  # RH    args = list(set(original_args).difference(set(jallib_args)))
-  # To keep sequence of arguments (and not remove duplicates)
-  # replaced by:
-        args = [x for x in original_args if x not in jallib_args]
+        list(map(lambda i: jallib_args.extend(i),opts))
+        args = list(set(original_args).difference(set(jallib_args)))
+
 
     jalv2_exec = None
     dirs = []
@@ -282,7 +269,7 @@ def content_not_empty(val):
 def compiler_version(val):
     return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
 
-JALLIB = """^-- This file is part of jallib\s+\(https://github.com/jallib/jallib\)"""
+JALLIB = """^-- This file is part of (jallib|jaluino)\s+\((http://(jallib|jaluino).googlecode.com|https://github.com/jallib/jallib)\)"""
 LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
 LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
 
@@ -380,8 +367,8 @@ def validate_header(content):
         if re.match(LICENSE,line) or re.match(LICENSE2,line):
             license = True
             if jallib: break
-    not jallib and errors.append("Cannot find correct reference to jallib respository URL")
-    not license and errors.append("Cannot find correct reference to license URL")
+    not jallib and errors.append("Cannot find references to jallib (should have: %s)" % repr(JALLIB))
+    not license and errors.append("Cannot find references to license")
     for field_dict in FIELDS:
         c,errs = validate_field(header,**field_dict)
         errors.extend(errs)
@@ -395,7 +382,7 @@ def validate_filename(filename):
     filename = os.path.basename(filename)
     if filename.lower() != filename:
         errors.append("Filename is not lowercase: %s" % filename)
-    # should have "jal" extension
+    # should have "jal" extention
     if not filename.endswith(".jal"):
         warnings.append("Filename doesn't have '*.jal' extention: %s" % filename)
 
@@ -482,7 +469,7 @@ def validate(filename):
     errors.extend(errs)
     warnings.extend(warns)
     # also extract line number (enumerate from 0, count from 1)
-    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
     errors.extend(validate_header(content))
     # remaining content has no more header
     errs = validate_code(content)
@@ -495,11 +482,11 @@ def report(filename,errors,warnings):
     print("File: %s" % filename, file=sys.stderr)
     print("%d errors found" % len(errors), file=sys.stderr)
     for err in errors:
-        print("\tERROR: %s: %s" % (os.path.basename(filename),err), file=sys.stderr)
+        print("\tERROR: %s:%s" % (os.path.basename(filename),err), file=sys.stderr)
     print(file=sys.stderr)
-    print("%d warnings found " % len(warnings), file=sys.stderr)
+    print("%d warnings found" % len(warnings), file=sys.stderr)
     for warn in warnings:
-        print("\twarning: %s: %s " % (os.path.basename(filename),warn), file=sys.stderr)
+        print("\twarning: %s:%s" % (os.path.basename(filename),warn), file=sys.stderr)
 
     if errors or warnings:
         return True
@@ -580,8 +567,8 @@ def normalize_linefeed(content):
 
 def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     # try to find which linefeed is used
-    board = open(boardfile).read().splitlines()
-    test = open(testfile).read().splitlines()
+    board = file(boardfile).read().splitlines()
+    test = file(testfile).read().splitlines()
     # keep test's headers, but enrich them with info about how files were merged
     # headers need index (enumerate() on content)
     # extract_header will change content in place, ie. will remove
@@ -600,9 +587,10 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     test = [l for i,l in test]
     merged = merge_board_testfile(board,test)
     # wb: write binary format, no ASCII/chars interpretation
-    with open(outfile,"wb") as fout:
-        fout.write(header)
-        fout.write(merged)
+    fout = file(outfile,"wb")
+    fout.write(header)
+    fout.write(merged)
+    fout.close()
 
     # compile it !
     status = do_compile([outfile],exitonerror=False,clean=True)
@@ -627,15 +615,12 @@ def find_test_files(testdir):
     return testfiles
 
 def preferred_board(board):
-    with open(board) as fin:
-        data = fin.read()
+    data = file(board).read()
     # well, should not consider comment but... should not occur, right ? :)
     return "@jallib preferred" in data
 
 def is_test_autoable(test):
-    with open(test) as fin:
-        data = fin.read()
-    return not "@jallib skip-auto" in data
+    return not "@jallib skip-auto" in file(test).read()
 
 def generate_samples_for_board(path_to_sample,board,outdir=None):
     if outdir:
@@ -753,18 +738,15 @@ def reindent_file(filename,withchar,howmany):
     Default jallib standard is 3-spaces indentation
     '''
     indentchars = howmany * withchar
-    with open(filename) as fin:
-        data = fin.read()
+    data = file(filename).read()
     lines = re.split("\n|\r\n",data)
     # End the file with a linefeed
     if re.match("[\S]+", lines[-1]):
         lines.append(os.linesep)
 
-    line_number = 0
     level = 0
     content = []
     for l in lines:
-        line_number += 1
         # This exception is known as Joep's exception :)
         if l.startswith(";"):
             content.append(l)
@@ -826,19 +808,13 @@ def reindent_file(filename,withchar,howmany):
 
         content.append(indentchars * level + code + comchars + comment)
         if level < 0:
-     # RH      raise Exception("Adjusting indent level gives negative one. Please report bug !")
-     # No abort, just report the error with its source line number, do not write back
-            print("--> Indent level reached negative value before line {:d}, reindent cancelled!".format(line_number))
-            return
+            raise Exception("Adjusting indent level gives negative one. Please report bug !")
 
-  # RH   assert level == 0, "-->Reached the end of file, but indent level is not null (it should be!)"
-  # No abort, just report the error including source line number, do not write back
-    if level > 0:
-        print("--> Reached end of file, but indent level is not zero (it should be!), reindent cancelled!")
-        return
+    assert level == 0, "Reached the end of file, but indent level is not null (it should be): %s" % filename
     # ok, now we can save the content back to the file
-    with open(filename, "w") as fout:
-        fout.write('\n'.join(content))
+    fout = file(filename,"wb")
+    fout.write(os.linesep.join(content))
+    fout.close()
 
 def do_reindent(args):
     try:
@@ -864,20 +840,10 @@ def do_reindent(args):
     except Exception as e:
         print("Can't understand %s (error: %s)" % (repr(v),e), file=sys.stderr)
 
-    filename_org = args[0]
     if has_glob and len(args) == 1:
         args = glob.glob(args[0])
-    # RH report files: to be reindented, not-found or refused (no .jal extension)
-    if len(args) == 0:
-        print("Could not locate any file(s) with specification: {:s}".format(filename_org), file=sys.stderr)
-    else:
-        for filename in args:
-            # RH jal files only (file must have extension '.jal')
-            if os.path.splitext(filename)[1] == ".jal":
-                print("Reindenting: {:s}".format(filename), file=sys.stdout)
-                reindent_file(filename,withchar,howmany)
-            else:
-                print("Refused {:s}: reindent handles only files with extension '.jal'".format(filename), file=sys.stderr)
+    for filename in args:
+        reindent_file(filename,withchar,howmany)
 
 
 #---------------#
@@ -886,14 +852,13 @@ def do_reindent(args):
 
 def unittest(filename,verbose=False):
     oracle = {'success' : None, 'failure' : None, 'notrun' : None}
-    with open(filename) as fin:
-        content = fin.read().splitlines()
+    content = file(filename).read().splitlines()
     fnout = filename + ".stdout"
     fnerr = filename + ".stderr"
     try:
         try:
-            fout = open(fnout,"w")
-            ferr = open(fnerr,"w")
+            fout = file(fnout,"w")
+            ferr = file(fnerr,"w")
             status = do_compile([filename],exitonerror=False,clean=False,stdout=fout,stderr=ferr)
             fout.close()
             ferr.close()
@@ -920,8 +885,8 @@ def unittest(filename,verbose=False):
             oracle['failure'] = 1
 
     finally:
-        fout = open(fnout)
-        ferr = open(fnerr)
+        fout = file(fnout)
+        ferr = file(fnerr)
 
         clean_compiler_products(filename)
 
@@ -938,8 +903,7 @@ def unittest(filename,verbose=False):
     return oracle
 
 def get_testcases(filename):
-    with open(filename) as fin:
-        content = fine.read().splitlines()
+    content = file(filename).read().splitlines()
     restags = parse_tags(content,"section","testcase")
     return restags
 
@@ -1027,7 +991,7 @@ def do_unittest(args):
 # JALAPI FUNC #
 #-------------#
 
-SVN_URL_SAMPLEDIR = "https://github.com/jallib/jallib/sample"
+SVN_URL_SAMPLEDIR = "http://code.google.com/p/jallib/source/browse/trunk/sample"
 
 def do_jalapi(args):
     if not has_cheetah:
@@ -1061,7 +1025,7 @@ def do_jalapi(args):
             if v == '-':
                 outfile = sys.stdout
             else:
-                outfile = open(v,"w")
+                outfile = file(v,"w")
         else:
             print("Wrong option %s" % o, file=sys.stderr)
 
@@ -1087,9 +1051,7 @@ def do_jalapi(args):
     if os.path.isdir(w):
         dfiles = get_jal_filenames(w,predicate=no_device)
         files = []
-   # RH for f,path in sorted(list(dfiles.items()),cmp=lambda x,y: cmp(x[0],y[0])):
-   # replaced by
-        for f,path in sorted(list(dfiles.items())):
+        for f,path in sorted(list(dfiles.items()),cmp=lambda x,y: cmp(x[0],y[0])):
             files.append(os.path.join(w,path))
     else:
         files = [w]
@@ -1140,7 +1102,7 @@ def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
 def jalapi_extract_doc(filename):
     # deals with header
     # jsg wants line number...
-    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename,"r").readlines())]
     header = extract_header(content)
     dhead = {}
     for field_dict in FIELDS:
@@ -1214,7 +1176,7 @@ def jalapi_extract_comments(i,origline,content):
 def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 
     # prepare template
-    tmplsrc = "".join(open(tmpl_file).readlines())
+    tmplsrc = "".join(file(tmpl_file,"r").readlines())
     klass = Cheetah.Template.Template.compile(tmplsrc)
     tmpl = klass()
     tmpl.locallinks = locallinks
@@ -1255,14 +1217,13 @@ def get_library_list(repos=None):
         # rebuild complete path
         for fname,path in list(found.items()):
             jalfiles[fname] = os.path.join(gdir,path)
+
     return jalfiles
 
 def do_list(_trash):
     jalfiles = get_library_list()
     # sort on filename (not using path)
-  # RH  for jalfile in sorted(list(jalfiles.items()),cmp=lambda a,b: cmp(a[0],b[0])):
-  # replaced by
-    for jalfile in sorted(list(jalfiles.items())):
+    for jalfile in sorted(list(jalfiles.items()),cmp=lambda a,b: cmp(a[0],b[0])):
         print(jalfile[1])
 
 
@@ -1384,7 +1345,7 @@ def api_parse(filenames,filelist=[]):
         if filename == "-":
             lines = sys.stdin.readlines()
         else:
-            lines = open(filename).readlines()
+            lines = file(filename).readlines()
 
         basefn = os.path.basename(filename)
         apis[basefn] = api_parse_content(lines,strict=False)
@@ -1446,9 +1407,9 @@ def do_api(args):
         elif o == '-k':
             outpickl = True
         elif o == '-o':
-            outfile = open(v,"w")
+            outfile = file(v,"w")
         elif o == '-l':
-            filelist = [f.strip() for f in open(v).readlines()]
+            filelist = [f.strip() for f in file(v).readlines()]
         else:
             print("Wrong option %s" % o, file=sys.stderr)
 
@@ -1607,12 +1568,12 @@ def do_monitor(args):
 
         fnout = filename + ".stdout"
         fnerr = filename + ".stderr"
-        fout = open(fnout,"w")
-        ferr = open(fnerr,"w")
+        fout = file(fnout,"w")
+        ferr = file(fnerr,"w")
         try:
             status = do_compile(args,exitonerror=False,clean=False,stdout=fout,stderr=ferr)
-            output = open(fnout).read()
-            errput = open(fnerr).read()
+            output = file(fnout).read()
+            errput = file(fnerr).read()
             try:
                 dout = parse_compiler_output(output,compiler=compiler,filename=filename)
                 douts.append(dout)
@@ -1639,7 +1600,7 @@ def do_monitor(args):
 
 def generic_help():
     print("""
-Jallib wrapper script
+jallib wrapper script (revision: $Revision$)
 Actions:
     - compile  : compile the given file, expanding one or more root
                  directories containing libraries
@@ -1653,13 +1614,14 @@ Actions:
 
 Use 'help' with each action for more (eg. "jallib help compile")
 
-https://github.com/jallib/jallib
+http://jallib.googlecode.com
 """)
 
 def do_license(_trash):
     print("""
-Jallib repository URL: https://github.com/jallib/jallib
-Released under the BSD license (https://opensource.org/licenses/bsd-license.php)
+http://jallib.googlecode.com
+Released under the BSD license
+
 """)
     if deps:
         print("""
@@ -1712,7 +1674,7 @@ Use this option to validate (or not...) your file against
 the Jallib Style Guide (JSG). Not all rules are checked, so
 while validating a file, please manually have a look to it too !
 
-See: https://github.com/jallib/jallib/wiki/Jallib-Style-Guide for more
+See: http://code.google.com/p/jallib/wiki/JallibStyleGuide for more
 """)
 
 def reindent_help():
@@ -1779,12 +1741,12 @@ library, and produces link to them.
     -t : specifies the template to use to generate HTML
     -s : produces a single HTML page (useful combined with directory passed
          as parameter)
-    -l : build local link (default is to point to Github repository)
+    -l : build local link (default is to point to Google Code SVN repository)
     -d : specifies the directory containing samples (if not set, expected to be
          found in JALLIB_SAMPLEDIR environment variable
-    -g : specifies the Github base URL containing samples, to build
+    -g : specifies the Google Code SVN base URL containing samples, to build
          links to samples (ignored if -l is set).
-         Default: https://github.com/jallib/jallib/sample
+         Default: http://code.google.com/p/jallib/source/browse/trunk/sample
     -o : specifies which file to write HTML documentation to (use "-o -" to
          on stdout)
 
@@ -1895,7 +1857,7 @@ ACTIONS = {
         'unittest'  : {'callback' : do_unittest, 'options' : 'kvl',        'help' : unittest_help},
         'monitor'   : {'callback' : do_monitor,  'options' : 'f:',         'help' : monitor_help},
         'help'      : {'callback' : do_help,     'options' : '',           'help' : None},
-        'license'   : {'callback' : do_license,  'options' : '',           'help' : do_help},
+        'license'   : {'callback' : do_license,  'options' : '',           'help' : None},
         }
 
 
