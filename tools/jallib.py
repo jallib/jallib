@@ -1870,4 +1870,3 @@ if __name__ == "__main__":
     except IndexError,e:
         print >> sys.stderr, "Please provide an action: %s" % repr(ACTIONS.keys())
         sys.exit(255)
-
