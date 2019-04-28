@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 """ Create and compile blink-a-led samples.
 
-  Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
+  Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
 
-  Adapted-by: Rob Jansen,  Copyright (c) 2018..2019, all rights reserved.
+  Adapted-by: Rob Jansen
 
   Revision: $Revision$
 
@@ -287,7 +287,7 @@ def validate_jalfile(jalfile):
        Can be device file or sample program
    """
 
-   cmdlist = [python_exec, "jallib.py", "validate", jalfile]
+   cmdlist = [python_exec, "jallib3.py", "validate", jalfile]
    vlog = os.path.join(dstdir, os.path.split(jalfile)[1][:-4] + ".vlog")
    if os.path.exists(vlog):
        os.remove(vlog)
