@@ -1,8 +1,8 @@
 -- --------------------------------------------------------------------------
 -- Title: serial_hw2_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
--- Adapted-by: Karl "Kiste" Seitz
--- Compiler: 2.4q3
+-- Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
+-- Adapted-by: Karl "Kiste" Seitz, Rob Jansen
+-- Compiler: 2.5r2
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (https://github.com/jallib/jallib)
@@ -123,6 +123,38 @@ if (defined(serial2_overflow_discard) == FALSE) then
    const bit serial2_overflow_discard = FALSE      -- no transmit overflow
 end if
 
+if (defined(U2CON0) == TRUE) then
+   -- New USART Type. Some aliases to get things working for this new type
+   -- of uart, also for usart_common to set the correct baudrate.
+   alias SPBRGL2        is U2BRGL       -- Baud rate generator low byte.
+   alias SPBRGH2        is U2BRGH       -- Baud rate generator high byte.
+   alias TXSTA2_BRGH    is U2CON0_BRGS  -- Baud rate speed select.
+   alias SERIAL2_TXIF2  is PIR6_U2TXIF  -- Tranmit interrupt flag.
+   alias SERIAL2_TXIE2  is PIE6_U2TXIE  -- Transmit interrrupt enable.
+   alias TXREG2         is U2TXB        -- Transmit buffer.
+   alias SERIAL2_RCIF2  is PIR6_U2RXIF  -- Receive interrupt flag.
+   alias SERIAL2_RCIE2  is PIE6_U2RXIE  -- Receive interrupt flag.
+   alias RCREG2         is U2RXB        -- Receive buffer.
+   -- Force usart_common to use 16 bit baudrate generator.
+   if (defined(BAUDCON2_BRG16) == FALSE) then
+      var bit BAUDCON2_BRG16 = TRUE
+   end if
+elsif (defined(PIE3_RCIE2) == TRUE) then
+   -- Aliases to make driver more generic, PIE3/PIR3
+   alias SERIAL2_RCIE2 is PIE3_RCIE2
+   alias SERIAL2_RCIF2 is PIR3_RCIF2
+   alias SERIAL2_TXIE2 is PIE3_TXIE2
+   alias SERIAL2_TXIF2 is PIR3_TXIF2
+elsif (defined(PIE4_RCIE2) == TRUE) then
+   -- Aliases to make driver more generic, PIE4/PIR4
+   alias SERIAL2_RCIE2 is PIE4_RCIE2
+   alias SERIAL2_RCIF2 is PIR4_RCIF2
+   alias SERIAL2_TXIE2 is PIE4_TXIE2
+   alias SERIAL2_TXIF2 is PIR4_TXIF2
+else
+   _error "This library does not support this PIC, please report"
+end if
+
 include usart2_common                              -- common serial functions/procedures
 
 -- Local circular transmit buffer
@@ -145,22 +177,6 @@ var volatile byte  _serial2_offsetrcvhead          -- offset next byte from port
 -- variable keeping track of next byte available to application program
 var volatile byte  _serial2_offsetrcvtail          -- offset next byte to appl
 
--- Handling interrupt bits differences between PICs
-if (defined(PIE3_RCIE2) == TRUE) then              -- PIE3/PIR3
-   alias SERIAL2_RCIE2 is PIE3_RCIE2
-   alias SERIAL2_RCIF2 is PIR3_RCIF2
-   alias SERIAL2_TXIE2 is PIE3_TXIE2
-   alias SERIAL2_TXIF2 is PIR3_TXIF2
-elsif (defined(PIE4_RCIE2) == TRUE) then           -- PIE4/PIR4
-   alias SERIAL2_RCIE2 is PIE4_RCIE2
-   alias SERIAL2_RCIF2 is PIR4_RCIF2
-   alias SERIAL2_TXIE2 is PIE4_TXIE2
-   alias SERIAL2_TXIF2 is PIR4_TXIF2
-else
-   _error "Interrupt flags not found (bits not supported, please report)"
-end if
-
-
 -- ----------------------------------------------------------------------
 -- Title:     USART serial transmit interrupt handler
 -- Arguments: (none)
@@ -172,7 +188,7 @@ procedure  _serial2_transmit_interrupt_handler() is
 
    var  byte  x
 
-   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == TRUE)) then    -- UART2 xmit interrupt
+   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == ENABLED)) then  -- UART2 xmit interrupt
       if (_serial2_offsetxmttail != _serial2_offsetxmthead) then  -- data in xmit buffer
          x = _serial2_xmtbuf[_serial2_offsetxmttail]              -- next byte to xmit
          _serial2_offsetxmttail = _serial2_offsetxmttail + 1      -- next position
@@ -200,23 +216,42 @@ procedure  _serial2_receive_interrupt_handler() is
    pragma interrupt
 
    var  byte  x
+   var  bit usart2_error
 
-   if  (SERIAL2_RCIF2 == TRUE)  then            -- UART2 receive interrupt
-
-      if ((RCSTA2_OERR == TRUE) | (RCSTA2_FERR == TRUE)) then  -- frame/overr error
-         x = RCREG2                             -- flush hardware buffer
-         while RCSTA2_OERR == TRUE loop         -- overrun state
-            RCSTA2_CREN = FALSE                 -- disable UART
-            RCSTA2_CREN = TRUE                  -- re-enable UART
-            x = RCREG2                          -- \  flush hardware buffers
-            x = RCREG2                          -- /
-         end loop                               -- until no more overrun
+   if  (SERIAL2_RCIF2 == TRUE)  then      -- UART2 receive interrupt
+      usart2_error = FALSE
+      
+      if (defined(U2CON0)== TRUE) then
+         -- New USART type
+         if U2ERRIR_FERIF | U2ERRIR_RXFOIF | U2ERRIR_RXBKIF | U2ERRIR_PERIF then
+            -- reset framing and/or overflow errors
+            U2ERRIR_FERIF  = FALSE
+            U2ERRIR_RXFOIF = FALSE
+            U2ERRIR_RXBKIF = FALSE
+            U2ERRIR_PERIF  = FALSE
+            U2FIFO_RXBE   = TRUE       -- clear receive bufer
+            usart2_error = TRUE
+         end if
+      else
+         -- Classic USART type
+         if ((RCSTA2_OERR == TRUE) | (RCSTA2_FERR == TRUE)) then  -- frame/overr error
+            x = RCREG2                             -- flush hardware buffer
+            while RCSTA2_OERR == TRUE loop         -- overrun state
+               RCSTA2_CREN = DISABLED              -- disable UART
+               RCSTA2_CREN = ENABLED               -- re-enable UART
+               x = RCREG2                          -- \  flush hardware buffers
+               x = RCREG2                          -- /
+            end loop                               -- until no more overrun
+            usart2_error = TRUE
+         end if
+      end if
+       
+      if usart2_error then
          _serial2_offsetrcvtail = 0             -- \  flush circular buffer
          _serial2_offsetrcvhead = 0             -- /
          if defined(serial2_ctsinv) then
             serial2_ctsinv = FALSE              -- ensure CTS true
          end if
-
       else                                      -- data without errors
          _serial2_rcvbuf[_serial2_offsetrcvhead] = RCREG2      -- move byte to rcv buffer
 
@@ -245,7 +280,7 @@ procedure  _serial2_receive_interrupt_handler() is
          if (x != _serial2_offsetrcvtail) then  -- buffer not yet full
             _serial2_offsetrcvhead = x          -- update offset
          end if                                 -- (else discard byte,
-                                                --  CTS flow control has failed)
+         --  CTS flow control has failed)
          if defined(serial2_ctsinv) then
             if (serial2_ctsinv == FALSE) then   -- CTS is TRUE
                if _serial2_offsetrcvhead > _serial2_offsetrcvtail then  -- offset difference
@@ -318,8 +353,8 @@ function  serial2_send_byte(byte in data) return byte is
 
    var  byte  newxmthead                        -- offset in circular buffer
 
-   if (_serial2_offsetxmthead == _serial2_offsetxmttail  &  -- nothing buffered
-        SERIAL2_TXIF2 == TRUE) then             -- and UART not busy
+   if ((_serial2_offsetxmthead == _serial2_offsetxmttail) & -- nothing buffered
+        (SERIAL2_TXIF2 == TRUE)) then                       -- and UART not busy
       SERIAL2_TXIE2 = DISABLED                  -- disable xmt interrupt
       TXREG2 = data                             -- transmit byte immediately
    else                                         -- use circular buffer
@@ -361,9 +396,9 @@ function  serial_hw2_tx_buffer_free() return byte is
    var  byte  buffer_free
 
    buffer_free = _serial2_offsetxmttail - _serial2_offsetxmthead    -- difference
-                                                -- between head and tail pointers
+   -- between head and tail pointers
       if (_serial2_offsetxmttail <= _serial2_offsetxmthead) then  -- adjust when free
-                                                -- space crosses end-of-buffer boundary
+         -- space crosses end-of-buffer boundary
          buffer_free = buffer_free + SERIAL2_XMTBUFSIZE           -- or buffer is empty
       end if
 
@@ -394,32 +429,56 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure serial_hw2_init() is
 
-   _serial2_offsetxmthead  = 0                  -- offset next byte from appl
-   _serial2_offsetxmttail  = 0                  -- offset next byte to port
-   _serial2_offsetrcvhead  = 0                  -- offset next byte from port
-   _serial2_offsetrcvtail  = 0                  -- offset next byte to appl
+   _serial2_offsetxmthead  = 0          -- offset next byte from appl
+   _serial2_offsetxmttail  = 0          -- offset next byte to port
+   _serial2_offsetrcvhead  = 0          -- offset next byte from port
+   _serial2_offsetrcvtail  = 0          -- offset next byte to appl
 
-   TXSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
-   RCSTA2                  = 0b0000_0000        -- reset (8 databits, asyn)
+   if (defined(U2CON0)== TRUE) then
+      -- New USART type
+      U2CON0 = 0b0000_0000              -- reset, 8 databits, async
+      U2CON1 = 0b0000_0000              -- disable, normal operation
+      U2CON2 = 0b0000_0000              -- one stop bit, flow control is off
 
-   _calculate_and_set_baudrate2()               -- set baudrate and control bits
+      U2ERRIE = 0b0000_0000             -- disable all USART error interrupts
+      U2UIR   = 0b0000_0000
 
-   pin_RX2_direction       = INPUT              -- make receive pin input
-   pin_TX2_direction       = INPUT              -- make transmit pin input!
+     _calculate_and_set_baudrate2()       -- transmit and receive speed
 
+      pin_RX2_direction = INPUT         -- make receive pin input
+      pin_TX2_direction = OUTPUT        -- make transmit pin output
 
-   TXSTA2_TXEN             = ENABLED            -- enable transmit (makes TX2 pin output)
+      U2CON0_TXEN = ENABLED             -- Enable transmitter
+      U2CON0_RXEN = ENABLED             -- Enable receive
 
-   RCSTA2_SPEN             = ENABLED            -- activate serial port
-   RCSTA2_CREN             = ENABLED            -- continuous receive enable
+      INTCON0_GIE  = ENABLED             -- general interrupts
 
-   SERIAL2_RCIE2           = ENABLED            -- USART receive int. enable
-                                                -- (SERIAL2_TXIE2 handled dynamically)
-   INTCON_PEIE             = ENABLED            -- peripheral interrupts
-   INTCON_GIE              = ENABLED            -- general interrupts
+      U2CON1_ON   = TRUE                -- Enable serial port
+   else
+      -- Classic USART type
+      TXSTA2 = 0b0000_0000              -- reset (8 databits, asyn)
+      RCSTA2 = 0b0000_0000              -- reset (8 databits, asyn)
+
+     _calculate_and_set_baudrate2()       -- transmit and receive speed
+
+      pin_RX2_direction = INPUT         -- make receive pin input
+      pin_TX2_direction = INPUT         -- make transmit pin input!
+      -- (required by some older PICs like 16f628)
+
+      TXSTA2_TXEN = ENABLED             -- enable transmit (makes TX2 pin output)
+
+      RCSTA2_SPEN = ENABLED             -- activate serial port
+      RCSTA2_CREN = ENABLED             -- continuous receive enable
+
+      INTCON_PEIE = ENABLED             -- peripheral interrupts
+      INTCON_GIE  = ENABLED             -- general interrupts
+   end if
+
+   SERIAL2_RCIE2 = ENABLED              -- USART receive int. enable
+   -- (SERIAL2_TXIE2 handled dynamically)
 
    if defined(serial2_ctsinv) then
-      serial2_ctsinv       = FALSE              -- CTS true: accept PC data
+      serial2_ctsinv = FALSE            -- CTS true: accept PC data
    end if
 
 end procedure
@@ -444,5 +503,15 @@ function serial_hw2_data'get() return byte is
       -- nothing
    end loop
    return data                                  -- return received data
+end function
+
+-- generic function to check if a byte is received
+function serial_hw2_data_available() return bit is
+   return _serial2_offsetrcvtail != _serial2_offsetrcvhead
+end function
+
+-- generic function to check if transmit buffer is empty
+function serial_hw2_data_ready() return bit is
+   return _serial2_offsetxmthead == _serial2_offsetxmttail
 end function
 

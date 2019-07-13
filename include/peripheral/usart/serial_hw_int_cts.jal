@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2018, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
 -- Adapted-by: Joep Suijs, Rob Jansen
 -- Compiler: 2.5r2
 -- Revision: $Revision$
@@ -43,7 +43,7 @@
 -- .
 --      const  serial_hw_baudrate = 115200      -- line speed must be declared (no default)
 -- .
---      const bit serial_overflow_discard = TRUE  -- Transmit buffer overflow:
+--      const bit serial_overflow_discard = FALSE  -- Transmit buffer overflow:
 --                                              --   FALSE: wait for free space (blocking)
 --                                              --   TRUE: discard data (non-blocking)
 --                                              -- This flag may be dynamically changed
@@ -153,6 +153,38 @@ if (defined(serial_overflow_discard) == FALSE) then
    const bit serial_overflow_discard = FALSE       -- no transmit overflow
 end if
 
+if (defined(U1CON0) == TRUE) then
+   -- New USART Type. Some aliases to get things working for this new type
+   -- of uart, also for usart_common to set the correct baudrate.
+   alias SPBRGL       is U1BRGL       -- Baud rate generator low byte.
+   alias SPBRGH       is U1BRGH       -- Baud rate generator high byte.
+   alias TXSTA_BRGH   is U1CON0_BRGS  -- Baud rate speed select.
+   alias SERIAL_TXIF  is PIR3_U1TXIF  -- Tranmit interrupt flag.
+   alias SERIAL_TXIE  is PIE3_U1TXIE  -- Transmit interrrupt enable.
+   alias TXREG        is U1TXB        -- Transmit buffer.
+   alias SERIAL_RCIF  is PIR3_U1RXIF  -- Receive interrupt flag.
+   alias SERIAL_RCIE  is PIE3_U1RXIE  -- Receive interrupt flag.
+   alias RCREG        is U1RXB        -- Receive buffer.
+   -- Force usart_common to use 16 bit baudrate generator.
+   if (defined(BAUDCON_BRG16) == FALSE) then
+      var bit BAUDCON_BRG16 = TRUE
+   end if
+elsif (defined(PIE1_RCIE) == TRUE) then
+   -- Aliases to make driver more generic, PIE1/PIR1
+   alias SERIAL_RCIE is PIE1_RCIE
+   alias SERIAL_RCIF is PIR1_RCIF
+   alias SERIAL_TXIE is PIE1_TXIE
+   alias SERIAL_TXIF is PIR1_TXIF
+elsif (defined(PIE3_RCIE) == TRUE) then
+   -- Aliases to make driver more generic, PIE3/PIR3
+   alias SERIAL_RCIE is PIE3_RCIE
+   alias SERIAL_RCIF is PIR3_RCIF
+   alias SERIAL_TXIE is PIE3_TXIE
+   alias SERIAL_TXIF is PIR3_TXIF
+else
+   _error "This library does not support this PIC, please report"
+end if
+
 include usart_common                               -- common serial functions/procedures
 
 -- Local circular transmit buffer
@@ -175,13 +207,6 @@ var volatile byte  _serial_offsetrcvhead           -- offset next byte from port
 -- variable keeping track of next byte available to application program
 var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 
--- Aliases to support other PICs.
-if (defined(PIE3_RCIE) == TRUE) then               -- PIE3/PIR3
-   alias PIE1_RCIE is PIE3_RCIE
-   alias PIR1_RCIF is PIR3_RCIF
-   alias PIE1_TXIE is PIE3_TXIE
-   alias PIR1_TXIF is PIR3_TXIF
-end if
 
 -- ----------------------------------------------------------------------
 -- Title:     USART serial transmit interrupt handler
@@ -193,8 +218,8 @@ procedure  _serial_transmit_interrupt_handler() is
    pragma interrupt
    
    var  byte  x
-   
-   if ((PIR1_TXIF == TRUE) & (PIE1_TXIE == TRUE)) then          -- UART xmit interrupt
+   if ((SERIAL_TXIF == TRUE) & (SERIAL_TXIE == ENABLED)) then   -- UART xmit interrupt
+
       if (_serial_offsetxmttail != _serial_offsetxmthead) then  -- data in xmit buffer
          x = _serial_xmtbuf[_serial_offsetxmttail]              -- next byte to xmit
          _serial_offsetxmttail = _serial_offsetxmttail + 1      -- next position
@@ -203,10 +228,9 @@ procedure  _serial_transmit_interrupt_handler() is
          end if
          TXREG = x                                              -- actually xmit byte
       else                                                      -- xmit buffer empty
-         PIE1_TXIE = DISABLED                                   -- disable xmit interrupts
+         SERIAL_TXIE = DISABLED                                 -- disable xmit interrupts
       end if
    end if
-   
 end procedure
 
 
@@ -222,23 +246,42 @@ procedure  _serial_receive_interrupt_handler() is
    pragma interrupt
    
    var  byte  x
-   
-   if  (PIR1_RCIF == TRUE)  then                -- UART receive interrupt
-      
-      if ((RCSTA_OERR == TRUE) | (RCSTA_FERR == TRUE)) then  -- frame/overr error
-         x = RCREG                              -- flush hardware buffer
-         while RCSTA_OERR == TRUE loop          -- overrun state
-            RCSTA_CREN = DISABLED               -- disable UART
-            RCSTA_CREN = ENABLED                -- re-enable UART
-            x = RCREG                           -- \  flush hardware buffers
-            x = RCREG                           -- /
-         end loop                               -- until no more overrun
+   var  bit   usart_error
+
+   if (SERIAL_RCIF == TRUE)  then        -- UART receive interrupt
+      usart_error = FALSE
+
+      if (defined(U1CON0)== TRUE) then
+         -- New USART type
+         if U1ERRIR_FERIF | U1ERRIR_RXFOIF | U1ERRIR_RXBKIF | U1ERRIR_PERIF then
+            -- reset framing and/or overflow errors
+            U1ERRIR_FERIF  = FALSE
+            U1ERRIR_RXFOIF = FALSE
+            U1ERRIR_RXBKIF = FALSE
+            U1ERRIR_PERIF  = FALSE
+            U1FIFO_RXBE    = TRUE       -- clear receive bufer
+            usart_error    = TRUE
+         end if
+      else
+         -- Classic USART type
+         if ((RCSTA_OERR == TRUE) | (RCSTA_FERR == TRUE)) then  -- frame/overr error
+            x = RCREG                              -- flush hardware buffer
+            while RCSTA_OERR == TRUE loop          -- overrun state
+               RCSTA_CREN = DISABLED               -- disable UART
+               RCSTA_CREN = ENABLED                -- re-enable UART
+               x = RCREG                           -- \  flush hardware buffers
+               x = RCREG                           -- /
+            end loop                               -- until no more overrun
+            usart_error = TRUE
+         end if
+      end if
+
+      if usart_error then
          _serial_offsetrcvtail = 0              -- \  flush circular buffer
          _serial_offsetrcvhead = 0              -- /
          if defined(serial_ctsinv) then
             serial_ctsinv = FALSE               -- ensure CTS true
          end if
-         
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
          
@@ -281,7 +324,6 @@ procedure  _serial_receive_interrupt_handler() is
             end if
          end if
       end if
-      
    end if
    
 end procedure
@@ -347,9 +389,9 @@ function  serial_send_byte(byte in data) return byte is
    
    var  byte  newxmthead                        -- offset in circular buffer
    
-   if (_serial_offsetxmthead == _serial_offsetxmttail  &  -- nothing buffered
-   PIR1_TXIF == TRUE) then                  -- and UART not busy
-      PIE1_TXIE = DISABLED                      -- disable xmt interrupt
+   if ((_serial_offsetxmthead == _serial_offsetxmttail) & -- nothing buffered
+   (SERIAL_TXIF == TRUE)) then                            -- and UART not busy
+      SERIAL_TXIE = DISABLED                    -- disable xmt interrupt
       TXREG = data                              -- transmit byte immediately
    else                                         -- use circular buffer
       _serial_xmtbuf[_serial_offsetxmthead] = data  -- put byte in buffer
@@ -369,7 +411,7 @@ function  serial_send_byte(byte in data) return byte is
             data = 0x00                         -- indicate byte discarded
          end if
       end if
-      PIE1_TXIE = ENABLED                       -- (re-)enable xmit interrupts
+      SERIAL_TXIE = ENABLED                     -- (re-)enable xmit interrupts
    end if
    
    return data                                  -- transmitted byte!
@@ -423,32 +465,57 @@ end procedure
 -- ----------------------------------------------------------------------
 procedure serial_hw_init() is
    
-   _serial_offsetxmthead  = 0                   -- offset next byte from appl
-   _serial_offsetxmttail  = 0                   -- offset next byte to port
-   _serial_offsetrcvhead  = 0                   -- offset next byte from port
-   _serial_offsetrcvtail  = 0                   -- offset next byte to appl
+   _serial_offsetxmthead  = 0        -- offset next byte from appl
+   _serial_offsetxmttail  = 0        -- offset next byte to port
+   _serial_offsetrcvhead  = 0        -- offset next byte from port
+   _serial_offsetrcvtail  = 0        -- offset next byte to appl
+
+   if (defined(U1CON0)== TRUE) then
+      -- New USART type
+      U1CON0 = 0b0000_0000           -- reset, 8 databits, async
+      U1CON1 = 0b0000_0000           -- disable, normal operation
+      U1CON2 = 0b0000_0000           -- one stop bit, flow control is off
+
+      U1ERRIE = 0b0000_0000          -- disable all USART error interrupts
+      U1UIR   = 0b0000_0000
+
+     _calculate_and_set_baudrate()     -- transmit and receive speed
+
+      pin_RX_direction = INPUT       -- make receive pin input
+      pin_TX_direction = OUTPUT      -- make transmit pin output
+
+      U1CON0_TXEN = ENABLED          -- Enable transmitter
+      U1CON0_RXEN = ENABLED          -- Enable receive
+
+      INTCON0_GIE = ENABLED          -- general interrupts
+
+      U1CON1_ON   = TRUE             -- Enable serial port
+   else
+      -- Classic USART type
+
+      TXSTA = 0b0000_0000            -- reset (8 databits, asyn)
+      RCSTA = 0b0000_0000            -- reset (8 databits, asyn)
    
-   TXSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
-   RCSTA                  = 0b0000_0000         -- reset (8 databits, asyn)
+     _calculate_and_set_baudrate()     -- transmit and receive speed
+
+      pin_RX_direction = INPUT       -- make receive pin input
+      pin_TX_direction = INPUT       -- make transmit pin input!
+      -- (required by some older PICs like 16f628)
    
-   _calculate_and_set_baudrate()                -- set baudrate and control bits
+      TXSTA_TXEN = ENABLED           -- enable transmit (makes TX pin output)
    
-   pin_RX_direction       = INPUT               -- make receive pin input
-   pin_TX_direction       = INPUT               -- make transmit pin input!
-   -- (required by some older PICs like 16f628)
-   
-   TXSTA_TXEN             = ENABLED             -- enable transmit (makes TX pin output)
-   
-   RCSTA_SPEN             = ENABLED             -- activate serial port
-   RCSTA_CREN             = ENABLED             -- continuous receive enable
-   
-   PIE1_RCIE              = ENABLED             -- USART receive int. enable
-   -- (PIE1_TXIE handled dynamically)
-   INTCON_PEIE            = ENABLED             -- peripheral interrupts
-   INTCON_GIE             = ENABLED             -- general interrupts
-   
+      RCSTA_SPEN = ENABLED           -- activate serial port
+      RCSTA_CREN = ENABLED           -- continuous receive enable
+
+      INTCON_PEIE = ENABLED          -- peripheral interrupts
+      INTCON_GIE  = ENABLED          -- general interrupts
+   end if
+
+   SERIAL_RCIE = ENABLED             -- USART receive int. enable
+   -- (SERIAL_TXIE handled dynamically)
+
    if defined(serial_ctsinv) then
-      serial_ctsinv       = FALSE               -- CTS true: accept PC data
+      serial_ctsinv = FALSE          -- CTS true: accept PC data
    end if
    
 end procedure
@@ -468,7 +535,7 @@ end procedure
 -- Put byte in transmit buffer as pseudo variable
 procedure serial_hw_data'put(byte in data) is
    var byte dummy
-   dummy = serial_send_byte(data)               -- send data
+   dummy = serial_send_byte(data)           -- send data
 end procedure
 
 
@@ -479,7 +546,7 @@ function serial_hw_data'get() return byte is
    while !serial_hw_read(data) loop
       -- nothing
    end loop
-   return data                                  -- return received data
+   return data                              -- return received data
 end function
 
 -- generic function to check if a byte is received

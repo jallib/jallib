@@ -1,7 +1,7 @@
 -- Title: USART2 hardware control
--- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling.
--- Compiler: 2.4o
+-- Author: Stef Mientki, Copyright (c) 2002..2019, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Compiler: 2.5r2
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -22,6 +22,38 @@
 --              alias  pin_RX2_direction  is  pin_RX2_RC1_direction
 --
 
+if (defined(U2CON0) == TRUE) then
+   -- New USART Type. Some aliases to get things working for this new type
+   -- of uart, also for usart_common to set the correct baudrate.
+   alias SPBRGL2       is U2BRGL       -- Baud rate generator low byte.
+   alias SPBRGH2       is U2BRGH       -- Baud rate generator high byte.
+   alias TXSTA2_BRGH   is U2CON0_BRGS  -- Baud rate speed select.
+   alias TXSTA2_TRMT   is U2FIFO_TXBE  -- Transmit buffer empty flag.
+   alias RCSTA2_SPEN   is U2CON1_ON    -- Serial port enable.
+   alias SERIAL2_TXIF2 is U2FIFO_TXBE  -- Transmit buffer empty
+   alias SERIAL2_RCIF2 is U2FIFO_RXBE  -- Receive buffer empty.
+   alias TXREG2        is U2TXB        -- Transmit buffer.
+   alias RCREG2        is U2RXB        -- Receive buffer.
+   if (defined(BAUDCON2_BRG16) == FALSE) then
+      -- Force usart_common to use 16 bit baudrate generator.
+      var bit BAUDCON2_BRG16 = TRUE
+   end if
+elsif (defined(PIE3_RCIE2) == TRUE) then
+   -- Aliases to support other PICs with classic USART, PIE3/PIR3
+   alias SERIAL2_RCIE2 is PIE3_RCIE2
+   alias SERIAL2_RCIF2 is PIR3_RCIF2
+   alias SERIAL2_TXIE2 is PIE3_TXIE2
+   alias SERIAL2_TXIF2 is PIR3_TXIF2
+elsif (defined(PIE4_RCIE2) == TRUE) then
+   -- Aliases to support other PICs with classic USART, PIE4/PIR4
+   alias SERIAL2_RCIE2 is PIE4_RCIE2
+   alias SERIAL2_RCIF2 is PIR4_RCIF2
+   alias SERIAL2_TXIE2 is PIE4_TXIE2
+   alias SERIAL2_TXIF2 is PIR4_TXIF2
+else
+   _error "This library does not support this PIC, please report)"
+end if
+
 include usart2_common
 
 -- -----------------------------------------------------------------------
@@ -31,30 +63,46 @@ include usart2_common
 -- -----------------------------------------------------------------------
 procedure serial_hw2_init() is
 
-   TXSTA2 = 0b0000_0000                            -- reset (8 bit, async)
-   RCSTA2 = 0b0000_0000                            -- reset (8 bit, async)
+   if (defined(U2CON0)== TRUE) then
+      -- New USART type
+      U2CON0 = 0b0000_0000                  -- reset, 8 databits, async
+      U2CON1 = 0b0000_0000                  -- disable, normal operation
+      U2CON2 = 0b0000_0000                  -- one stop bit, flow control is off
 
-   _calculate_and_set_baudrate2()                  -- transmit and receive speed
+      _calculate_and_set_baudrate2()         -- transmit and receive speed
 
-   if (defined(PIE3_RC2IE) == TRUE) then
-      PIE3_RC2IE = FALSE                           -- disable receive interrupts
-      PIE3_TX2IE = FALSE                           -- disable transmit interrupts
-   elsif (defined(PIE4_RC2IE) == TRUE) then
-      PIE4_RC2IE = FALSE                           -- disable receive interrupts
-      PIE4_TX2IE = FALSE                           -- disable transmit interrupts
+      PIE6_U2TXIE = DISABLED                -- Disable all USART interrupts,
+      PIE6_U2RXIE = DISABLED                -- including error interrupts.
+      U2ERRIE = 0b0000_0000
+      U2UIR   = 0b0000_0000
+
+      pin_RX2_direction = INPUT             -- make receive pin input
+      pin_TX2_direction = OUTPUT            -- make transmit pin output
+
+      U2CON0_TXEN = TRUE                    -- Enable transmitter
+      U2CON0_RXEN = TRUE                    -- Enable receive
+      U2CON1_ON   = TRUE                    -- Enable serial port
    else
-      _error "Unable to disable interrupts (bits not supported, please report)"
+      -- Classic USART type
+      TXSTA2 = 0b0000_0000                  -- reset (8 bit, async)
+      RCSTA2 = 0b0000_0000                  -- reset (8 bit, async)
+
+      _calculate_and_set_baudrate2()        -- transmit and receive speed
+
+      SERIAL2_RCIE2 = DISABLED              -- disable receive interrupts
+      SERIAL2_TXIE2 = DISABLED              -- disable transmit interrupts
+
+      pin_RX2_direction = INPUT             -- make receive pin input
+      pin_TX2_direction = INPUT             -- make transmit pin input!
+      -- (required by some older ..
+      --  .. PICs like 16f628)
+
+      TXSTA2_TXEN = TRUE                    -- Enable transmitter
+      -- (makes transmit pin output)
+
+      RCSTA2_SPEN = enabled                 -- activate serial port
+      RCSTA2_CREN = enabled                 -- continuous receive
    end if
-
-   pin_RX2_direction = INPUT                       -- make receive pin input
-   pin_TX2_direction = INPUT                       -- make transmit pin input!
-
-   TXSTA2_TXEN = TRUE                              -- Enable transmitter
-                                                   -- (makes transmit pin output)
-
-   RCSTA2_SPEN = enabled                           -- activate serial port
-   RCSTA2_CREN = enabled                           -- continuous receive
-
 end procedure
 
 
@@ -67,8 +115,8 @@ end procedure
 --            USART can be enabled again by calling serial_hw2_enable()
 -- -----------------------------------------------------------------------
 procedure serial_hw2_disable() is
-   while !TXSTA_TRMT loop end loop                 -- wait while transmission pending
-   RCSTA2_SPEN = FALSE                             -- disable serial port
+   while !TXSTA2_TRMT loop end loop     -- wait while transmission pending
+   RCSTA2_SPEN = FALSE                  -- disable serial port
 end procedure
 
 
@@ -79,7 +127,7 @@ end procedure
 -- Title:     Re-enable USART after use of serial_hw2_disable()
 -- -----------------------------------------------------------------------
 procedure serial_hw2_enable() is
-   RCSTA2_SPEN = TRUE                              -- enable serial port
+   RCSTA2_SPEN = TRUE                   -- enable serial port
 end procedure
 
 
@@ -90,12 +138,8 @@ end procedure
 -- Notes:     Hardware transmit buffer must be empty, wait if necessary
 -- -----------------------------------------------------------------------
 procedure serial_hw2_write(byte in data) is
-   if (defined(PIR3_TX2IF) == TRUE) then
-      while !PIR3_TX2IF loop end loop              -- wait while transmission pending
-   elsif (defined(PIR4_TX2IF) == TRUE) then
-      while !PIR4_TX2IF loop end loop              -- wait while transmission pending
-   end if
-   TXREG2 = data                                   -- transfer data
+   while !SERIAL2_TXIF2 loop  end loop   -- wait while transmission pending
+   TXREG2 = data                        -- transfer data
 end procedure
 
 
@@ -107,10 +151,11 @@ end procedure
 --            See also serial_hw_write()
 -- -----------------------------------------------------------------------
 procedure serial_hw2_write_word(word in data) is
-   var byte dx[2] at data                          -- overlay
+   var byte dx[2] at data                -- overlay
    serial_hw2_write(dx[1])
-   asm nop                  -- necessary for good optimized compiler, loading
-                            -- of TXREG2 doesn't immediately set TX2IF
+   -- necessary for good optimized compiler, loading of TXREG2 doesn't
+   -- immediately set TX2IF
+   asm nop
    serial_hw2_write(dx[0])
 end procedure
 
@@ -126,29 +171,43 @@ end procedure
 -- -----------------------------------------------------------------------
 function _serial_hw2_read(byte out data) return bit is
    pragma inline
+   if (defined(U2CON0) == TRUE) then
+      -- New USART type
 
-   if (defined(PIR3_RC2IF) == TRUE) then
-      if PIR3_RC2IF then                           -- check if data available
-         data = RCREG2                             -- pass received byte to caller
-         PIR3_RC2IF  = FALSE                       -- eur@fiwhex.nl 12-sept-08
+      if !SERIAL2_RCIF2 then           -- check if data available
+         data = RCREG2                 -- pass received byte to caller
       else
-         return FALSE                              -- no data available
+         return FALSE                  -- no data available
       end if
-   elsif (defined(PIR4_RC2IF) == TRUE) then
-      if PIR4_RC2IF then                           -- check if data available
-         data = RCREG2                             -- pass received byte to caller
-         PIR4_RC2IF  = FALSE                       -- eur@fiwhex.nl 12-sept-08
+
+      if U2ERRIR_FERIF | U2ERRIR_RXFOIF | U2ERRIR_RXBKIF | U2ERRIR_PERIF then
+         -- reset framing and/or overflow errors
+         U2ERRIR_FERIF  = FALSE
+         U2ERRIR_RXFOIF = FALSE
+         U2ERRIR_RXBKIF = FALSE
+         U2ERRIR_PERIF  = FALSE
+         U2FIFO_RXBE = TRUE            -- clear receive bufer
+         return FALSE
+      end if
+
+      return TRUE
+   else
+      -- Classic USART type
+
+      if SERIAL2_RCIF2 then             -- check if data available
+         data = RCREG2                  -- pass received byte to caller
+         SERIAL2_RCIF2 = FALSE          -- eur@fiwhex.nl 12-sept-08
       else
-         return FALSE                              -- no data available
+         return FALSE                  -- no data available
       end if
-   end if
 
-   if RCSTA2_OERR then                             -- reset USART after overrun
-      RCSTA2_CREN = FALSE
-      RCSTA2_CREN = TRUE
-   end if
+      if RCSTA2_OERR then              -- reset USART after overrun
+         RCSTA2_CREN = FALSE
+         RCSTA2_CREN = TRUE
+      end if
 
-   return TRUE
+      return TRUE
+   end if
 end function
 
 
@@ -197,18 +256,21 @@ end function
 -- -----------------------------------------------------------------------
 
 -- generic (pic-independent) variable to check if a byte is received
-if (defined(PIR3_RC2IF) == TRUE) then
-   alias serial_hw2_data_available is PIR3_RC2IF
-elsif (defined(PIR4_RC2IF) == TRUE) then
-   alias serial_hw2_data_available is PIR4_RC2IF
-end if
+function serial_hw2_data_available return bit is
+   if (defined(U2CON0) == TRUE) then
+      -- New USART type
+     return !SERIAL2_RCIF2
+   else
+      -- Classic USART type
+      return SERIAL2_RCIF2
+    end if
+end function
+
 
 -- generic (pic-independent) variable to check if transmit buffer is empty
-if (defined(PIR3_TX2IF) == TRUE) then
-  alias serial_hw2_data_ready is PIR3_TX2IF
-elsif (defined(PIR4_TX2IF) == TRUE) then
-  alias serial_hw2_data_ready is PIR4_TX2IF
-end if
+function serial_hw2_data_ready return bit is
+   return SERIAL2_TXIF2
+end function
 
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive

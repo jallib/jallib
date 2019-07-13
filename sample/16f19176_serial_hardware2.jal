@@ -1,0 +1,91 @@
+-- ------------------------------------------------------
+-- Title: Serial hardware test program for classic type of USART 2.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2019 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r2
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description:
+--    USART test program for the Microchip pic19176. This sample program was
+--    created to test the classic type of USART 2 using the serial_hardware2 library.
+--
+-- Sources: Based on the original serial hardware sample program by Joep Suijs.
+--
+-- Notes:
+--
+-- ------------------------------------------------------
+--
+include 16f19176
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      DISABLED    -- no low voltage programming
+pragma target MCLR     INTERNAL    -- internal reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all inputs
+WPUA = 0b1111_1111
+WPUB = 0b1111_1111
+WPUC = 0b1111_1111
+WPUD = 0b1111_1111
+WPUE = 0b0000_1111
+
+enable_digital_io()                          -- make all pins digital I/O
+
+-- Re-assign the pins. Note: This must always be done to let it work even for
+-- the default assignment.
+include pps
+pps_control_lock(FALSE)
+RD3PPS = PPS_TX2  -- TX2 re-assigned to D3  (remapped so not on programming pins)
+RX2PPS = PPS_RD2  -- D2  re-assigned to RX2 (remapped so not on programming pins)
+pps_control_lock(TRUE)
+
+-- Include and initialize serial hardware 2 library.
+const serial_hw2_baudrate = 115200
+alias pin_RX2_direction is pin_D2_direction  -- Receive pin.
+alias pin_TX2_direction is pin_D3_direction  -- Transmit pin.
+include serial_hardware2
+serial_hw2_init()
+
+include print                              -- output library
+
+const byte str1[] = "Hello serial world"   -- define a string
+print_string(serial_hw2_data, str1)        -- output string to serial
+
+-- inform user PIC is ready !
+serial_hw2_write("!")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+forever loop
+
+   -- if there is a char, echo it back.
+	if (serial_hw2_read(char))	then
+		serial_hw2_write(char)	-- that's the echo...
+	end if
+
+   -- code block below prints a dot, every now and then, to signal
+   -- the pic is alive, waiting to receiver character from the host
+	counter = counter - 1      ; count down
+	if (counter == 0) then     ; until zero
+	   counter = 50000         ; then start over counting from 50000
+      serial_hw2_data = "."   ; and output a dot to the serial port
+   end if
+end loop
+

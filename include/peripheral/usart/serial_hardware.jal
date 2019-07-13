@@ -14,11 +14,14 @@
 -- because the baudrate depending registers are calculated by this unit.
 -- Baudrate is calculated, starting at the high baudrate flag,
 -- which will ensure the highest possible accuracy.
--- .
+-- This library supports old and new USART types.
+--
 -- TODO: should this be configurable ?
 -- Transmission parameters are 8 databits, 1 stopbit, no parity, no handshake.
 --
 -- Notes: - Pin selection is automatic: pin_TX and pin_RX.
+--        - For PICs using the newer USART types, make sure to remap the USART
+--          pins to their default in the main program to enable the USART pins.
 --        - Pin direction setting is taken care of by this library.
 --        - When the physical locations of pin_TX and pin_RX are configurable for
 --          a specific PIC, the device file will probably contain names like
@@ -31,12 +34,36 @@
 --              alias  pin_RX_direction  is  pin_RX_RB1_direction
 --
 
--- Aliases to support other PICs.
-if (defined(PIE3_RCIE) == TRUE) then               -- PIE3/PIR3
-   alias PIE1_RCIE is PIE3_RCIE
-   alias PIR1_RCIF is PIR3_RCIF
-   alias PIE1_TXIE is PIE3_TXIE
-   alias PIR1_TXIF is PIR3_TXIF
+if (defined(U1CON0) == TRUE) then
+   -- New USART Type. Some aliases to get things working for this new type
+   -- of uart, also for usart_common to set the correct baudrate.
+   alias SPBRGL      is U1BRGL       -- Baud rate generator low byte.
+   alias SPBRGH      is U1BRGH       -- Baud rate generator high byte.
+   alias TXSTA_BRGH  is U1CON0_BRGS  -- Baud rate speed select.
+   alias TXSTA_TRMT  is U1FIFO_TXBE  -- Transmit buffer empty flag.
+   alias RCSTA_SPEN  is U1CON1_ON    -- Serial port enable.
+   alias SERIAL_TXIF is U1FIFO_TXBE  -- Transmit buffer empty.
+   alias SERIAL_RCIF is U1FIFO_RXBE  -- Receive buffer empty.
+   alias TXREG       is U1TXB        -- Transmit buffer.
+   alias RCREG       is U1RXB        -- Receive buffer.
+   if (defined(BAUDCON_BRG16) == FALSE) then
+      -- Force usart_common to use 16 bit baudrate generator.
+      var bit BAUDCON_BRG16 = TRUE
+   end if
+elsif (defined(PIE1_RCIE) == TRUE) then
+   -- Aliases to make driver more generic, PIE1/PIR1
+   alias SERIAL_RCIE is PIE1_RCIE
+   alias SERIAL_RCIF is PIR1_RCIF
+   alias SERIAL_TXIE is PIE1_TXIE
+   alias SERIAL_TXIF is PIR1_TXIF
+elsif (defined(PIE3_RCIE) == TRUE) then
+   -- Aliases to make driver more generic, PIE3/PIR3
+   alias SERIAL_RCIE is PIE3_RCIE
+   alias SERIAL_RCIF is PIR3_RCIF
+   alias SERIAL_TXIE is PIE3_TXIE
+   alias SERIAL_TXIF is PIR3_TXIF
+else
+   _error "This library does not support this PIC, please report"
 end if
 
 include usart_common
@@ -48,26 +75,47 @@ include usart_common
 -- Returns:   (nothing)
 -- -----------------------------------------------------------------------
 procedure serial_hw_init() is
+
+   if (defined(U1CON0)== TRUE) then
+      -- New USART type
+      U1CON0 = 0b0000_0000                  -- reset, 8 databits, async
+      U1CON1 = 0b0000_0000                  -- disable, normal operation
+      U1CON2 = 0b0000_0000                  -- one stop bit, flow control is off
+
+      _calculate_and_set_baudrate()         -- transmit and receive speed
+
+      PIE3_U1TXIE = DISABLED                -- Disable all USART interrupts,
+      PIE3_U1RXIE = DISABLED                -- including error interrupts.
+      U1ERRIE = 0b0000_0000
+      U1UIR   = 0b0000_0000
+
+      pin_RX_direction = INPUT              -- make receive pin input
+      pin_TX_direction = OUTPUT             -- make transmit pin output
+
+      U1CON0_TXEN = TRUE                    -- Enable transmitter
+      U1CON0_RXEN = TRUE                    -- Enable receive
+      U1CON1_ON   = TRUE                    -- Enable serial port
+   else
+      -- Classic USART type
+      TXSTA = 0b0000_0000                   -- reset (8 databits, async)
+      RCSTA = 0b0000_0000                   -- reset (8 databits, async)
+
+      _calculate_and_set_baudrate()         -- transmit and receive speed
+
+      SERIAL_RCIE = FALSE                     -- disable receive interrupts
+      SERIAL_TXIE = FALSE                     -- disable transmit interrupts
    
-   TXSTA = 0b0000_0000                             -- reset (8 databits, async)
-   RCSTA = 0b0000_0000                             -- reset (8 databits, async)
+      pin_RX_direction = INPUT              -- make receive pin input
+      pin_TX_direction = INPUT              -- make transmit pin input!
+      -- (required by some older ..
+      --  .. PICs like 16f628)
    
-   _calculate_and_set_baudrate()                   -- transmit and receive speed
+      TXSTA_TXEN = TRUE                     -- Enable transmitter
+      -- (makes transmit pin output)
    
-   PIE1_RCIE = FALSE                               -- disable receive interrupts
-   PIE1_TXIE = FALSE                               -- disable transmit interrupts
-   
-   pin_RX_direction = INPUT                        -- make receive pin input
-   pin_TX_direction = INPUT                        -- make transmit pin input!
-   -- (required by some older ..
-   --  .. PICs like 16f628)
-   
-   TXSTA_TXEN = TRUE                               -- Enable transmitter
-   -- (makes transmit pin output)
-   
-   RCSTA_SPEN = enabled                            -- activate serial port
-   RCSTA_CREN = enabled                            -- continuous receive
-   
+      RCSTA_SPEN = enabled                  -- activate serial port
+      RCSTA_CREN = enabled                  -- continuous receive
+   end if
 end procedure
 
 
@@ -79,8 +127,8 @@ end procedure
 --            USART can be enabled again by calling serial_hw_enable()
 -- -----------------------------------------------------------------------
 procedure serial_hw_disable() is
-   while !TXSTA_TRMT loop  end loop                -- wait while transmission pending
-   RCSTA_SPEN = FALSE                              -- disable serial port
+   while !TXSTA_TRMT loop  end loop     -- wait while transmission pending
+   RCSTA_SPEN = FALSE                   -- disable serial port
 end procedure
 
 
@@ -91,7 +139,7 @@ end procedure
 -- Notes:     Re-enable USART after use of serial_hw_disable()
 -- -----------------------------------------------------------------------
 procedure serial_hw_enable() is
-   RCSTA_SPEN = TRUE                               -- enable serial port
+   RCSTA_SPEN = TRUE                    -- enable serial port
 end procedure
 
 
@@ -102,8 +150,8 @@ end procedure
 -- Notes:     Hardware transmit buffer must be empty, wait if not
 -- -----------------------------------------------------------------------
 procedure serial_hw_write(byte in data) is
-   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
-   TXREG = data                                    -- transfer data
+   while !SERIAL_TXIF loop  end loop   -- wait while transmission pending
+   TXREG = data                        -- transfer data
 end procedure
 
 
@@ -115,13 +163,12 @@ end procedure
 --            See also serial_hw_write()
 -- -----------------------------------------------------------------------
 procedure serial_hw_write_word(word in data) is
-   var byte dx[2] at data                          -- overlay
-   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
-   TXREG = dx[1]
-   asm nop                  -- necessary for good optimized compiler, loading
-   -- of TXREG doesn't immediately set PIR1_TXIF
-   while !PIR1_TXIF loop  end loop                 -- wait while transmission pending
-   TXREG = dx[0]
+   var byte dx[2] at data               -- overlay
+   serial_hw_write(dx[1])
+   -- necessary for good optimized compiler, loading of TXREG2 doesn't
+   -- immediately set TX2IF
+   asm nop
+   serial_hw_write(dx[0])
 end procedure
 
 
@@ -136,20 +183,43 @@ end procedure
 -- -----------------------------------------------------------------------
 function _serial_hw_read(byte out data) return bit is
    pragma inline
-   
-   if PIR1_RCIF then                               -- check if data available
-      data = RCREG                                 -- pass received byte to caller
-      PIR1_RCIF = FALSE                            -- eur@fiwhex.nl 12-sept-08
+   if (defined(U1CON0) == TRUE) then
+      -- New USART type
+
+      if !SERIAL_RCIF then             -- check if data available
+         data = RCREG                  -- pass received byte to caller
+      else
+         return FALSE                  -- no data available
+      end if
+
+      if U1ERRIR_FERIF | U1ERRIR_RXFOIF | U1ERRIR_RXBKIF | U1ERRIR_PERIF then
+         -- reset framing and/or overflow errors
+         U1ERRIR_FERIF  = FALSE
+         U1ERRIR_RXFOIF = FALSE
+         U1ERRIR_RXBKIF = FALSE
+         U1ERRIR_PERIF  = FALSE
+         U1FIFO_RXBE = TRUE            -- clear receive bufer
+         return FALSE
+      end if
+
+      return TRUE
    else
-      return FALSE                                 -- no data available
-   end if
+      -- Classic USART type
+
+      if SERIAL_RCIF then              -- check if data available
+         data = RCREG                  -- pass received byte to caller
+         SERIAL_RCIF = FALSE           -- eur@fiwhex.nl 12-sept-08
+      else
+         return FALSE                  -- no data available
+      end if
+
+      if RCSTA_OERR then               -- reset USART after overrrun
+         RCSTA_CREN = FALSE
+         RCSTA_CREN = TRUE
+      end if
    
-   if RCSTA_OERR then                              -- reset USART after overrrun
-      RCSTA_CREN = FALSE
-      RCSTA_CREN = TRUE
+      return TRUE
    end if
-   
-   return TRUE
 end function
 
 
@@ -198,10 +268,20 @@ end function
 -- -----------------------------------------------------------------------
 
 -- generic (pic-independent) variable to check if a byte is received
-alias serial_hw_data_available is PIR1_RCIF
+function serial_hw_data_available return bit is
+   if (defined(U1CON0) == TRUE) then
+      -- New USART type
+    return !SERIAL_RCIF
+   else
+      -- Classic USART type
+      return SERIAL_RCIF
+   end if
+end function
 
 -- generic (pic-independent) variable to check if transmit buffer is empty
-alias serial_hw_data_ready     is PIR1_TXIF
+function serial_hw_data_ready return bit is
+   return SERIAL_TXIF
+end function
 
 -- These are real raw procedures, declared as pseudo variables
 -- the user is totally responsible for testing the transmit/receive
