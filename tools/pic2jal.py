@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.2"       # script version
+scriptversion = "1.3"       # script version
 compilerversion = "2.5r2"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -564,10 +564,16 @@ def list_devicefile_header(fp, picfile):
         sharedmem.append(eval(x[1]))
     else:
         if (cfgvar["core"] == '16'):  # add high range of access bank
-            fp.write("0x%X-0x%X,0xF%X-0xFFF\n" %
+            # RJ 2019-07-13: Fix of issue #231 for newer PICs with 64 banks.
+            fp.write("0x%X-0x%X,0x%X-0x%X\n" %
                      (cfgvar["sharedrange"][0],
                       (cfgvar["sharedrange"][-1] - 1),
-                      cfgvar["accessbanksplitoffset"]))
+                      cfgvar["accessfunctionregisters"][0],
+                      (cfgvar["accessfunctionregisters"][-1] -1)))
+#            fp.write("0x%X-0x%X,0xF%X-0xFFF\n" %
+#                     (cfgvar["sharedrange"][0],
+#                      (cfgvar["sharedrange"][-1] - 1),
+#                      cfgvar["accessbanksplitoffset"]))
         elif (cfgvar["core"] == "14H"):  # add core register memory
             fp.write("0x00-0x0B,0x%X-0x%X\n" %
                      (cfgvar["sharedrange"][0],
@@ -2165,10 +2171,8 @@ def list_pps_out_consts(fp, root, picname):
         ppskeys = list(ppsoutdict.keys())
         ppskeys.sort()
         for k in ppskeys:
-            # If RxyPPS is too big there might be an error in the MPLABX file. Assume 100 it too big.
-            if (k > 100):
-                pps_warning = True
-            if (k < 200): # pattern found in .pic file
+            # If RxyPPS is too big there might be an error in the MPLABX file. Assume 128 it too big.
+            if (k < 128): # pattern found in .pic file
                 for f in ppsoutdict[k]:
                     if (picname in ("16f15355", "16f15356", "16lf15355", "16lf15356")):
                         if ((f == "CK2") & (k == 0x0F)):
@@ -2186,6 +2190,7 @@ def list_pps_out_consts(fp, root, picname):
                         for x in composite:
                             fp.write(pps_alias_format % (x, f))
             else:  # no pattern found
+                pps_warning = True
                 print("   Missing PPS output pattern for", ppsoutdict[k])
                 if (ppsoutdict[k] == "CK"):  # frequently missing in MPLABX
                     if (["TX"] in ppsoutdict.values()):  # check for TX
@@ -3405,6 +3410,15 @@ def collect_config_info(root, picname):
                     cfgvar["sharedrange"] = (dpraddr, dprlast)
                 if (dpraddr == 0):
                     cfgvar["accessbanksplitoffset"] = dprlast
+
+    # RJ 2019-07-13. Fix of issue #231 for "16" type to handle 64 banks.
+    sfrdatasectors = root.getElementsByTagName("edc:SFRDataSector")
+    for sfrdatasector in sfrdatasectors:
+        if (sfrdatasector.getAttribute("edc:regionid") == "accesssfr"):
+            gpraddr = eval(sfrdatasector.getAttribute("edc:beginaddr"))
+            gprlast = eval(sfrdatasector.getAttribute("edc:endaddr"))
+            cfgvar["accessfunctionregisters"] = (gpraddr, gprlast)
+
     cfgvar["datarange"] = compact_address_range(data)
 
     if ((cfgvar["core"] == "12") | (cfgvar["core"] == "14")) & (cfgvar["numbanks"] > 4):
