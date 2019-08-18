@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.3"       # script version
+scriptversion = "1.3.1"     # script version
 compilerversion = "2.5r2"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -2171,13 +2171,22 @@ def list_pps_out_consts(fp, root, picname):
         ppskeys = list(ppsoutdict.keys())
         ppskeys.sort()
         for k in ppskeys:
-            # If RxyPPS is too big there might be an error in the MPLABX file. Assume 128 it too big.
-            if (k < 128): # pattern found in .pic file
+            pps_error = False
+            # If RxyPPS is too big there might be an error in the MPLABX file. Assume higher than 100 is too big.
+            if (k > 100):
+                pps_warning = True
+                pps_error = True
+            if (k < 200): # pattern found in .pic file
                 for f in ppsoutdict[k]:
+				    # correction of MPLABX error. @2018-06-17: Correction still needed.
                     if (picname in ("16f15355", "16f15356", "16lf15355", "16lf15356")):
                         if ((f == "CK2") & (k == 0x0F)):
-                            f = "CK1"  # correction of MPLABX error. @2018-06-17: Correction still needed.
-                    fp.write(pps_line_format % (f, "0x%02X" % (k)))
+                            f = "CK1"
+                    # Do not print the PPS value if it is incorrect.
+                    if (pps_error == True):
+                        print("   Ignoring PPS for", f)
+                    else:					
+                        fp.write(pps_line_format % (f, "0x%02X" % (k)))
                     if ((f == "TXCK") | (f == "CKTX")):  # frequent combo in MPLABX
                         if (["TX"] not in ppsoutdict.values()):
                             print("   Adding PPS_TX for", f)
