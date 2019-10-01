@@ -26,7 +26,7 @@ where you can get some help on jallib development or
 
 The repository is organized in such a way that it is easy to find where you are looking for
 (libraries, sample programs, device files, etc...). 
-For a complete description, see the **UnderstandingSvnStructure** wiki.
+For a complete description, see the [Understanding The GitHub Structure](https://github.com/jallib/jallib/wiki/Understanding-The-GitHub-Structure) wiki.
 
 If you plan to contribute, if you dare to put your head over the mowing field, welcome again! 
 Go to the jallib discussion group and request to join us. 
