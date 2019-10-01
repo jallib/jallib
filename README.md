@@ -30,12 +30,12 @@ For a complete description, see the [Understanding The GitHub Structure](https:/
 
 If you plan to contribute, if you dare to put your head over the mowing field, welcome again! 
 Go to the jallib discussion group and request to join us. 
-For write access to the repository you'll need **Github account**. 
+For write access to the repository you'll need **GitHub account**. 
 We'll be glad to send you a membership invitation! 
 Once registered, you should have a look at our **JallibStyleGuide**. 
 It will explain know some basic principles, rules, etc... 
 which everyone must obey to provide efficient, understandable code. 
-As a member, have a look at our **SvnRepositoryHowTo**. 
+As a member, have a look at our [Jallib File Structure](https://github.com/jallib/jallib/wiki/Jallib-File-Structure). 
 You'll be able to access our repository as an official committer!
 
 Have fun !
