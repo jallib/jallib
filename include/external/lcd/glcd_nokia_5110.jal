@@ -1,17 +1,17 @@
--- Title: library for GLCD with pcd8544 controller used in Nokia 3310
--- Author: Andre Miller Copyright (c) 2008..2010, all rights reserved.
--- Adapted-by: Richard Zengerink, Sebastien Lelong, Paul D'haene
--- Compiler:  >=2.4n
+-- Title: library for GLCD with pcd8544 controller used in Nokia 3310/5110
+-- Author: Andre Miller Copyright (c) 2008..2019, all rights reserved.
+-- Adapted-by: Richard Zengerink, Sebastien Lelong, Paul D'haene, Rob Jansen
+-- Compiler:  2.5r3
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Sources: http://www.amontec.com/lcd_nokia_3310.shtml
+-- Sources: Data sheet PCD8544.
 --
--- Description: library for Nokia 3310 display with pcd8544 controller
+-- Description: library for Nokia 3310/5510 display with pcd8544 controller.
 --
--- Notes: cache usage has bugs, only half of screen is considered...
+-- Notes:
 --
 
 include delay
@@ -53,23 +53,21 @@ var byte glcd_pen_color = GLCD_BLACK
 -- -------------
 -- GLCD cache --
 -- -------------
--- TODO: maybe this cache code could be extracted as a generic cache.
---       For now, prefixed with "glcd_"
 
 -- Cache definition
-const word CACHE_SIZE = GLCD_X_PIXELS * (GLCD_Y_PIXELS/8)
+const word CACHE_SIZE = word(GLCD_X_PIXELS) * word(GLCD_Y_PIXELS/8)
 -- Cache array, defaulting when not previously defined
 if !defined(glcd_cache) then
-    const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
-    const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
-    ;include large_array_1
-    var byte glcd_cache[CACHE_SIZE]
-    ;alias glcd_cache is large_array_1
+   -- Large array definition needed for cache.
+   const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
+   const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
+   include large_array_1
+   alias glcd_cache is large_array_1
 end if
 -- track current changed (dirty) area
-var word glcd_lo_watermark = cache_size - 1
+var word glcd_lo_watermark = CACHE_SIZE - 1
 var word glcd_hi_watermark = 0
-var bit glcd_cache_changed = true
+var bit glcd_cache_changed = TRUE
 
 
 -- -----------------------
@@ -121,7 +119,6 @@ end procedure
 procedure nokia_clear_screen() is
    nokia_sda = low ;; Data bit is low
    nokia_dc = high ;; Data mode
-   nokia_cs = low
    for 6 loop  -- 6 rows
       for 84 loop  -- 84 columns or 'pages'
          for 8 loop --Clock for the 8 bits of the 'page'
@@ -134,11 +131,15 @@ end procedure
 
 -- Send LCD initialization commands
 procedure nokia_init() is
-   -- Set initial status of LCD pins
+   -- Set initial status of LCD pins. The use of the chip select pin is optional 
+   -- and can be connected to ground or controlled by the main program in case
+   -- multiple displays are connected.
+   if defined(nokia_cs) then       
+      nokia_cs = low
+   end if
    nokia_sclk = low
    nokia_sda = low
    nokia_dc = low
-   nokia_cs = low
    nokia_res = low
 
    -- Toggle LCD Reset
@@ -194,7 +195,7 @@ procedure glcd_write_char(byte in x, byte in y, byte in char) is
    offset = char - 32 ;; Fix for ascii value
 
    for offset loop
-      index = index + glcd_font_current_byte_per_char_
+      index = index + word(glcd_font_current_byte_per_char_)
    end loop
 
    for glcd_font_current_byte_per_char_ loop
@@ -214,15 +215,15 @@ end if
 
 -- Clear the display. glcd_cache_update must be called next.
 procedure glcd_clear_cache() is
-   var dword i
-   for cache_size using i loop
+   var word i
+   for CACHE_SIZE using i loop
       glcd_cache[i] = 0x00
    end loop
    -- reset watermark pointers
-   glcd_hi_watermark = cache_size - 1
+   glcd_hi_watermark = CACHE_SIZE - 1
    glcd_lo_watermark = 0
  
-   glcd_cache_changed = true
+   glcd_cache_changed = TRUE
 end procedure
 
 -- Set display contrast
@@ -257,10 +258,12 @@ procedure glcd_cache_update() is
   end if
 
   -- set base address(cursor) to low water mark
-  _nokia_glcd_write_command(0x40 | (byte(glcd_lo_watermark / GLCD_X_PIXELS)))
-  _nokia_glcd_write_command(0x80 | (byte(glcd_lo_watermark % GLCD_X_PIXELS)))
+  i = glcd_lo_watermark / GLCD_X_PIXELS
+  _nokia_glcd_write_command(0x40 | (byte(i)))
+  i = glcd_lo_watermark % GLCD_X_PIXELS
+  _nokia_glcd_write_command(0x80 | (byte(i)))
   
-  -- copy video buffer
+  -- copy cache to LCD
   i = glcd_lo_watermark
   while i <= glcd_hi_watermark loop
     _nokia_glcd_write_data(glcd_cache[i] )
@@ -274,6 +277,7 @@ procedure glcd_cache_update() is
   glcd_cache_changed = false
 end procedure
 
+
 -- Plot a pixel at given absolute (x, y) location.
 -- x, y -> Absolute pixel coordinates
 -- glcd_pen_color should be set before calling, to plot 
@@ -285,7 +289,7 @@ procedure glcd_write_pixel(byte in x, byte in y) is
    if x >= GLCD_X_PIXELS then return end if
    if y >= GLCD_Y_PIXELS then return end if
    
-   index = (y/8 * GLCD_X_PIXELS) + x
+   index = word((word(y/8) * GLCD_X_PIXELS)) + x
    offset = y % 8
  
    pdata = glcd_cache[ index ]
