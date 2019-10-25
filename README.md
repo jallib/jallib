@@ -21,8 +21,8 @@ For a quick start on how to install Jallib, compile and run a jal program on you
 Also have a look at **UnixCompilingFromSvnHowto** wiki. It'll help you to use the whole repository.
  * jalapi is the jallib API documentation
  * have a look at our [jallib discussion group](https://groups.google.com/forum/#!forum/jallib),
-where you can get some help on jallib development or
-* have a look at our [jallist discussion group](https://groups.yahoo.com/neo/groups/jallist/info) where you can discuss coding issues with jal 
+where you can get some help on jallib libraries, jallib development or
+* have a look at our [jallist discussion group](https://groups.google.com/forum/#!forum/jallist) where you can discuss coding issues with jal and PIC
 
 The repository is organized in such a way that it is easy to find where you are looking for
 (libraries, sample programs, device files, etc...). 
