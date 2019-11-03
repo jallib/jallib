@@ -1,7 +1,7 @@
 -- Title: servo control library
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4m
+-- Author: Matthew Schinkel, copyright (c) 2009..2019, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r3
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -34,6 +34,9 @@
 -- other notes:
 -- This lib uses timer0, timer1 or timer3
 -- Up to 24 servos are supported
+-- Newer PICs with different timer registers is supported by looking at the
+-- existence of PIE4_TMR1IE like for the PIC16F15325. There is no timer3 for
+-- this PIC.
 --
 
 -- check if current pic has selected timers
@@ -105,6 +108,9 @@ var bit servo_6_on at servo_1_to_8_on : 5
 var bit servo_7_on at servo_1_to_8_on : 6
 var bit servo_8_on at servo_1_to_8_on : 7
 
+-- clock selection bit needed for different timer types
+var bit _servo_clock
+
 -- create an array for servo location
 if SERVO_USE_TIMER == 0 then
    var byte servo_1_to_8_steps_per_2_5_msec -- holds number of steps within 2.5ms
@@ -119,30 +125,66 @@ end if
 -- setup servo 1 to 8 timer aliases for the timer the user selected
 if SERVO_USE_TIMER == 0 then
    -- set special timer0 settings
-   t0con_psa  = 0  -- assign prescaler to timer0
-   -- set timer registers to timer0
-   alias servo_1_to_8_tmr      is TMR0            -- timer interval
-   alias servo_1_to_8_cs       is T0CON_T0CS      -- timer clock source bit
-   alias servo_1_to_8_ie       is INTCON_TMR0IE   -- interrupt enable
-   alias servo_1_to_8_if       is INTCON_TMR0IF   -- interrupt overflow bit
-   alias servo_1_to_8_ps       is T0CON_T0PS      -- timer prescaler select bits
+   if (defined(PIE4_TMR1IE) == TRUE) then
+      -- newer timer
+      _servo_clock = 1     -- selects Fosc/4
+      t0con0_t0en = TRUE   -- enable timer 1
+      -- set timer registers to timer0
+      alias servo_1_to_8_tmr      is TMR0            -- timer interval
+      alias servo_1_to_8_cs       is T0CON1_T0CS1    -- timer clock source bit
+      alias servo_1_to_8_ie       is PIE0_TMR0IE     -- interrupt enable
+      alias servo_1_to_8_if       is PIR0_TMR0IF     -- interrupt overflow bit
+      alias servo_1_to_8_ps       is T0CON1_T0CKPS   -- timer prescaler select bits
+   else
+      -- classic timer  
+      _servo_clock = 0  -- selects Fosc/4
+      t0con_psa  = 0    -- assign prescaler to timer0
+      -- set timer registers to timer0
+      alias servo_1_to_8_tmr      is TMR0            -- timer interval
+      alias servo_1_to_8_cs       is T0CON_T0CS      -- timer clock source bit
+      alias servo_1_to_8_ie       is INTCON_TMR0IE   -- interrupt enable
+      alias servo_1_to_8_if       is INTCON_TMR0IF   -- interrupt overflow bit
+      alias servo_1_to_8_ps       is T0CON_T0PS      -- timer prescaler select bits
+   end if
 elsif SERVO_USE_TIMER == 1 then
    -- set special timer1 settings
-   t1con_tmr1on = 1               -- enables timer 1
-   -- set timer registers to timer1
-   alias servo_1_to_8_tmr      is TMR1             -- timer interval
-   alias servo_1_to_8_cs       is T1CON_TMR1CS     -- timer clock source bit
-   alias servo_1_to_8_ie       is PIE1_TMR1IE      -- interrupt enable
-   alias servo_1_to_8_if       is PIR1_TMR1IF      -- interrupt overflow bit
-   alias servo_1_to_8_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+   if (defined(PIE4_TMR1IE) == TRUE) then
+      -- newer timer
+      _servo_clock = 1      -- selects Fosc/4
+      t1con_tmr1on = 1      -- enables timer 1
+      -- set timer registers to timer1
+      alias servo_1_to_8_tmr   is TMR1             -- timer interval
+      alias servo_1_to_8_cs    is T1CLK_CS1        -- timer clock source bit
+      alias servo_1_to_8_ie    is PIE4_TMR1IE      -- interrupt enable
+      alias servo_1_to_8_if    is PIR4_TMR1IF      -- interrupt overflow bit
+      alias servo_1_to_8_ps    is T1CON_T1CKPS     -- timer prescaler select bits
+   else
+      -- classic timer
+      _servo_clock = 0      -- selects Fosc/4
+      t1con_tmr1on = 1      -- enables timer 1
+      -- set timer registers to timer1
+      alias servo_1_to_8_tmr   is TMR1             -- timer interval
+      alias servo_1_to_8_cs    is T1CON_TMR1CS     -- timer clock source bit
+      alias servo_1_to_8_ie    is PIE1_TMR1IE      -- interrupt enable
+      alias servo_1_to_8_if    is PIR1_TMR1IF      -- interrupt overflow bit
+      alias servo_1_to_8_ps    is T1CON_T1CKPS     -- timer prescaler select bits
+   end if 
 elsif SERVO_USE_TIMER == 3 then
-   t3con_tmr3on = 1               -- enables timer 3
-   -- set timer registers to timer3
-   alias servo_1_to_8_tmr      is TMR3             -- timer interval
-   alias servo_1_to_8_cs       is T3CON_TMR3CS     -- timer clock source bit
-   alias servo_1_to_8_ie       is PIE2_TMR3IE      -- interrupt enable
-   alias servo_1_to_8_if       is PIR2_TMR3IF      -- interrupt overflow bit
-   alias servo_1_to_8_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+   -- set special timer3 settings
+   if (defined(PIE4_TMR1IE) == TRUE) then
+      -- newer timer
+      _error "target pic does not have a timer3 module"
+   else
+      -- classic timer
+      _servo_clock = 0      -- selects Fosc/4
+      t3con_tmr3on = 1      -- enables timer 3
+      -- set timer registers to timer3
+      alias servo_1_to_8_tmr      is TMR3             -- timer interval
+      alias servo_1_to_8_cs       is T3CON_TMR3CS     -- timer clock source bit
+      alias servo_1_to_8_ie       is PIE2_TMR3IE      -- interrupt enable
+      alias servo_1_to_8_if       is PIR2_TMR3IF      -- interrupt overflow bit
+      alias servo_1_to_8_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+   end if
 end if
 
 var bit _servo_1_to_8_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
@@ -185,32 +227,67 @@ if defined(servo_9) == TRUE then
 
 
    -- setup servo 1 to 8 timer aliases for the timer the user selected
-   if SERVO_9_TO_16_USE_TIMER == 0 then
+   if SERVO_9_TO_16_USE_TIMER == 0 then   
       -- set special timer0 settings
-      t0con_psa  = 0  -- assign prescaler to timer0
-      -- set timer registers to timer0
-      alias servo_9_to_16_tmr      is TMR0            -- timer interval
-      alias servo_9_to_16_cs       is T0CON_T0CS      -- timer clock source bit
-      alias servo_9_to_16_ie       is INTCON_TMR0IE   -- interrupt enable
-      alias servo_9_to_16_if       is INTCON_TMR0IF   -- interrupt overflow bit
-      alias servo_9_to_16_ps       is T0CON_T0PS      -- timer prescaler select bits
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _servo_clock = 1     -- selects Fosc/4
+         t0con0_t0en = TRUE   -- enable timer 1
+         -- set timer registers to timer0
+         alias servo_9_to_16_tmr      is TMR0            -- timer interval
+         alias servo_9_to_16_cs       is T0CON1_T0CS1    -- timer clock source bit
+         alias servo_9_to_16_ie       is PIE0_TMR0IE     -- interrupt enable
+         alias servo_9_to_16_if       is PIR0_TMR0IF     -- interrupt overflow bit
+         alias servo_9_to_16_ps       is T0CON1_T0CKPS   -- timer prescaler select bits
+      else  
+         -- classic timer  
+         _servo_clock = 0  -- selects Fosc/4
+         t0con_psa  = 0    -- assign prescaler to timer0
+         -- set timer registers to timer0
+         alias servo_9_to_16_tmr      is TMR0            -- timer interval
+         alias servo_9_to_16_cs       is T0CON_T0CS      -- timer clock source bit
+         alias servo_9_to_16_ie       is INTCON_TMR0IE   -- interrupt enable
+         alias servo_9_to_16_if       is INTCON_TMR0IF   -- interrupt overflow bit
+         alias servo_9_to_16_ps       is T0CON_T0PS      -- timer prescaler select bits
+      end if
    elsif SERVO_9_TO_16_USE_TIMER == 1 then
       -- set special timer1 settings
-      t1con_tmr1on = 1               -- enables timer 1
-      -- set timer registers to timer1
-      alias servo_9_to_16_tmr      is TMR1             -- timer interval
-      alias servo_9_to_16_cs       is T1CON_TMR1CS     -- timer clock source bit
-      alias servo_9_to_16_ie       is PIE1_TMR1IE      -- interrupt enable
-      alias servo_9_to_16_if       is PIR1_TMR1IF      -- interrupt overflow bit
-      alias servo_9_to_16_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _servo_clock = 1      -- selects Fosc/4
+         t1con_tmr1on = 1      -- enables timer 1
+         -- set timer registers to timer1
+         alias servo_9_to_16_tmr      is TMR1             -- timer interval
+         alias servo_9_to_16_cs       is T1CLK_CS1        -- timer clock source bit
+         alias servo_9_to_16_ie       is PIE4_TMR1IE      -- interrupt enable
+         alias servo_9_to_16_if       is PIR4_TMR1IF      -- interrupt overflow bit
+         alias servo_9_to_16_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      else
+         -- classic timer
+         _servo_clock = 0      -- selects Fosc/4
+         t1con_tmr1on = 1      -- enables timer 1
+         -- set timer registers to timer1
+         alias servo_9_to_16_tmr      is TMR1             -- timer interval
+         alias servo_9_to_16_cs       is T1CON_TMR1CS     -- timer clock source bit
+         alias servo_9_to_16_ie       is PIE1_TMR1IE      -- interrupt enable
+         alias servo_9_to_16_if       is PIR1_TMR1IF      -- interrupt overflow bit
+         alias servo_9_to_16_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      end if
    elsif SERVO_9_TO_16_USE_TIMER == 3 then
-      t3con_tmr3on = 1               -- enables timer 3
-      -- set timer registers to timer3
-      alias servo_9_to_16_tmr      is TMR3             -- timer interval
-      alias servo_9_to_16_cs       is T3CON_TMR3CS     -- timer clock source bit
-      alias servo_9_to_16_ie       is PIE2_TMR3IE      -- interrupt enable
-      alias servo_9_to_16_if       is PIR2_TMR3IF      -- interrupt overflow bit
-      alias servo_9_to_16_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+      -- set special timer3 settings
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _error "target pic does not have a timer3 module"
+      else
+         _servo_clock = 0      -- selects Fosc/4
+         t3con_tmr3on = 1      -- enables timer 3
+         -- set timer registers to timer3
+         alias servo_9_to_16_tmr      is TMR3             -- timer interval
+         alias servo_9_to_16_cs       is T3CON_TMR3CS     -- timer clock source bit
+         alias servo_9_to_16_ie       is PIE2_TMR3IE      -- interrupt enable
+         alias servo_9_to_16_if       is PIR2_TMR3IF      -- interrupt overflow bit
+         alias servo_9_to_16_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+      end if 
    end if
 
    var bit _servo_9_to_16_isr_count = 0     -- ISR step count (0 - servo pulse / 1 - idle state)
@@ -256,30 +333,66 @@ if defined(servo_17) == TRUE then
    -- setup servo 1 to 8 timer aliases for the timer the user selected
    if SERVO_17_TO_24_USE_TIMER == 0 then
       -- set special timer0 settings
-      t0con_psa  = 0  -- assign prescaler to timer0
-      -- set timer registers to timer0
-      alias servo_17_to_24_tmr      is TMR0            -- timer interval
-      alias servo_17_to_24_cs       is T0CON_T0CS      -- timer clock source bit
-      alias servo_17_to_24_ie       is INTCON_TMR0IE   -- interrupt enable
-      alias servo_17_to_24_if       is INTCON_TMR0IF   -- interrupt overflow bit
-      alias servo_17_to_24_ps       is T0CON_T0PS      -- timer prescaler select bits
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _servo_clock = 1     -- selects Fosc/4
+         t0con0_t0en = TRUE   -- enable timer 1
+         -- set timer registers to timer0
+         alias servo_17_to_24_tmr      is TMR0            -- timer interval
+         alias servo_17_to_24_cs       is T0CON1_T0CS1    -- timer clock source bit
+         alias servo_17_to_24_ie       is PIE0_TMR0IE     -- interrupt enable
+         alias servo_17_to_24_if       is PIR0_TMR0IF     -- interrupt overflow bit
+         alias servo_17_to_24_ps       is T0CON1_T0CKPS   -- timer prescaler select bits
+      else
+         -- classic timer  
+         _servo_clock = 0  -- selects Fosc/4
+         t0con_psa  = 0    -- assign prescaler to timer0
+         -- set timer registers to timer0
+         alias servo_17_to_24_tmr      is TMR0            -- timer interval
+         alias servo_17_to_24_cs       is T0CON_T0CS      -- timer clock source bit
+         alias servo_17_to_24_ie       is INTCON_TMR0IE   -- interrupt enable
+         alias servo_17_to_24_if       is INTCON_TMR0IF   -- interrupt overflow bit
+         alias servo_17_to_24_ps       is T0CON_T0PS      -- timer prescaler select bits
+      end if
    elsif SERVO_17_TO_24_USE_TIMER == 1 then
       -- set special timer1 settings
-      t1con_tmr1on = 1               -- enables timer 1
-      -- set timer registers to timer1
-      alias servo_17_to_24_tmr      is tmr1             -- timer interval
-      alias servo_17_to_24_cs       is T1CON_TMR1CS     -- timer clock source bit
-      alias servo_17_to_24_ie       is PIE1_TMR1IE      -- interrupt enable
-      alias servo_17_to_24_if       is PIR1_TMR1IF      -- interrupt overflow bit
-      alias servo_17_to_24_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _servo_clock = 1      -- selects Fosc/4
+         t1con_tmr1on = 1      -- enables timer 1
+         -- set timer registers to timer1
+         alias servo_17_to_24_tmr      is TMR1             -- timer interval
+         alias servo_17_to_24_cs       is T1CLK_CS1        -- timer clock source bit
+         alias servo_17_to_24_ie       is PIE4_TMR1IE      -- interrupt enable
+         alias servo_17_to_24_if       is PIR4_TMR1IF      -- interrupt overflow bit
+         alias servo_17_to_24_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      else
+         -- classic timer
+         _servo_clock = 0      -- selects Fosc/4
+         t1con_tmr1on = 1      -- enables timer 1
+         -- set timer registers to timer1
+         alias servo_17_to_24_tmr      is tmr1             -- timer interval
+         alias servo_17_to_24_cs       is T1CON_TMR1CS     -- timer clock source bit
+         alias servo_17_to_24_ie       is PIE1_TMR1IE      -- interrupt enable
+         alias servo_17_to_24_if       is PIR1_TMR1IF      -- interrupt overflow bit
+         alias servo_17_to_24_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+      end if
    elsif SERVO_17_TO_24_USE_TIMER == 3 then
-      t3con_tmr3on = 1               -- enables timer 3
-      -- set timer registers to timer3
-      alias servo_17_to_24_tmr      is tmr3             -- timer interval
-      alias servo_17_to_24_cs       is T3CON_TMR3CS     -- timer clock source bit
-      alias servo_17_to_24_ie       is PIE2_TMR3IE      -- interrupt enable
-      alias servo_17_to_24_if       is PIR2_TMR3IF      -- interrupt overflow bit
-      alias servo_17_to_24_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+      -- set special timer3 settings
+      if (defined(PIE4_TMR1IE) == TRUE) then
+         -- newer timer
+         _error "target pic does not have a timer3 module"
+      else
+         -- classic timer
+         _servo_clock = 0      -- selects Fosc/4
+         t3con_tmr3on = 1      -- enables timer 3
+         -- set timer registers to timer3
+         alias servo_17_to_24_tmr      is tmr3             -- timer interval
+         alias servo_17_to_24_cs       is T3CON_TMR3CS     -- timer clock source bit
+         alias servo_17_to_24_ie       is PIE2_TMR3IE      -- interrupt enable
+         alias servo_17_to_24_if       is PIR2_TMR3IF      -- interrupt overflow bit
+         alias servo_17_to_24_ps       is T3CON_T3CKPS     -- timer prescaler select bits
+      end if
    end if
 
    var bit _servo_17_to_24_isr_count = 0    -- ISR step count (0 - servo pulse / 1 - idle state)
@@ -807,7 +920,7 @@ procedure servo_init() is
 
    servo_1_to_8_if = off   -- clear interrupt overflow bit
    servo_1_to_8_ie = on    -- timer overflow interrupt enable
-   servo_1_to_8_cs = 0     -- use internal clock for timer
+   servo_1_to_8_cs = _servo_clock 
 
    if SERVO_USE_TIMER == 0 then
       -- timer0 min step time of (1/osc)*8. (0.4us at 20mhz)
