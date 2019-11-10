@@ -44,7 +44,7 @@ test :
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
-		../compiler/jalv2-x86-64 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+		../compiler/jalv2-i686 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
 	done 
 
 jsg:
@@ -217,9 +217,9 @@ archive:
 	cd distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && zip -r jallib-pack-${JALV2_VERSION}-${VERSION}.zip . && mv jallib-pack-${JALV2_VERSION}-${VERSION}.zip ..
 
 check:
-	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-x86-64
-	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-x86-64
-	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-x86-64
+	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686
+	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686
+	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
 
 bee-archive:
 	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
@@ -236,7 +236,7 @@ bee-upload:
 	# code must be generic enough (paths, execs, environment) so it'll execute correctly on target server
 
 bee-check:
-	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-x86-64
+	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
 
 release: export prepare jallib-pack archive check
 
