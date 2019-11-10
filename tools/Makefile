@@ -15,7 +15,7 @@ VERSION=dev
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
-JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-x86-64
+JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686
 JALV2_VERSION := `${JALV2_BIN} 2> /dev/null | sed "s\#.*jal \(.*\) (.*\#\1\#"`
 
 
