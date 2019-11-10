@@ -61,8 +61,8 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.3.1"     # script version
-compilerversion = "2.5r2"   # latest JalV2 compiler version
+scriptversion = "1.3.2"     # script version
+compilerversion = "2.5r3"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
@@ -570,10 +570,6 @@ def list_devicefile_header(fp, picfile):
                       (cfgvar["sharedrange"][-1] - 1),
                       cfgvar["accessfunctionregisters"][0],
                       (cfgvar["accessfunctionregisters"][-1] -1)))
-#            fp.write("0x%X-0x%X,0xF%X-0xFFF\n" %
-#                     (cfgvar["sharedrange"][0],
-#                      (cfgvar["sharedrange"][-1] - 1),
-#                      cfgvar["accessbanksplitoffset"]))
         elif (cfgvar["core"] == "14H"):  # add core register memory
             fp.write("0x00-0x0B,0x%X-0x%X\n" %
                      (cfgvar["sharedrange"][0],
@@ -813,14 +809,12 @@ def list_sfr(fp, sfr):
 
     modelist = sfr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
-        modeid = mode.getAttribute("edc:id")
-        if modeid.startswith(("DS.", "LT.")):
-            if (len(mode.childNodes) > 0):
-                child = mode.firstChild
-                offset = list_sfr_subfield(fp, child, sfrname, 0)
-                while (child.nextSibling):
-                    child = child.nextSibling
-                    offset = list_sfr_subfield(fp, child, sfrname, offset)
+        if (len(mode.childNodes) > 0):
+            child = mode.firstChild
+            offset = list_sfr_subfield(fp, child, sfrname, 0)
+            while (child.nextSibling):
+                child = child.nextSibling
+                offset = list_sfr_subfield(fp, child, sfrname, offset)
 
     #  Adding missing bitfields:
     if ((sfrname in ("SSPCON1", "SSP1CON1", "SSP2CON1")) &
@@ -874,11 +868,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                         # list_bitfield(fp, "LATA_LATA%d" % (p), 1, "LATA", p)
                         list_bitfield(fp, "pin_A%d" % (p), 1, "PORTA", p)
                         list_pin_alias(fp, "A%d" % (p), "PORTA")
-                        # RJ: Not put procedure on input pin.
-                        #fp.write("procedure pin_A%d'put(bit in x at LATA : %d) is\n" % (p, p) +
-                        #         "   pragma inline\n" +
-                        #         "end procedure\n" +
-                        #         "--\n")
             offset = offset + eval(child.getAttribute("edc:offset"))
 
         elif (child.nodeName == "edc:SFRFieldDef"):
@@ -965,7 +954,9 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                             ((fieldname == "LATE3") & (cfgvar["late3_out"] == False))):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                         pin = "pin_" + portletter + pinnumber
-                        if ("PORT" + portletter in names):  # PORTx < LATx
+                        if ("PORT" + portletter in names) & (pin not in names):  # PORTx < LATx
+                            # RJ 2019-11-10: Changed due to removal of sfrmode types, preventing duplication.
+#                        if ("PORT" + portletter in names):  # PORTx < LATx
                             list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
                             list_pin_alias(fp, portletter + pinnumber, "PORT" + portletter)
                             fp.write("procedure " + pin + "'put(bit in x at " + sfrname + " : " + pinnumber + ") is\n" +
@@ -1010,7 +1001,9 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname + "_", offset)
                         list_bitfield(fp, pin, 1, "PORT" + portletter + "_", offset)
                     elif (cfgvar["haslat"] == True):
-                        if ("LAT" + portletter in names):  # LAT<portletter> already declared
+                        if ("LAT" + portletter in names) & (pin not in names):  # LAT<portletter> already declared
+                            # RJ 2019-11-10: Changed due to removal of sfrmode types, preventing duplication.
+#                        if ("LAT" + portletter in names):  # LAT<portletter> already declared
                             list_bitfield(fp, pin, 1, sfrname, offset)
                             list_pin_alias(fp, portletter + pinnumber, sfrname)
                             fp.write(
@@ -1207,15 +1200,12 @@ def list_muxed_sfr_subfields(fp, sfr):
     sfrname = sfr.getAttribute("edc:cname")
     modelist = sfr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
-        offset = 0
-        modeid = mode.getAttribute("edc:id")
-        if modeid.startswith(("DS.", "LT.")):
-            if len(mode.childNodes) > 0:
-                child = mode.firstChild
-                offset = list_muxed_sfr_bitfield(fp, child, sfrname, 0)
-                while child.nextSibling:
-                    child = child.nextSibling
-                    offset = list_muxed_sfr_bitfield(fp, child, sfrname, offset)
+        if len(mode.childNodes) > 0:
+            child = mode.firstChild
+            offset = list_muxed_sfr_bitfield(fp, child, sfrname, 0)
+            while child.nextSibling:
+                child = child.nextSibling
+                offset = list_muxed_sfr_bitfield(fp, child, sfrname, offset)
 
 
 def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
@@ -1406,15 +1396,12 @@ def list_nmmr_option_subfields(fp, nmmr):
     sfrname = nmmr.getAttribute("edc:cname")
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
-        offset = 0
-        modeid = mode.getAttribute("edc:id")
-        if modeid.startswith(("DS.", "LT.")):
-            if len(mode.childNodes) > 0:
-                child = mode.firstChild
-                offset = list_nmmr_option_bitfield(fp, child, sfrname, 0)
-                while child.nextSibling:
-                    child = child.nextSibling
-                    offset = list_nmmr_option_bitfield(fp, child, sfrname, offset)
+        if len(mode.childNodes) > 0:
+            child = mode.firstChild
+            offset = list_nmmr_option_bitfield(fp, child, sfrname, 0)
+            while child.nextSibling:
+                child = child.nextSibling
+                offset = list_nmmr_option_bitfield(fp, child, sfrname, offset)
 
 
 def list_nmmr_tris_subfields(fp, nmmr):
@@ -1427,15 +1414,12 @@ def list_nmmr_tris_subfields(fp, nmmr):
     sfrname = nmmr.getAttribute("edc:cname")
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
-        offset = 0
-        modeid = mode.getAttribute("edc:id")
-        if modeid.startswith(("DS.", "LT.")):
-            if (len(mode.childNodes) > 0):
-                child = mode.firstChild
-                offset = list_nmmr_tris_bitfield(fp, child, sfrname, 0)
-                while child.nextSibling:
-                    child = child.nextSibling
-                    offset = list_nmmr_tris_bitfield(fp, child, sfrname, offset)
+        if (len(mode.childNodes) > 0):
+            child = mode.firstChild
+            offset = list_nmmr_tris_bitfield(fp, child, sfrname, 0)
+            while child.nextSibling:
+                child = child.nextSibling
+                offset = list_nmmr_tris_bitfield(fp, child, sfrname, offset)
 
 
 def list_nmmr_option_bitfield(fp, child, sfrname, offset):
@@ -1836,14 +1820,12 @@ def list_multi_module_register_alias(fp, sfr):
         if (subfields_wanted(sfrname)):
             modelist = sfr.getElementsByTagName("edc:SFRMode")
             for mode in modelist:
-                modeid = mode.getAttribute("edc:id")
-                if modeid.startswith(("DS.", "LT.")):
-                    if (len(mode.childNodes) > 0):
-                        child = mode.firstChild
-                        offset = list_sfr_subfield_alias(fp, child, alias, sfrname, 0)
-                        while child.nextSibling:
-                            child = child.nextSibling
-                            offset = list_sfr_subfield_alias(fp, child, alias, sfrname, offset)
+                if (len(mode.childNodes) > 0):
+                    child = mode.firstChild
+                    offset = list_sfr_subfield_alias(fp, child, alias, sfrname, 0)
+                    while child.nextSibling:
+                        child = child.nextSibling
+                        offset = list_sfr_subfield_alias(fp, child, alias, sfrname, offset)
 
             #  Adding aliases for missing bitfields:
             if ((sfrname in ("SSPCON1", "SSP1CON1", "SSP2CON1")) &
@@ -2178,7 +2160,7 @@ def list_pps_out_consts(fp, root, picname):
                 pps_error = True
             if (k < 200): # pattern found in .pic file
                 for f in ppsoutdict[k]:
-				    # correction of MPLABX error. @2018-06-17: Correction still needed.
+                    # correction of MPLABX error. @2018-06-17: Correction still needed.
                     if (picname in ("16f15355", "16f15356", "16lf15355", "16lf15356")):
                         if ((f == "CK2") & (k == 0x0F)):
                             f = "CK1"
