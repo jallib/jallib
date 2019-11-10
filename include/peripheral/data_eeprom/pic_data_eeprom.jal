@@ -1,11 +1,12 @@
 -- ------------------------------------------------------------------------
 -- Title: reading/writing of PIC's data EEPROM
 --
--- Author: Stef Mientki, Copyright (c) 2002..2006, all rights reserved.
+-- Author: Stef Mientki, Copyright (c) 2002..2019, all rights reserved.
 --
--- Adapted-by: Sebastien Lelong, Rob Hamerling, Joep Suijs (on behalf of Tijs van Roon).
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Joep Suijs (on behalf of Tijs van Roon),
+--             Rob Jansen
 --
--- Compiler: 2.4o
+-- Compiler: 2.5r3
 --
 -- Revision: $Revision$
 --
@@ -38,51 +39,107 @@
 --         data_eeprom_write(18, 0b1111_0000)
 --
 -- Notes:
--- - Write-protect bits in configuration memory may prohibit writing.
--- - Writing to locations outside the available memory range may have
+-- * Write-protect bits in configuration memory may prohibit writing.
+-- * Writing to locations outside the available memory range may have
 --   unexpected effects!
--- - Summary of changes
---   + Changed byte-offset to word-offset for larger EEPROMs with 18Fs
---   + Offset and flags settings for read and write in separate procedure.
---   + Moved check for write completed ahead of read and write, for
---     performance (ahead of read needed for read back of same offset).
---   + added 'pragma inline' to several procedures
---   + some other code optimizations
---   + added support for PICs with deviating register names, like 'EEDAT'
---     or EEDATL in stead of 'EEDATA' and EEADRL in stead of EEADR.
---
---
+-- * For most PICs the first EEPROM address starts at 0. For some PICs, like the 
+--   16F18323, this is not the case and and an offset must be added to the 
+--   EEPROM address. See the datasheet of the PIC for more information. 
+
+-- Alias to support differences in PICs.
+if defined(EECON1_RD) then
+   alias _EEPROM_READ is EECON1_RD
+elsif defined(NVMCON1_RD) then
+   alias _EEPROM_READ is NVMCON1_RD
+end if 
+
+if defined(EECON1_WR) then
+   alias _EEPROM_WRITE is EECON1_WR
+elsif defined(NVMCON1_WR) then
+   alias _EEPROM_WRITE is NVMCON1_WR
+end if 
+
+if defined(EECON1_WREN) then
+   alias _EEPROM_WRITE_ENABLE is EECON1_WREN
+elsif defined(NVMCON1_WREN) then
+   alias _EEPROM_WRITE_ENABLE is NVMCON1_WREN
+elsif defined(NVMCON0_NVMEN) then
+   alias _EEPROM_WRITE_ENABLE is NVMCON0_NVMEN
+end if 
+
+if defined(EEDATL) then
+   alias _EEPROM_DATA is EEDATL
+elsif defined(EEDAT) then
+   alias _EEPROM_DATA is EEDAT
+elsif defined(EEDATA) then
+   alias _EEPROM_DATA is EEDATA
+elsif defined(NVMDAT) then
+   alias _EEPROM_DATA is NVMDAT
+end if 
+
+if defined(EECON2) then
+   alias _EEPROM_CONTROL is EECON2
+elsif defined(NVMCON2) then
+   alias _EEPROM_CONTROL is NVMCON2
+end if 
+
+if defined(EEADRL) then
+   alias _EEPROM_ADDRESS_LOW is EEADRL
+elsif defined(EEADR) then
+   alias _EEPROM_ADDRESS_LOW is EEADR
+elsif defined(NVMADRL) then
+   alias _EEPROM_ADDRESS_LOW is NVMADRL
+end if 
+
+if defined(NVMADRU) then
+   alias _EEPROM_ADDRESS_UPPER is NVMADRU
+end if 
+
+if defined(EECON1_CFGS) then
+   alias _EEPROM_CONFIG_SPACE is EECON1_CFGS
+   const bit _EEPROM_CONFIG_SPACE_DISABLE = FALSE
+elsif defined(NVMCON1_NVMREGS) then
+   alias _EEPROM_CONFIG_SPACE is NVMCON1_NVMREGS 
+   const bit _EEPROM_CONFIG_SPACE_DISABLE = TRUE
+end if 
+
+if defined(EECON1_EEPGD) then
+   alias _EEPROM_CODE_SPACE is EECON1_EEPGD
+end if 
+
+
 -- ------------------------------------------------------------------------
 -- Title:     Set memory region bits in EECON1 and load offset register(s)
 -- Arguments: offset of byte to be read/written
 -- Returns:   (nothing)
 -- Notes:     Wait (spin) until any previous write completed before proceeding
 -- ------------------------------------------------------------------------
-procedure _prepare_eeprom_access(word in offset) is
+procedure _prepare_eeprom_access(dword in offset) is
 
    pragma inline
-   var byte tempoffset[2] at offset             -- type cast
+   var byte tempoffset[4] at offset             -- type cast
 
-   while EECON1_WR loop                         -- allow any previous
+   while _EEPROM_WRITE loop                    -- allow any previous
      -- spin as long as any previous write is not completed
-   end loop                                     -- before this write
+   end loop                                    -- before this write
 
-   if (defined(EEADRL) == TRUE) then
-      EEADRL = tempoffset[0]                    -- low order byte of offset
-   elsif (defined(EEADR) == TRUE) then
-      EEADR = tempoffset[0]                     -- low order byte of offset
+   
+   _EEPROM_ADDRESS_LOW = tempoffset[0]         -- low order byte of offset
+
+   if defined(_EEPROM_ADDRESS_HIGH) then       -- PIC with large EEPROM
+      _EEPROM_ADDRESS_HIGH = tempoffset[1]     -- high order byte of offset
    end if
 
-   if (defined(EEADRH) == TRUE) then            -- PIC with large EEPROM
-      EEADRH = tempoffset[1]                    -- high order byte of offset
+   if defined(_EEPROM_ADDRESS_UPPER) then      -- PIC with upper EEPROM
+      _EEPROM_ADDRESS_UPPER = tempoffset[2]    -- upper order byte of offset
    end if
 
-   if (defined(EECON1_CFGS) == TRUE) then       -- config memory supported
-      EECON1_CFGS = FALSE                       -- deselect config region
+   if defined(_EEPROM_CONFIG_SPACE) then                    -- config memory supported
+      _EEPROM_CONFIG_SPACE  = _EEPROM_CONFIG_SPACE_DISABLE  -- deselect config region
    end if
 
-   if (defined(EECON1_EEPGD) == TRUE) then      -- code memory supported
-      EECON1_EEPGD = FALSE                      -- deselect code region
+   if defined(_EEPROM_CODE_SPACE) then        -- code memory supported
+      _EEPROM_CODE_SPACE  = FALSE             -- deselect code region
    end if
 
 end procedure
@@ -94,20 +151,12 @@ end procedure
 --            - Data (byte) to store data EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure  data_eeprom_read(word in offset, byte out data) is
+procedure  data_eeprom_read(dword in offset, byte out data) is
 
    _prepare_eeprom_access(offset)               -- make ready for read
-
-   EECON1_RD = TRUE                             -- initiate read operation
-
-   if (defined(EEDATL) == TRUE) then
-      data = EEDATL                             -- data byte
-   elsif (defined(EEDAT) == TRUE) then
-      data = byte(EEDAT)                        -- data byte
-   elsif (defined(EEDATA) == TRUE) then
-      data = byte(EEDATA)                       -- data byte
-   end if
-
+   _EEPROM_READ = TRUE                          -- initiate read operation
+   data = byte(_EEPROM_DATA)                    -- data byte
+   
 end procedure
 
 
@@ -117,32 +166,28 @@ end procedure
 --            - Data (byte) to be stored in data EEPROM
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write(word in offset, byte in data) is
+procedure data_eeprom_write(dword in offset, byte in data) is
 
    var bit gie_old                              -- GIE state
 
    _prepare_eeprom_access(offset)               -- make ready for write
-
-   if (defined(EEDATL) == TRUE) then
-      EEDATL = data                             -- data byte
-   elsif (defined(EEDATA) == TRUE) then
-      EEDATA = data                             -- data byte
-   elsif (defined(EEDAT) == TRUE) then
-      EEDAT  = data                             -- data byte
-   end if
-
-   EECON1_WREN = TRUE                           -- enable writes
-
+   _EEPROM_DATA = data                          -- data byte
+   _EEPROM_WRITE_ENABLE = TRUE                  -- enable writes
+   
    gie_old = INTCON_GIE                         -- save GIE state
    INTCON_GIE = FALSE                           -- disable interrupts
 
-   EECON2    = 0x55                             -- \ required sequence
-   EECON2    = 0xAA                             -- /
-
-   EECON1_WR = TRUE                             -- initiate write operation
+   _EEPROM_CONTROL = 0x55                       -- \ required sequence
+   _EEPROM_CONTROL = 0xAA                       -- /
+   _EEPROM_WRITE = TRUE                         -- initiate write operation
+   
+   assembler                                    -- required for some PICs
+      nop
+      nop
+   end assembler
 
    INTCON_GIE = gie_old                         -- restore interrupt status
-   EECON1_WREN = FALSE                          -- disable further writes
+   _EEPROM_WRITE_ENABLE = FALSE                 -- disable further writes
 
 end procedure
 
@@ -152,7 +197,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of byte to be read
 -- Returns:   Byte of data EEPROM
 -- ------------------------------------------------------------------------
-function  data_eeprom(word in offset) return byte is
+function  data_eeprom(dword in offset) return byte is
 
    pragma inline
    var byte data                                -- result
@@ -168,7 +213,7 @@ end function
 --            - Data (word) to store EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_read_word(word in offset, word out data) is
+procedure data_eeprom_read_word(dword in offset, word out data) is
 
    var byte tempbyte[2] at data                 -- overlay
    data_eeprom_read(offset+0, tempbyte[0])
@@ -182,7 +227,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of word to be read
 -- Returns:   Word of data EEPROM
 -- ------------------------------------------------------------------------
-function data_eeprom_word(word in offset) return word is
+function data_eeprom_word(dword in offset) return word is
 
    pragma inline
    var word data                                -- result
@@ -198,7 +243,7 @@ end function
 --            - Data (word) to store in EEPROM
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write_word(word in offset, word in data) is
+procedure data_eeprom_write_word(dword in offset, word in data) is
 
    var byte tempbyte[2] at data                 -- overlay
    data_eeprom_write(offset+0, tempbyte[0])
@@ -213,7 +258,7 @@ end procedure
 --            - Data (dword) to store EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_read_dword(word in offset, dword out data) is
+procedure data_eeprom_read_dword(dword in offset, dword out data) is
 
    pragma inline
    var word tempword[2] at data                 -- overlay
@@ -228,7 +273,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of doubleword to be read
 -- Returns:   Doubleword of data EEPROM
 -- ------------------------------------------------------------------------
-function data_eeprom_dword(word in offset) return dword is
+function data_eeprom_dword(dword in offset) return dword is
 
    pragma inline                                -- result
    var dword data
@@ -244,7 +289,7 @@ end function
 --            - Data (dword) to be stored
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write_dword(word in offset, dword in data) is
+procedure data_eeprom_write_dword(dword in offset, dword in data) is
 
    pragma inline
    var word tempword[2] at data                 -- overlay
