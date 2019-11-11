@@ -44,7 +44,10 @@
 --   unexpected effects!
 -- * For most PICs the first EEPROM address starts at 0. For some PICs, like the 
 --   16F18323, this is not the case and and an offset must be added to the 
---   EEPROM address. See the datasheet of the PIC for more information. 
+--   EEPROM address. If an offset is needed the main program must define a
+--   constant EEPROM_ADDRESS_OFFSET with the correct value.
+--   See the datasheet of the PIC for more information. 
+--
 
 -- Alias to support differences in PICs.
 if defined(EECON1_RD) then
@@ -114,15 +117,21 @@ end if
 -- Returns:   (nothing)
 -- Notes:     Wait (spin) until any previous write completed before proceeding
 -- ------------------------------------------------------------------------
-procedure _prepare_eeprom_access(dword in offset) is
+procedure _prepare_eeprom_access(word in eeprom_address) is
 
    pragma inline
+   var dword offset
    var byte tempoffset[4] at offset             -- type cast
 
+   -- Some PICs use an offset, if defined we will use it.
+   offset = eeprom_address
+   if defined(EEPROM_ADDRESS_OFFSET) then
+      offset = offset + dword(EEPROM_ADDRESS_OFFSET)
+   end if
+   
    while _EEPROM_WRITE loop                    -- allow any previous
      -- spin as long as any previous write is not completed
    end loop                                    -- before this write
-
    
    _EEPROM_ADDRESS_LOW = tempoffset[0]         -- low order byte of offset
 
@@ -151,7 +160,7 @@ end procedure
 --            - Data (byte) to store data EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure  data_eeprom_read(dword in offset, byte out data) is
+procedure  data_eeprom_read(word in offset, byte out data) is
 
    _prepare_eeprom_access(offset)               -- make ready for read
    _EEPROM_READ = TRUE                          -- initiate read operation
@@ -166,7 +175,7 @@ end procedure
 --            - Data (byte) to be stored in data EEPROM
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write(dword in offset, byte in data) is
+procedure data_eeprom_write(word in offset, byte in data) is
 
    var bit gie_old                              -- GIE state
 
@@ -197,7 +206,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of byte to be read
 -- Returns:   Byte of data EEPROM
 -- ------------------------------------------------------------------------
-function  data_eeprom(dword in offset) return byte is
+function  data_eeprom(word in offset) return byte is
 
    pragma inline
    var byte data                                -- result
@@ -213,7 +222,7 @@ end function
 --            - Data (word) to store EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_read_word(dword in offset, word out data) is
+procedure data_eeprom_read_word(word in offset, word out data) is
 
    var byte tempbyte[2] at data                 -- overlay
    data_eeprom_read(offset+0, tempbyte[0])
@@ -227,7 +236,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of word to be read
 -- Returns:   Word of data EEPROM
 -- ------------------------------------------------------------------------
-function data_eeprom_word(dword in offset) return word is
+function data_eeprom_word(word in offset) return word is
 
    pragma inline
    var word data                                -- result
@@ -243,7 +252,7 @@ end function
 --            - Data (word) to store in EEPROM
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write_word(dword in offset, word in data) is
+procedure data_eeprom_write_word(word in offset, word in data) is
 
    var byte tempbyte[2] at data                 -- overlay
    data_eeprom_write(offset+0, tempbyte[0])
@@ -258,7 +267,7 @@ end procedure
 --            - Data (dword) to store EEPROM contents
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_read_dword(dword in offset, dword out data) is
+procedure data_eeprom_read_dword(word in offset, dword out data) is
 
    pragma inline
    var word tempword[2] at data                 -- overlay
@@ -273,7 +282,7 @@ end procedure
 -- Arguments: Offset in data EEPROM of doubleword to be read
 -- Returns:   Doubleword of data EEPROM
 -- ------------------------------------------------------------------------
-function data_eeprom_dword(dword in offset) return dword is
+function data_eeprom_dword(word in offset) return dword is
 
    pragma inline                                -- result
    var dword data
@@ -289,7 +298,7 @@ end function
 --            - Data (dword) to be stored
 -- Returns:   (nothing)
 -- ------------------------------------------------------------------------
-procedure data_eeprom_write_dword(dword in offset, dword in data) is
+procedure data_eeprom_write_dword(word in offset, dword in data) is
 
    pragma inline
    var word tempword[2] at data                 -- overlay

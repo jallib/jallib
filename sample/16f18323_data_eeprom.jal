@@ -19,7 +19,9 @@
 --  
 -- Sources:
 -- 
--- Notes: This PIC uses an offset address of 0xF000 for EEPROM address 0.
+-- Notes: This PIC uses an offset address of 0x7000 for EEPROM address 0 which
+--        is defined by EEPROM_ADDRESS_OFFSET.  
+--                          
 
 -- chip setup
 include 16f18323
@@ -42,6 +44,8 @@ pragma eedata 129,130,131,132            -- initial contents
 
 enable_digital_io()                      -- disable analog modules
 
+-- Declare the offset address for the EEPROM before including the library.
+const word EEPROM_ADDRESS_OFFSET = 0x7000
 include pic_data_eeprom
 
 -- LED IO definition
@@ -49,7 +53,6 @@ alias led             is pin_a0
 alias led_direction   is pin_a0_direction
 led_direction = output
 
-var dword eeprom_address
 var byte i,j                          
 var bit led_value = ON
 var bit all_ok = TRUE
@@ -63,11 +66,13 @@ forever loop
    -- As long as the led blinks all written data equals the data is read back.
    -- In case of a difference in data the led will be turned off. After a 
    -- succesfull write and read cycle of 256 bytes the LED stays on.
+   -- As long as the led blinks all written data equals the data is read back.
+   -- In case of a difference in data the led will be turned off. After a 
+   -- succesfull write and read cycle of 256 bytes the LED stays on.
    if all_ok then
-      led_value = !led_value              -- toggle the led
-      eeprom_address = dword(i) + 0xF000  -- add EEPROM offset address
-      data_eeprom_write(eeprom_address,i) -- write value
-      j = data_eeprom(eeprom_address)     -- read back
+      led_value = !led_value      -- toggle the led
+      data_eeprom_write(i,i)      -- write value
+      j = data_eeprom(i)          -- read back
       if (j != i) then
          all_ok = FALSE
          led_value = OFF
