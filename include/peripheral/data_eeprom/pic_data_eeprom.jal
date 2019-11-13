@@ -42,26 +42,31 @@
 -- * Write-protect bits in configuration memory may prohibit writing.
 -- * Writing to locations outside the available memory range may have
 --   unexpected effects!
--- * For most PICs the first EEPROM address starts at 0. For some PICs, like the 
---   16F18323, this is not the case and and an offset must be added to the 
---   EEPROM address. If an offset is needed the main program must define a
---   constant EEPROM_ADDRESS_OFFSET with the correct value.
---   See the datasheet of the PIC for more information. 
+-- * For most PICs the first EEPROM address starts at 0. For some PICs, 
+--   this is not the case and and an offset must be added to the EEPROM address
+--   If an offset is needed the main program can define a constant called
+--   EEPROM_ADDRESS_OFFSET with the correct value so that the first
+--   address of the EEPROM remains 0 for the user. Some examples:
+--   For PIC16F18346: const  word EEPROM_ADDRESS_OFFSET = 0x7000 
+--   For PIC18F46Q10: const dword EEPROM_ADDRESS_OFFSET = 0x31_0000   
+--   See the datasheet of the PICs for more information. 
 --
 
--- Alias to support differences in PICs.
+-- Alias to support differences in PICs. Read bit.
 if defined(EECON1_RD) then
    alias _EEPROM_READ is EECON1_RD
 elsif defined(NVMCON1_RD) then
    alias _EEPROM_READ is NVMCON1_RD
 end if 
 
+-- Write bit.
 if defined(EECON1_WR) then
    alias _EEPROM_WRITE is EECON1_WR
 elsif defined(NVMCON1_WR) then
    alias _EEPROM_WRITE is NVMCON1_WR
 end if 
 
+-- EEPROM write enable.
 if defined(EECON1_WREN) then
    alias _EEPROM_WRITE_ENABLE is EECON1_WREN
 elsif defined(NVMCON1_WREN) then
@@ -70,6 +75,7 @@ elsif defined(NVMCON0_NVMEN) then
    alias _EEPROM_WRITE_ENABLE is NVMCON0_NVMEN
 end if 
 
+-- EEPROM data byte.
 if defined(EEDATL) then
    alias _EEPROM_DATA is EEDATL
 elsif defined(EEDAT) then
@@ -80,12 +86,14 @@ elsif defined(NVMDAT) then
    alias _EEPROM_DATA is NVMDAT
 end if 
 
+-- EEPROM control register.
 if defined(EECON2) then
    alias _EEPROM_CONTROL is EECON2
 elsif defined(NVMCON2) then
    alias _EEPROM_CONTROL is NVMCON2
 end if 
 
+-- EEPROM low address byte.
 if defined(EEADRL) then
    alias _EEPROM_ADDRESS_LOW is EEADRL
 elsif defined(EEADR) then
@@ -94,16 +102,19 @@ elsif defined(NVMADRL) then
    alias _EEPROM_ADDRESS_LOW is NVMADRL
 end if 
 
+-- EEPROM high address byte. 
 if defined(EEADRH) then
    alias _EEPROM_ADDRESS_HIGH is EEADRH
 elsif defined(NVMADRH) then
    alias _EEPROM_ADDRESS_HIGH is NVMADRH
 end if 
 
+-- EEPROM upper address byte.
 if defined(NVMADRU) then
    alias _EEPROM_ADDRESS_UPPER is NVMADRU
 end if 
 
+-- EEPROM configuration space bit.
 if defined(EECON1_CFGS) then
    alias _EEPROM_CONFIG_SPACE is EECON1_CFGS
    const bit _EEPROM_CONFIG_SPACE_DISABLE = FALSE
@@ -112,10 +123,17 @@ elsif defined(NVMCON1_NVMREGS) then
    const bit _EEPROM_CONFIG_SPACE_DISABLE = TRUE
 end if 
 
+-- EEPROM code space bit.
 if defined(EECON1_EEPGD) then
    alias _EEPROM_CODE_SPACE is EECON1_EEPGD
 end if 
 
+-- Some PICs use other declartions for the GIE bit.
+if defined(INTCON0_GIE)then  
+   alias _EEPROM_GIE is INTCON0_GIE
+elsif defined(INTCON_GIE) then
+   alias _EEPROM_GIE is INTCON_GIE
+end if
 
 -- ------------------------------------------------------------------------
 -- Title:     Set memory region bits in EECON1 and load offset register(s)
@@ -189,8 +207,8 @@ procedure data_eeprom_write(word in offset, byte in data) is
    _EEPROM_DATA = data                          -- data byte
    _EEPROM_WRITE_ENABLE = TRUE                  -- enable writes
    
-   gie_old = INTCON_GIE                         -- save GIE state
-   INTCON_GIE = FALSE                           -- disable interrupts
+   gie_old = _EEPROM_GIE                        -- save GIE state
+   _EEPROM_GIE = FALSE                           -- disable interrupts
 
    _EEPROM_CONTROL = 0x55                       -- \ required sequence
    _EEPROM_CONTROL = 0xAA                       -- /
@@ -201,7 +219,7 @@ procedure data_eeprom_write(word in offset, byte in data) is
       nop
    end assembler
 
-   INTCON_GIE = gie_old                         -- restore interrupt status
+   _EEPROM_GIE = gie_old                        -- restore interrupt status
    _EEPROM_WRITE_ENABLE = FALSE                 -- disable further writes
 
 end procedure
