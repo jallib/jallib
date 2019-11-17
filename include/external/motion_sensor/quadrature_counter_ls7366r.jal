@@ -1,0 +1,157 @@
+-- Title: Quadrature Counter ls7366r
+-- Author: Matthew Schinkel, copyright (c) 2017, all rights reserved.
+-- Adapted-by:
+-- Compiler:2.4q6
+--
+-- This file is part of jallib (http://jallib.googlecode.com)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: ls7366r is a quadrature encoder counter for counting or
+--              keeping track of the position of a optical rotary encoder
+--              or linear slide. This device can count signals of TTL type
+--              (pulses 90 degrees out of phase) or signals with
+--              up/down direction and clock signals. TTL mode is default
+--              in this lib.
+--
+-- Notes:
+--     Use ls7366r_write(WRITE_MDR0, 0x00) after init() for
+--     devices with up/down direction and count clock outputs (not tested).
+--
+-- Sources:
+-- https://lsicsi.com/datasheets/LS7366R.pdf
+--
+
+-- Count modes
+const LS7366R_NQUAD = 0x00 -- non-quadrature mode
+const LS7366R_QUADRX1 = 0x01 -- X1 quadrature mode
+const LS7366R_QUADRX2 = 0x02 -- X2 quadrature mode
+const LS7366R_QUADRX4 = 0x03 -- X4 quadrature mode
+-- Running modes
+const LS7366R_FREE_RUN = 0x00
+const LS7366R_SINGE_CYCLE = 0x04
+const LS7366R_RANGE_LIMIT = 0x08
+const LS7366R_MODULO_N = 0x0C
+-- Index modes
+const LS7366R_DISABLE_INDX = 0x00 -- index_disabled
+const LS7366R_INDX_LOADC = 0x10 -- index_load_CNTR
+const LS7366R_INDX_RESETC = 0x20 -- index_rest_CNTR
+const LS7366R_INDX_LOADO = 0x30 -- index_load_OL
+const LS7366R_ASYNCH_INDX = 0x00 -- asynchronous index
+const LS7366R_SYNCH_INDX = 0x80 -- synchronous index
+-- Clock filter modes
+const LS7366R_FILTER_1 = 0x00 -- filter clock frequncy division factor 1
+const LS7366R_FILTER_2 = 0x80 -- filter clock frequncy division factor 2
+-- Flag modes
+const LS7366R_NO_FLAGS = 0x00 -- all flags disabled
+const LS7366R_IDX_FLAG = 0x10; -- IDX flag
+const LS7366R_CMP_FLAG = 0x20; -- CMP flag
+const LS7366R_BW_FLAG = 0x40; -- BW flag
+const LS7366R_CY_FLAG = 0x80; -- CY flag
+-- 1 to 4 bytes data-width
+const LS7366R_BYTE_4 = 0x00; -- four LS7366R_mode
+const LS7366R_BYTE_3 = 0x01; -- three LS7366R_mode
+const LS7366R_BYTE_2 = 0x02; -- two LS7366R_mode
+const LS7366R_BYTE_1 = 0x03; -- one LS7366R_mode
+-- Enable/disable counter
+const LS7366R_EN_CNTR = 0x00; -- counting enabled
+const LS7366R_DIS_CNTR = 0x04; -- counting disabled
+-- LS7366R op-code list
+const LS7366R_CLR_MDR0 = 0x08
+const LS7366R_CLR_MDR1 = 0x10
+const LS7366R_CLR_CNTR = 0x20
+const LS7366R_CLR_STR = 0x30
+const LS7366R_READ_MDR0 = 0x48
+const LS7366R_READ_MDR1 = 0x50
+const LS7366R_READ_CNTR = 0x60
+const LS7366R_READ_OTR = 0x68
+const LS7366R_READ_STR = 0x70
+const LS7366R_WRITE_MDR1 = 0x90
+const LS7366R_WRITE_MDR0 = 0x88
+const LS7366R_WRITE_DTR = 0x98
+const LS7366R_LOAD_CNTR = 0xE0
+const LS7366R_LOAD_OTR = 0xE4
+
+--------------------------------------------------------------------------------
+-- Read one byte
+--------------------------------------------------------------------------------
+function ls7366r_read(byte in op_code) return byte is
+   if defined(ls7366r_force_spi_mode) == true then
+      ls7366r_force_spi_mode()
+   end if
+
+   var byte data
+
+   ls7366r_chip_select = low
+   delay_1us()
+   spi_master = op_code
+   data = spi_master
+   ls7366r_chip_select = high
+
+   return data
+end function
+
+--------------------------------------------------------------------------------
+-- Write one byte
+--------------------------------------------------------------------------------
+procedure ls7366r_write(byte in op_code, byte in data) is
+   if defined(ls7366r_force_spi_mode) == true then
+      ls7366r_force_spi_mode()
+   end if
+
+   ls7366r_chip_select = low
+   delay_1us()
+   spi_master = op_code
+   spi_master = data
+   ls7366r_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Read the counter
+--------------------------------------------------------------------------------
+function ls7366r_read_counter() return dword is
+   if defined(ls7366r_force_spi_mode) == true then
+      ls7366r_force_spi_mode()
+   end if
+
+   var byte data
+
+   var dword counter
+   var byte counter3 at counter + 3
+   var byte counter2 at counter + 2
+   var byte counter1 at counter + 1
+   var byte counter0 at counter + 0
+
+   ls7366r_chip_select = low
+   delay_1us()
+   spi_master = LS7366R_READ_CNTR
+   counter3 = spi_master
+   counter2 = spi_master
+   counter1 = spi_master
+   counter0 = spi_master
+   ls7366r_chip_select = high
+
+   return counter
+end function
+
+--------------------------------------------------------------------------------
+-- Reset
+--------------------------------------------------------------------------------
+procedure ls7366r_reset() is
+   if defined(ls7366r_force_spi_mode) == true then
+      ls7366r_force_spi_mode()
+   end if
+
+   ls7366r_chip_select = low
+   delay_1us()
+   spi_master = LS7366R_CLR_CNTR
+   ls7366r_chip_select = high
+end procedure
+
+--------------------------------------------------------------------------------
+-- Initialize
+--------------------------------------------------------------------------------
+procedure ls7366r_init() is
+   ls7366r_reset()
+   ls7366r_write(LS7366R_WRITE_MDR0, LS7366R_QUADRX4|LS7366R_FREE_RUN|LS7366R_DISABLE_INDX|LS7366R_ASYNCH_INDX)
+   ls7366r_write(LS7366R_WRITE_MDR1, LS7366R_EN_CNTR|LS7366R_BYTE_4)
+end procedure
