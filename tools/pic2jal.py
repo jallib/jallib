@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.3.2"     # script version
+scriptversion = "1.3.3"     # script version
 compilerversion = "2.5r3"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -564,7 +564,6 @@ def list_devicefile_header(fp, picfile):
         sharedmem.append(eval(x[1]))
     else:
         if (cfgvar["core"] == '16'):  # add high range of access bank
-            # RJ 2019-07-13: Fix of issue #231 for newer PICs with 64 banks.
             fp.write("0x%X-0x%X,0x%X-0x%X\n" %
                      (cfgvar["sharedrange"][0],
                       (cfgvar["sharedrange"][-1] - 1),
@@ -694,7 +693,7 @@ def list_all_sfr(fp, root):
     for sfrdatasector in sfrdatasectors:
         if (sfrdatasector.parentNode.nodeName != "edc:ExtendedModeOnly"):
             if len(sfrdatasector.childNodes) > 0:
-                child = sfrdatasector.firstChild
+                child = (sfrdatasector.firstChild)
                 list_sfrdata_child(fp, child)
                 while child.nextSibling:
                     child = child.nextSibling
@@ -717,7 +716,8 @@ def list_sfrdata_child(fp, child):
         if (child.nodeName == "edc:SFRDef"):
             list_sfr(fp, child)
         elif (child.nodeName == "edc:JoinedSFRDef"):
-            reg = child.getAttribute("edc:cname")
+            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+            reg = child.getAttribute("edc:cname").upper()
             width = max(2, (eval(child.getAttribute("edc:nzwidth")) + 7) // 8)  # round to # bytes
             if (width < 3):  # maybe not correct: check
                 width_chk = len(child.getElementsByTagName("edc:MuxedSFRDef"))
@@ -763,7 +763,8 @@ def list_sfr(fp, sfr):
    """
     picname = cfgvar["picname"]
     list_separator(fp)
-    sfrname = sfr.getAttribute("edc:cname")
+    # RJ: 2020-01-05. Added 'upper' to deal with inconsistencies in MPLABX XML file.
+    sfrname = sfr.getAttribute("edc:cname").upper()
     sfraddr = eval(sfr.getAttribute("edc:_addr"))
     if (sfrname.startswith("TMR") & sfrname.endswith("L")):
         if (sfrname[0:-1] not in names):  # missing word for 16-bits timer
@@ -955,8 +956,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                         pin = "pin_" + portletter + pinnumber
                         if ("PORT" + portletter in names) & (pin not in names):  # PORTx < LATx
-                            # RJ 2019-11-10: Changed due to removal of sfrmode types, preventing duplication.
-#                        if ("PORT" + portletter in names):  # PORTx < LATx
                             list_bitfield(fp, pin, 1, "PORT" + portletter, offset)
                             list_pin_alias(fp, portletter + pinnumber, "PORT" + portletter)
                             fp.write("procedure " + pin + "'put(bit in x at " + sfrname + " : " + pinnumber + ") is\n" +
@@ -1002,8 +1001,6 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                         list_bitfield(fp, pin, 1, "PORT" + portletter + "_", offset)
                     elif (cfgvar["haslat"] == True):
                         if ("LAT" + portletter in names) & (pin not in names):  # LAT<portletter> already declared
-                            # RJ 2019-11-10: Changed due to removal of sfrmode types, preventing duplication.
-#                        if ("LAT" + portletter in names):  # LAT<portletter> already declared
                             list_bitfield(fp, pin, 1, sfrname, offset)
                             list_pin_alias(fp, portletter + pinnumber, sfrname)
                             fp.write(
@@ -1118,7 +1115,8 @@ def list_muxed_sfr(fp, selectsfr):
         if (cond == None):  # default sfr
             list_sfr(fp, sfr)
         else:  # alternate sfr on this address
-            sfrname = sfr.getAttribute("edc:cname")
+            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+            sfrname = sfr.getAttribute("edc:cname").upper()
             sfraddr = eval(sfr.getAttribute("edc:_addr"))
             core = cfgvar["core"]
             subst = sfrname + "_"  # substitute name
@@ -1197,7 +1195,8 @@ def list_muxed_sfr_subfields(fp, sfr):
            - Only valid for SFRs which use WDTCON_ADSHR bit
              to switch to the alternate content
    """
-    sfrname = sfr.getAttribute("edc:cname")
+    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+    sfrname = sfr.getAttribute("edc:cname").upper()
     modelist = sfr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
         if len(mode.childNodes) > 0:
@@ -1224,7 +1223,8 @@ def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
         elif (child.nodeName == "edc:SFRFieldDef"):
             width = eval(child.getAttribute("edc:nzwidth"))
             if subfields_wanted(sfrname):
-                field = sfrname + "_" + child.getAttribute("edc:cname")
+                # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+                field = sfrname + "_" + child.getAttribute("edc:cname").upper()
                 if (field not in names):  # new variable
                     names.append(field)
                 subst = sfrname + "_"
@@ -1309,7 +1309,8 @@ def list_nmmrdata_child(fp, nmmr):
     global names
     if (nmmr.nodeType == Node.ELEMENT_NODE):
         if (nmmr.nodeName == "edc:SFRDef"):
-            sfrname = nmmr.getAttribute("edc:cname")
+            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+            sfrname = nmmr.getAttribute("edc:cname").upper()
             picname = cfgvar["picname"]
             if (sfrname == "OPTION_REG"):
                 if (sfrname not in names):
@@ -1393,7 +1394,8 @@ def list_nmmr_option_subfields(fp, nmmr):
            - NMMR node
    Notes:  - Expected to be used with 12Fs only
    """
-    sfrname = nmmr.getAttribute("edc:cname")
+    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+    sfrname = nmmr.getAttribute("edc:cname").upper()
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
         if len(mode.childNodes) > 0:
@@ -1411,7 +1413,8 @@ def list_nmmr_tris_subfields(fp, nmmr):
            - NMMR node
    Notes:  - Expected to be used with 12Fs only
    """
-    sfrname = nmmr.getAttribute("edc:cname")
+    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+    sfrname = nmmr.getAttribute("edc:cname").upper()
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
         if (len(mode.childNodes) > 0):
@@ -1789,7 +1792,8 @@ def list_multi_module_register_alias(fp, sfr):
            - add (modified) alias for modules 2..9
            - bitfields are expanded as for 'real' registers
    """
-    sfrname = sfr.getAttribute("edc:cname")
+    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+    sfrname = sfr.getAttribute("edc:cname").upper()
     if (len(sfrname) < 5):  # can skip short names
         return
     alias = ''  # default: no alias
@@ -1992,7 +1996,8 @@ def list_digital_io(fp, picname):
             fp.write("   ADCON  = 0b0000_0000\n")
         if ("ADCON1" in names):
             if ("ADCON1" not in picdata):
-                print("   Provisional value for ADCON1 specified")
+                #RJ 2020-01-05: Leave out. Is default when not defined.
+                # print("   Provisional value for ADCON1 specified")
                 fp.write("   ADCON1 = 0b0000_0000\n")
             else:
                 fp.write("   ADCON1 = " + picdata["ADCON1"] + "\n")
@@ -2240,7 +2245,8 @@ def list_dcrdef(fp, dcrdef, addr):
     if (dcrdef.nodeName == "edc:AdjustPoint"):
         addr = addr + eval(dcrdef.getAttribute("edc:offset"))
     elif (dcrdef.nodeName == "edc:DCRDef"):
-        dcrname = dcrdef.getAttribute("edc:cname")
+        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+        dcrname = dcrdef.getAttribute("edc:cname").upper()
         fp.write("--\n")
         fp.write("-- %s (0x%X)\n" % (dcrname, addr))
         fp.write("--\n")
@@ -3312,7 +3318,8 @@ def collect_config_info(root, picname):
                 if child.nodeType == Node.ELEMENT_NODE:
                     if (child.hasAttribute("edc:cname")):
                         sfraddr = eval(child.getAttribute("edc:_addr"))
-                        childname = child.getAttribute("edc:cname")
+                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+                        childname = child.getAttribute("edc:cname").upper()
                         if childname == "CM1CON0":
                             mask = child.getAttribute("edc:por")
                             if (len(mask) == 8):  # 8 bits expected
@@ -3329,7 +3336,8 @@ def collect_config_info(root, picname):
                                 while bitfield.nextSibling:
                                     bitfield = bitfield.nextSibling
                                     if (bitfield.nodeName == "edc:SFRFieldDef"):
-                                        bname = bitfield.getAttribute("edc:cname")
+                                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+                                        bname = bitfield.getAttribute("edc:cname").upper()
                                         if (bname.startswith("IRCF")):
                                             bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
                                             if (bwidth > 1):
@@ -3344,7 +3352,8 @@ def collect_config_info(root, picname):
                             if (childname in ("LATA", "LATE")):
                                 fields = child.getElementsByTagName("edc:SFRFieldDef")
                                 for field in fields:
-                                    fieldname = field.getAttribute("edc:cname")
+                                    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+                                    fieldname = field.getAttribute("edc:cname").upper()
                                     if ((fieldname == "LATA3") & (access[4] != "r")):
                                         cfgvar["lata3_out"] = True
                                     if ((fieldname == "LATA5") & (access[2] != "r")):
@@ -3361,7 +3370,8 @@ def collect_config_info(root, picname):
                                     if (bitfield.nodeName == "edc:AdjustPoint"):
                                         offset = offset + eval(bitfield.getAttribute("edc:offset"))
                                     elif (bitfield.nodeName == "edc:SFRFieldDef"):
-                                        bname = bitfield.getAttribute("edc:cname")
+                                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
+                                        bname = bitfield.getAttribute("edc:cname").upper()
                                         bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
                                         if (bname == "ADSHR"):
                                             cfgvar["wdtcon_adshr"] = (sfraddr, offset)
@@ -3402,7 +3412,6 @@ def collect_config_info(root, picname):
                 if (dpraddr == 0):
                     cfgvar["accessbanksplitoffset"] = dprlast
 
-    # RJ 2019-07-13. Fix of issue #231 for "16" type to handle 64 banks.
     sfrdatasectors = root.getElementsByTagName("edc:SFRDataSector")
     for sfrdatasector in sfrdatasectors:
         if (sfrdatasector.getAttribute("edc:regionid") == "accesssfr"):
