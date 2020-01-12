@@ -1,0 +1,942 @@
+-- -----------------------------------------------------------------------------
+-- Title: nRF24L01+ library for wireless communication.
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r3
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Libray for wireless transmission and reception using the nRF24L01+.
+--
+-- Sources: https://infocenter.nordicsemi.com/pdf/nRF24L01P_PS_v1.0.pdf
+--          Partly based on the draft library of Sebastien LeLong. Completed, 
+--          extended and adapted to enable backward compatibility with older 
+--          nRF24XX devices. Draft library version can be found at:
+--          https://github.com/sirloon/jaluino/blob/master/lib/nrf24l01.jal
+--
+-- Notes:   The following pins must be defined by the main program before 
+--          including this library:
+--          -) alias nrf24_spi_sck            -- To sck of nRF24L01+
+--          -) alias nrf24_spi_sck_direction 
+--          -) alias nrf24_spi_sdi            -- To MISO of nRF24L01+ 
+--          -) alias nrf24_spi_sdi_direction 
+--          -) alias nrf24_spi_sdo            -- To MOSI of nRF24L01+ 
+--          -) alias nrf24_spi_sdo_direction 
+--          -) alias nrf24_ce_pin             -- To ce of nRF24L01+ 
+--          -) alias nrf24_ce_pin_direction 
+--          -) alias nrf24_csn_pin            -- To csn of nRF24L01+ 
+--          -) alias nrf24_csn_pin_direction 
+--
+--          Define the NRF24_RECEIVE_ADDR using the correct number of bytes 
+--          (default is 5) in an array with the Least Significant Byte (LSB)
+--          first. This address must be defined before including this library.
+--          Example (byte 0x01 is LSB): 
+--          -) const byte NRF24_RECEIVE_ADDR[5] = {0x01, 0xAA, 0xBB, 0xCC, 0xDD}
+--          In case more receive addresses are used on other pipes, only the LSB
+--          of this new 5-bytes address is used, the other bytes remain the same
+--          as the original NRF24_RECEIVE_ADDR. 
+--
+--          The maximum payload size is set to NRF24_PAYLOAD_SIZE, which also 
+--          creates are receive buffer called 'nrf24_read_buffer' of the same 
+--          size. To change this use: 
+--          -) const byte NRF24_PAYLOAD_SIZE = <your size>.
+--          The payload size range is between 1 and 32 (= NRF24_MAX_PAYLOAD).
+--     
+--          By default the SPI hardware is used. This library also implemented
+--          a software SPI interface. In order to use this define the following:
+--          -) const NRF24_SOFTWARE_SPI = TRUE 
+--
+--          Some hardware related information:
+--          -) The nRF24L01+ operates at a supply voltage of 3.3 Volt but can
+--             interface directly with a PIC operating at 5 Volt.
+--          -) The nRF24L01+ is very sensitive to fluctuations on the power 
+--             supply. Make sure you connect a capacitor of 100 uF close to the
+--             the power lines of the nRF24L01+
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Data rates. Default is 2 Mbits/s.
+const byte NRF24_DATA_RATE_250KBPS = 0b0010_0000
+const byte NRF24_DATA_RATE_1MBPS   = 0b0000_0000
+const byte NRF24_DATA_RATE_2MBPS   = 0b0000_1000
+
+-- Power levels. Default is 0 dbM.
+const byte NRF24_POWER_LEVEL_MIN = 0b000_0000  -- -18dBm
+const byte NRF24_POWER_LEVEL_LOW = 0b000_0010  -- -12dBm 
+const byte NRF24_POWER_LEVEL_MED = 0b000_0100  -- -6dBm 
+const byte NRF24_POWER_LEVEL_MAX = 0b000_0110  --  0dBm 
+
+-- Address width. Default is 5 bytes.
+const byte NRF24_ADDR_WIDTH_3 = 3
+const byte NRF24_ADDR_WIDTH_4 = 4
+const byte NRF24_ADDR_WIDTH_5 = 5
+
+-- Payload size (1.. NRF24_MAX_PAYLOAD) in bytes. 
+if !defined(NRF24_PAYLOAD_SIZE) then
+   const byte NRF24_PAYLOAD_SIZE = 25
+end if
+
+-- For debugging purposes only. Commented out (disabled) for released library.
+-- const bit NRF24_DEBUG = TRUE
+-- Print library is only needed for debugging purposes.
+if defined(NRF24_DEBUG) then
+   include print
+end if
+
+-- Maximum payload size the nRF24L01+ device can handle.
+const byte NRF24_MAX_PAYLOAD = 32
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+procedure nrf24_init()
+procedure nrf24_set_transmit_address(byte in addr[])
+procedure nrf24_set_rx_pipe(byte in pipe, byte in addr[])
+procedure nrf24_set_address_width(byte in width)
+procedure nrf24_set_rf_channel(byte in channel) 
+procedure nrf24_set_data_rate(byte in data_rate)           
+procedure nrf24_set_power_level(byte in power_level)  
+procedure nrf24_set_auto_retransmit_count(byte in retransmit_count)
+procedure nrf24_set_auto_retransmit_delay(byte in retransmit_delay)
+procedure nrf24_enable_plus_mode()
+procedure nrf24_enable_compatibility_mode()
+procedure nrf24_enable_dynamic_payload()
+procedure nrf24_disable_dynamic_payload()
+procedure nrf24_power_down()
+procedure nrf24_power_up_tx()
+procedure nrf24_power_up_rx()
+function  nrf24_carrier_detected() return bit
+function  nrf24_tx_ready() return bit
+function  nrf24_tx_ok() return bit
+function  nrf24_data_available() return bit
+procedure nrf24_send_data(byte in data[], byte in length)
+function  nrf24_get_data(byte out pipe, byte in out how_long) return bit   
+
+-- Read buffer containing the data received from the nrf24.
+var volatile byte nrf24_read_buffer[NRF24_PAYLOAD_SIZE]
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Memory Map.
+const byte NRF24_CONFIG_REG  = 0x00
+const byte NRF24_EN_AA       = 0x01
+const byte NRF24_EN_RXADDR   = 0x02
+const byte NRF24_SETUP_AW    = 0x03
+const byte NRF24_SETUP_RETR  = 0x04
+const byte NRF24_RF_CH       = 0x05
+const byte NRF24_RF_SETUP    = 0x06
+const byte NRF24_STATUS      = 0x07
+const byte NRF24_OBSERVE_TX  = 0x08
+const byte NRF24_CD          = 0x09
+const byte NRF24_RX_ADDR_P0  = 0x0A
+const byte NRF24_RX_ADDR_P1  = 0x0B
+const byte NRF24_RX_ADDR_P2  = 0x0C
+const byte NRF24_RX_ADDR_P3  = 0x0D
+const byte NRF24_RX_ADDR_P4  = 0x0E
+const byte NRF24_RX_ADDR_P5  = 0x0F
+const byte NRF24_TX_ADDR     = 0x10
+const byte NRF24_RX_PW_P0    = 0x11
+const byte NRF24_RX_PW_P1    = 0x12
+const byte NRF24_RX_PW_P2    = 0x13
+const byte NRF24_RX_PW_P3    = 0x14
+const byte NRF24_RX_PW_P4    = 0x15
+const byte NRF24_RX_PW_P5    = 0x16
+const byte NRF24_FIFO_STATUS = 0x17
+const byte NRF24_DYNPD       = 0x1C
+const byte NRF24_FEATURE     = 0x1D
+
+-- Bit Mnemonics.
+const byte NRF24_MASK_RX_DR  = 6
+const byte NRF24_MASK_TX_DS  = 5
+const byte NRF24_MASK_MAX_RT = 4
+const byte NRF24_EN_CRC      = 3
+const byte NRF24_CRCO        = 2
+const byte NRF24_PWR_UP      = 1
+const byte NRF24_PRIM_RX     = 0
+const byte NRF24_ENAA_P5     = 5
+const byte NRF24_ENAA_P4     = 4
+const byte NRF24_ENAA_P3     = 3
+const byte NRF24_ENAA_P2     = 2
+const byte NRF24_ENAA_P1     = 1
+const byte NRF24_ENAA_P0     = 0
+const byte NRF24_ERX_P5      = 5
+const byte NRF24_ERX_P4      = 4
+const byte NRF24_ERX_P3      = 3
+const byte NRF24_ERX_P2      = 2
+const byte NRF24_ERX_P1      = 1
+const byte NRF24_ERX_P0      = 0
+const byte NRF24_AW          = 0
+const byte NRF24_ARD         = 4
+const byte NRF24_ARC         = 0
+const byte NRF24_CH          = 0
+const byte NRF24_CONT_WAVE   = 7
+const byte NRF24_RF_DR_LOW   = 5
+const byte NRF24_PLL_LOCK    = 4
+const byte NRF24_RF_DR_HIGH  = 3
+const byte NRF24_RF_PWR      = 1
+const byte NRF24_LNA_HCURR   = 0        
+const byte NRF24_RX_DR       = 6
+const byte NRF24_TX_DS       = 5
+const byte NRF24_MAX_RT      = 4
+const byte NRF24_RX_P_NO     = 1
+const byte NRF24_TX_FULL     = 0
+const byte NRF24_PLOS_CNT    = 4
+const byte NRF24_ARC_CNT     = 0
+const byte NRF24_TX_REUSE    = 6
+const byte NRF24_FIFO_FULL   = 5
+const byte NRF24_TX_EMPTY    = 4
+const byte NRF24_RX_FULL     = 1
+const byte NRF24_RX_EMPTY    = 0
+const byte NRF24_EN_DPL      = 2
+const byte NRF24_DPL_P5      = 5
+const byte NRF24_DPL_P4      = 4
+const byte NRF24_DPL_P3      = 3
+const byte NRF24_DPL_P2      = 2
+const byte NRF24_DPL_P1      = 1
+const byte NRF24_DPL_P0      = 0
+
+-- Instruction Mnemonics.
+const byte NRF24_R_REGISTER    = 0x00
+const byte NRF24_W_REGISTER    = 0x20
+const byte NRF24_REGISTER_MASK = 0x1F
+const byte NRF24_R_RX_PAYLOAD  = 0x61
+const byte NRF24_W_TX_PAYLOAD  = 0xA0
+const byte NRF24_FLUSH_TX      = 0xE1
+const byte NRF24_FLUSH_RX      = 0xE2
+const byte NRF24_REUSE_TX_PL   = 0xE3
+const byte NRF24_R_RX_PL_WID   = 0x60
+const byte NRF24_NOP           = 0xFF
+const byte NRF24_ACTIVATE      = 0x50
+
+-- ---------------------------- Other used constants ---------------------------
+-- Enable CRC, 2-byte length.
+const byte NRF24_CONFIG = ((1<<NRF24_EN_CRC) | (1<<NRF24_CRCO) )
+
+--------------------- Private function prototypes ------------------------------
+procedure _nrf24_flush_rx()
+procedure _nrf24_flush_tx()
+procedure _nrf24_write_byte_register(byte in reg, byte in value)
+procedure _nrf24_write_array_register(byte in reg, byte in data[])
+function  _nrf24_read_byte_register(byte in reg) return byte
+function  _nrf24_get_status() return byte
+function  _nrf24_rx_fifo_empty() return bit
+function  _nrf24_get_dynamic_payload_size() return byte 
+
+-- In case of doing SPI in software we will not include the SPI library but
+-- replace the used function by the software implementation with the same name.
+if defined(NRF24_SOFTWARE_SPI) then  
+  function spi_master_hw_exchange(byte in data) return byte
+else
+  -- Use the spi_master_hw_exchange function from hardware SPI library.
+  include spi_master_hw
+end if 
+
+-- Dynamic payload status.
+var bit _nrf24_dynamic_payload_enabled
+
+-- Initializes the SPI interface to communicate with the nRF24L01+ module and 
+-- initializes the module after which the module is powered down. The procedure 
+-- also waits for power up time to pass and initializes the module as follows:
+-- -) Set CRC coding scheme to 2 bytes.
+-- -) Set transmit/receive address width to 5 bytes (default).
+-- -) Sets the module receive address to NRF24_RECEIVE_ADDR on pipe 1 including
+--    the payload size to NRF24_PAYLOAD_SIZE. 
+-- -) Enable plus mode which means setting auto acknowledge on all pipes. 
+-- -) Set the retransmit delay 750 us and the retransmit count to 5.  
+-- -) Set RF Channel to 2 (default).
+-- -) Set bitrate to 2 Mbits/s (default).
+-- -) Set RF TX power power to 0 dBm (default).
+-- -) Enable dynamic payload length.
+procedure nrf24_init() is
+   _usec_delay(100_000) -- Power ramp up time or power on reset time.
+   -- Initialize SPI and other required pins.
+   nrf24_spi_sck_direction = output
+   nrf24_spi_sdi_direction = input
+   nrf24_spi_sdo_direction = output
+   nrf24_csn_pin_direction = output
+   nrf24_ce_pin_direction = output
+   if defined(NRF24_SOFTWARE_SPI) then
+      -- SPI done in software, initialze the relevant pins.
+      nrf24_spi_sck = LOW
+      nrf24_spi_sdo = LOW 
+   else 
+     -- Setup hardware SPI interface. The maximim clock frequency for the 
+     -- nRF24L01+ is 10 MHz.
+      if (target_clock > 40_000_000) then
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+      else
+         spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
+      end if
+   end if
+   -- Initialize the module with the receive address and initial settings.
+   nrf24_set_address_width(NRF24_ADDR_WIDTH_5)
+   -- Set receiving address, on pipe 1 (pipe 0 is used to auto-ACK, 
+   -- combined with TX address).
+   nrf24_set_rx_pipe(1,NRF24_RECEIVE_ADDR)
+   nrf24_enable_plus_mode()
+   nrf24_set_auto_retransmit_delay(0x03) -- 750 us (default is 250 us)
+   nrf24_set_auto_retransmit_count(0x05) -- 5 re-transmits (default is 3).
+   nrf24_set_rf_channel(0x02) -- Default channel.
+   nrf24_set_data_rate(NRF24_DATA_RATE_2MBPS) -- Default data rate.
+   nrf24_set_power_level(NRF24_POWER_LEVEL_MAX)
+   nrf24_enable_dynamic_payload() 
+   _nrf24_flush_rx()
+   _nrf24_flush_tx()
+   nrf24_power_down()
+end procedure
+
+
+-- Sets the transmitting address and pipe 0 as to enable auto acknowledge.
+procedure nrf24_set_transmit_address(byte in addr[]) is
+   _nrf24_write_array_register(NRF24_TX_ADDR,addr)
+   -- RX_ADDR_P0 must be set to the sending addr for auto ack to work.
+   _nrf24_write_array_register(NRF24_RX_ADDR_P0,addr)
+end procedure
+
+
+-- Sets the receiving address for a pipe number, and sets payload width as well.
+procedure nrf24_set_rx_pipe(byte in pipe, byte in addr[]) is
+   -- Pipe 0 and 1 can be 5-bytes long, but others are derived from pipe 1,
+   -- only the Least Significant Byte is considered for pipes 2 to 5.
+   var byte data
+   
+  nrf24_ce_pin = low
+   case pipe of
+      0: block
+            _nrf24_write_array_register(NRF24_RX_ADDR_P0,addr)
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P0, NRF24_PAYLOAD_SIZE)
+	 end block
+      1: block
+            _nrf24_write_array_register(NRF24_RX_ADDR_P1,addr)
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P1, NRF24_PAYLOAD_SIZE)
+	 end block
+      2: block
+            _nrf24_write_byte_register(NRF24_RX_ADDR_P2,addr[0])
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P2, NRF24_PAYLOAD_SIZE)
+	 end block
+      3: block
+            _nrf24_write_byte_register(NRF24_RX_ADDR_P3,addr[0])
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P3, NRF24_PAYLOAD_SIZE)
+	 end block
+      4: block
+            _nrf24_write_byte_register(NRF24_RX_ADDR_P4,addr[0])
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P4, NRF24_PAYLOAD_SIZE)
+	 end block
+      5: block
+            _nrf24_write_byte_register(NRF24_RX_ADDR_P5,addr[0])
+   	    _nrf24_write_byte_register(NRF24_RX_PW_P5, NRF24_PAYLOAD_SIZE)
+	 end block
+   end case
+   -- Enable data pipe (note, P0 and P1 are set to 1 by default, not an issue 
+   -- though if we set them here again.
+   data = _nrf24_read_byte_register(NRF24_EN_RXADDR)
+   _nrf24_write_byte_register(NRF24_EN_RXADDR,(data | (1 << pipe)))
+   nrf24_ce_pin = high
+end procedure
+
+
+-- Set the address width on all pipes.   
+procedure nrf24_set_address_width(byte in width) is
+   _nrf24_write_byte_register(NRF24_SETUP_AW, width & 0b0000_0011) 
+end procedure
+
+
+-- Set the RF channel, value 0 - 127 or 0 - 84 in the US.   
+procedure nrf24_set_rf_channel(byte in channel) is
+   _nrf24_write_byte_register(NRF24_RF_CH, channel & 0b0111_1111) 
+end procedure
+
+
+-- Set the data rate. Use the defined data rate constants.
+procedure nrf24_set_data_rate(byte in data_rate) is
+   var byte rf_setup
+   
+   rf_setup = _nrf24_read_byte_register(NRF24_RF_SETUP)
+   -- Use a case statement to make sure only valid rates are used.  
+   case data_rate of
+      NRF24_DATA_RATE_250KBPS,
+      NRF24_DATA_RATE_1MBPS,
+      NRF24_DATA_RATE_2MBPS:
+      block
+        -- Also strip out the bits which are not used or unallowed.
+        rf_setup = (rf_setup  & 0b1000_0110) | data_rate
+      end block
+  end case 
+   _nrf24_write_byte_register(NRF24_RF_SETUP, rf_setup)      
+end procedure
+
+
+-- Set the power level of the transmitter. Use the defined power rate constants.
+procedure nrf24_set_power_level(byte in power_level) is
+   var byte rf_setup
+   
+   rf_setup = _nrf24_read_byte_register(NRF24_RF_SETUP)
+   -- Use a case statement to make sure only valid rates are used.  
+   case power_level of
+      NRF24_POWER_LEVEL_MIN,
+      NRF24_POWER_LEVEL_LOW,
+      NRF24_POWER_LEVEL_MED,
+      NRF24_POWER_LEVEL_MAX: 
+      block
+        -- Also strip out the bits which are not used or unallowed.
+        rf_setup = (rf_setup  & 0b1010_1000) | power_level  
+      end block
+   end case
+   _nrf24_write_byte_register(NRF24_RF_SETUP, rf_setup)      
+end procedure
+
+
+-- Sets the auto re-transmit count from 0 (no re-transmits) to 15 re-transmits.
+procedure nrf24_set_auto_retransmit_count(byte in retransmit_count) is
+   var byte data
+
+   data = (_nrf24_read_byte_register(NRF24_SETUP_RETR) & 0xF0) | (retransmit_count & 0x0F)
+   _nrf24_write_byte_register(NRF24_SETUP_RETR, data)
+end procedure
+
+
+-- Sets the auto re_transmit delay from 0 (250 us) to 15 (4000 us) in steps of
+-- 250 us. Note that the delay is defined as the time between the start of a 
+-- transmission and the start of the next transmission. This means that 
+-- tranmitting a message with a high payload, a short delay and a low bitrate 
+-- can cause transmission failures. A safe value is 1500 us minimum for a 32 
+-- byte payload at 250 kbps, also see the datasheet.
+procedure nrf24_set_auto_retransmit_delay(byte in retransmit_delay) is
+   var byte data
+
+   data = (_nrf24_read_byte_register(NRF24_SETUP_RETR) & 0x0F) | (retransmit_delay << 4)
+   _nrf24_write_byte_register(NRF24_SETUP_RETR, data)
+end procedure
+
+
+-- Enable the nRF24L01+ mode. This enables auto acknowledge on all pipes and
+-- sets auto retransmit delay to 250 us and the auto retransmit count to 3,
+-- both are the default values.
+procedure nrf24_enable_plus_mode()is
+   _nrf24_write_byte_register(NRF24_EN_AA, 0x3F)
+   _nrf24_write_byte_register(NRF24_SETUP_RETR, 0x03)      
+end procedure 
+
+
+-- Disable the nRF24L01+ mode. Needed for backwards compatibilty when
+-- communicating with an nRF24L01 non-plus device. This disables auto
+-- acknowedge on all pipes, sets the auto retranmit delay to 250 us and sets
+-- the auto retransmit count to 0. The data rate is set to 1 Mbit/s
+procedure nrf24_enable_compatibility_mode() is
+  _nrf24_write_byte_register(NRF24_EN_AA, 0)
+  _nrf24_write_byte_register(NRF24_SETUP_RETR, 0)
+  nrf24_set_data_rate(NRF24_DATA_RATE_1MBPS)     
+end procedure 
+
+
+-- Enable dynamic payload on all pipes.
+procedure nrf24_enable_dynamic_payload() is
+   var byte data
+
+   data = _nrf24_read_byte_register(NRF24_FEATURE)
+   data = (data | (1<<NRF24_EN_DPL))
+   _nrf24_write_byte_register(NRF24_FEATURE, data)
+   -- Enable dynamic payload on all pipes. Not sure the use case of only having 
+   -- dynamic payload on certain pipes, so the library does not support it. 
+   data = _nrf24_read_byte_register(NRF24_DYNPD)
+   data = (data | (1<<NRF24_DPL_P5) | (1<<NRF24_DPL_P4) | (1<<NRF24_DPL_P3) | 
+                 (1<<NRF24_DPL_P2) | (1<<NRF24_DPL_P1) | (1<<NRF24_DPL_P0) )
+   _nrf24_write_byte_register(NRF24_DYNPD, data)  
+   _nrf24_dynamic_payload_enabled = TRUE
+end procedure
+
+
+-- Disable dynamic payload on all pipes.
+procedure nrf24_disable_dynamic_payload() is
+   -- Default value for disabling payload is 0 for both registers.
+   _nrf24_write_byte_register(NRF24_FEATURE, 0)   
+   _nrf24_write_byte_register(NRF24_DYNPD, 0)   
+   _nrf24_dynamic_payload_enabled = FALSE
+end procedure
+
+
+-- Power down the device. Device is powered up when a message is transmitted.
+procedure nrf24_power_down() is
+   nrf24_ce_pin = low
+   _nrf24_write_byte_register(NRF24_CONFIG_REG, NRF24_CONFIG)
+end procedure
+
+
+-- Power up the receiver and clear all pending RX and TX status bits.
+procedure nrf24_power_up_rx() is
+   nrf24_ce_pin = low
+   _nrf24_write_byte_register(NRF24_CONFIG_REG, NRF24_CONFIG | (1<<NRF24_PWR_UP) | (1<<NRF24_PRIM_RX))
+   nrf24_ce_pin = high
+   _nrf24_flush_rx()
+   _nrf24_write_byte_register(NRF24_STATUS,(1 << NRF24_TX_DS) | (1 << NRF24_MAX_RT) | (1 << NRF24_RX_DR)) 
+end procedure
+
+
+-- Power up the transmitter and clear all pending RX and TX status bits.
+procedure nrf24_power_up_tx() is
+   nrf24_ce_pin = low
+   _nrf24_write_byte_register(NRF24_CONFIG_REG, NRF24_CONFIG | (1<<NRF24_PWR_UP))
+   _nrf24_flush_tx()
+   _nrf24_write_byte_register(NRF24_STATUS,(1 << NRF24_TX_DS) | (1 << NRF24_MAX_RT) | (1 << NRF24_RX_DR)) 
+end procedure
+
+
+
+-- Check for the presense of a carrier and return TRUE when detected.
+function nrf24_carrier_detected() return bit is
+   return (_nrf24_read_byte_register(NRF24_CD)  > 0)
+end function
+
+
+-- Check if the transmission status and returns TRUE when ready.
+function nrf24_tx_ready() return bit is
+   var byte tx_status
+
+   tx_status = _nrf24_get_status()
+   if (tx_status & ((1 << NRF24_TX_DS) | (1 << NRF24_MAX_RT))) != 0 then
+      return TRUE 
+   else        
+      return FALSE 
+   end if
+end function
+
+
+-- Returns the the status of the last transmission. If the maximum number of 
+-- retries were used FALSE is returned indicating a tranmission failure, 
+-- otherwise TRUE is returned indicating a succesful transmission.
+function nrf24_tx_ok() return bit is
+   var byte tx_status
+ 
+   tx_status = _nrf24_get_status()
+   if (tx_status & (1 << NRF24_MAX_RT)) == 0 then
+      return TRUE         
+   else        
+      return FALSE 
+   end if   
+end function
+
+
+-- Checks if data is available for reading and returns TRUE when data is present.
+function nrf24_data_available() return bit is
+   -- See note in nrf24_get_data() function, just checking RX_DR isn't good enough.
+   var byte status
+   var bit data_present
+   
+   -- We can short circuit on RX_DR, but if it's not set, we still need
+   -- to check the FIFO for any pending packets.
+   status = _nrf24_get_status() 
+   if (status & (1 << NRF24_RX_DR)) != 0 then
+      data_present = true
+   else
+      status = _nrf24_read_byte_register(NRF24_FIFO_STATUS)
+      data_present = (status & (1 << NRF24_RX_EMPTY)) == 0
+   end if
+   return data_present
+end function
+
+
+if defined(NRF24_SOFTWARE_SPI) then 
+  -- SPI interface done in software using same the function name as hardware SPI.
+  function spi_master_hw_exchange(byte in data) return byte is
+  var bit data_bit_in at data:0
+  var bit data_bit_out at data:7
+
+     for 8 loop
+        nrf24_spi_sdo = data_bit_out
+        data = data << 1 
+        nrf24_spi_sck = HIGH
+        data_bit_in = nrf24_spi_sdi
+        nrf24_spi_sck = LOW
+    end loop
+    nrf24_spi_sdo = LOW -- Not needed but nicer to keep output low when done.
+    return data        
+  end function
+end if 
+
+
+-- Sends the number of data bytes given in length from the given buffer. When
+-- dynamic payload is not active the procedure will fill the remaining payload
+-- with '00' as to always start a transmission.
+procedure nrf24_send_data(byte in data[], byte in length) is
+   var byte index, _trash
+   
+   nrf24_ce_pin = low
+   nrf24_flush_tx()
+   -- Reset transmit ready in status register.  
+   _nrf24_write_byte_register(NRF24_STATUS,(1 << NRF24_TX_DS) | (1 << NRF24_MAX_RT)) 
+   -- Copy data to device, start with the number of bytes to send. Also check
+   -- if the message is not too long, othewise we maximize it.
+   nrf24_csn_pin = low   
+   _trash = spi_master_hw_exchange(NRF24_W_TX_PAYLOAD)
+   if (length > NRF24_PAYLOAD_SIZE) then
+      length = NRF24_PAYLOAD_SIZE
+   end if 
+   -- Send the given data to the device.
+   for length using index loop
+      _trash = spi_master_hw_exchange(data[index])
+   end loop
+   -- If we use dynamic payload we are done, if not we need to fill up the 
+   -- TX fifo to NRF24_PAYLOAD_SIZE with zero.
+   if !_nrf24_dynamic_payload_enabled then
+      for (NRF24_PAYLOAD_SIZE - length) loop
+         _trash = spi_master_hw_exchange(0)
+      end loop  
+   end if
+   nrf24_csn_pin = high
+   -- Start transmission.
+   nrf24_ce_pin = high 
+end procedure
+
+
+-- Checks if data is received, copies it to the receive buffer and returns TRUE
+-- when data is available.
+function nrf24_get_data(byte out pipe, byte in out how_long) return bit is
+   var byte status, index, _trash
+   
+   if nrf24_data_available() then
+      -- Store current data pipe number from which we received data.
+      status = _nrf24_get_status()
+      pipe = (status >> NRF24_RX_P_NO) & 0b0000_0111  
+      -- The number of received bytes depends on whether the dynamic payload
+      -- feature is active or not.
+      if _nrf24_dynamic_payload_enabled then
+         how_long = _nrf24_get_dynamic_payload_size()
+         -- Length may not be bigger than the maximimu size of the receive
+         -- buffer to prevent overflow. If so, we cut the rest off,
+         if (how_long > NRF24_PAYLOAD_SIZE) then
+            how_long = NRF24_PAYLOAD_SIZE
+         end if
+      else
+         -- The length is always the payload size.
+         how_long = NRF24_PAYLOAD_SIZE
+      end if 
+      -- Copy the received data to the receive buffer.
+      nrf24_csn_pin = low 
+      _trash = spi_master_hw_exchange(NRF24_R_RX_PAYLOAD)
+      for how_long using index loop
+        nrf24_read_buffer[index] = spi_master_hw_exchange(NRF24_NOP)
+      end loop
+      nrf24_csn_pin = high 
+      -- Reset data ready in status register.
+      _nrf24_write_byte_register(NRF24_STATUS,(1<<NRF24_RX_DR)) 
+      return TRUE
+   else
+      return FALSE
+   end if 
+end function
+
+
+-- ----------------------------------------------------------------------------- 
+-- ----------------- Private functions and procedures --------------------------
+-- ----------------------------------------------------------------------------- 
+
+-- Flush the receive buffer.
+procedure _nrf24_flush_rx() is
+   var byte _trash 
+   
+   nrf24_csn_pin = low
+   _trash = spi_master_hw_exchange(NRF24_FLUSH_RX)
+   nrf24_csn_pin = high
+end procedure
+
+
+-- Flush the transmit buffer.
+procedure _nrf24_flush_tx() is
+   var byte _trash 
+   
+   nrf24_csn_pin = low
+   _trash = spi_master_hw_exchange(NRF24_FLUSH_TX)
+   nrf24_csn_pin = high
+end procedure
+
+ 
+-- Write a byte into the given nRF24L01+ register.
+procedure _nrf24_write_byte_register(byte in reg, byte in value) is
+   var byte _trash
+
+   nrf24_csn_pin = low
+   _trash = spi_master_hw_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
+   _trash = spi_master_hw_exchange(value)
+   nrf24_csn_pin = high
+end procedure
+
+
+-- Write an array of data into the given nRF24L01+ register.
+procedure _nrf24_write_array_register(byte in reg, byte in data[]) is
+   var byte len, index, _trash 
+
+   len = byte(count(data))
+   nrf24_csn_pin = low
+   _trash = spi_master_hw_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
+   for len using index loop
+      _trash = spi_master_hw_exchange(data[index])
+   end loop
+   nrf24_csn_pin = high
+end procedure
+
+
+-- Reads and returns the value of the given nRF24L01+ register.
+function _nrf24_read_byte_register(byte in reg) return byte is
+   var byte data
+
+   nrf24_csn_pin = low
+   -- First transfer is the command and returns irrelevant data so can be ignored.
+   data = spi_master_hw_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
+   -- Now get the data.
+   data = spi_master_hw_exchange(NRF24_NOP)
+   nrf24_csn_pin = high
+   return data
+end function
+
+
+-- Return the contents of the nrf24L01+ status register.
+function _nrf24_get_status() return byte is
+   return _nrf24_read_byte_register(NRF24_STATUS)   
+end function
+
+
+-- Get the size of the dynamic payload, if incorrect flush the rx fifo.
+function _nrf24_get_dynamic_payload_size() return byte is
+   var byte payload_size
+
+   nrf24_csn_pin = low   
+   -- Send command.
+   payload_size = spi_master_hw_exchange(NRF24_R_RX_PL_WID)
+   -- Read payload size.
+   payload_size = spi_master_hw_exchange(NRF24_NOP) 
+   nrf24_csn_pin = high
+   if (payload_size > NRF24_MAX_PAYLOAD) then
+      -- Incorrect, flush receive fifo.
+      _nrf24_flush_rx()
+      payload_size = 0
+   end if
+   return payload_size
+end function
+
+
+if defined(NRF24_DEBUG) then
+-- ----------------------------------------------------------------------------- 
+-- -------------------- Print/Debug procedures ---------------------------------
+-- ----------------------------------------------------------------------------- 
+
+procedure nrf24_print_status() is
+   var byte st = _nrf24_get_status()
+   const byte st00[] = "STATUS\t = "
+   print_string(serial_hw_data,st00)
+   print_byte_bin(serial_hw_data,st)
+   const byte st01[] = " RX_DR="
+   print_string(serial_hw_data,st01)
+   print_byte_dec(serial_hw_data,((st>>NRF24_RX_DR) & 1))
+   const byte st02[] = " TX_DS="
+   print_string(serial_hw_data,st02)
+   print_byte_dec(serial_hw_data,((st>>NRF24_TX_DS) & 1))
+   const byte st03[] = " MAX_RT="
+   print_string(serial_hw_data,st03)
+   print_byte_dec(serial_hw_data,((st>>NRF24_MAX_RT) & 1))
+   const byte st04[] = " RX_P_NO="
+   print_string(serial_hw_data,st04)
+   print_byte_dec(serial_hw_data,((st>>NRF24_RX_P_NO) & 0b111))
+   const byte st05[] = " TX_FULL="
+   print_string(serial_hw_data,st05)
+   print_byte_dec(serial_hw_data,((st>>NRF24_TX_FULL) & 1))
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_rf_setup() is 
+   var byte rf_setup 
+
+   rf_setup =  _nrf24_read_byte_register(NRF24_RF_SETUP)  
+   const byte rf30[] = "RF_SETUP\t = "
+   print_string(serial_hw_data,rf30)
+   print_byte_bin(serial_hw_data,rf_setup)
+   const byte rf31[] = "  CONT_WAVE="
+   print_string(serial_hw_data,rf31)
+   print_byte_dec(serial_hw_data,(rf_setup >> NRF24_CONT_WAVE) & 1)
+   const byte rf32[] = "  RF_DR_LOW="
+   print_string(serial_hw_data,rf32)
+   print_byte_dec(serial_hw_data,(rf_setup >> NRF24_RF_DR_LOW) & 1)
+   const byte rf33[] = "  PLL_LOCK="
+   print_string(serial_hw_data,rf33)
+   print_byte_dec(serial_hw_data,(rf_setup >> NRF24_PLL_LOCK) & 1)
+   const byte rf34[] = "  RF_DR_HIGH="
+   print_string(serial_hw_data,rf34)
+   print_byte_dec(serial_hw_data,(rf_setup >> NRF24_RF_DR_HIGH) & 1)
+   const byte rf35[] = "  RF_PWR="
+   print_string(serial_hw_data,rf35)
+   print_byte_dec(serial_hw_data,(rf_setup >> NRF24_RF_PWR) & 0b11)
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_config() is   
+   var byte config 
+   
+   config = _nrf24_read_byte_register(NRF24_CONFIG_REG)    
+   const byte cf00[] = "CONFIG\t = "
+   print_string(serial_hw_data,cf00)
+   print_byte_bin(serial_hw_data,config)
+   const byte cf2[] = "  MASK_RX_DR="
+   print_string(serial_hw_data,cf2)
+   print_byte_dec(serial_hw_data,(config >> NRF24_MASK_RX_DR) & 1)
+   const byte cf3[] = "  MASK_TX_DS="
+   print_string(serial_hw_data,cf3)
+   print_byte_dec(serial_hw_data,(config >> NRF24_MASK_TX_DS) & 1)
+   const byte cf4[] = "  MASK_MAX_RT="
+   print_string(serial_hw_data,cf4)
+   print_byte_dec(serial_hw_data,(config >> NRF24_MASK_MAX_RT) & 1)
+   const byte cf5[] = "  EN_CRC="
+   print_string(serial_hw_data,cf5)
+   print_byte_dec(serial_hw_data,(config >> NRF24_EN_CRC) & 1)
+   const byte cf6[] = "  CRCO="
+   print_string(serial_hw_data,cf6)
+   print_byte_dec(serial_hw_data,(config >> NRF24_CRCO) & 1)
+   const byte cf7[] = "  PWR_UP="
+   print_string(serial_hw_data,cf7)
+   print_byte_dec(serial_hw_data,(config >> NRF24_PWR_UP) & 1)
+   const byte cf8[] = "  PRIM_RX="
+   print_string(serial_hw_data,cf8)
+   print_byte_dec(serial_hw_data,(config >> NRF24_PRIM_RX) & 1)
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_en_aa() is  
+   var byte en_aa 
+    
+   en_aa = _nrf24_read_byte_register(NRF24_EN_AA)   
+   const byte en9[] = "EN_AA\t\t = "
+   print_string(serial_hw_data,en9)
+   print_byte_bin(serial_hw_data,en_aa)
+   const byte en10[] = "  ENAA_P5="
+   print_string(serial_hw_data,en10)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P5) & 1)
+   const byte en11[] = "  ENAA_P4="
+   print_string(serial_hw_data,en11)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P4) & 1)
+   const byte en12[] = "  ENAA_P3="
+   print_string(serial_hw_data,en12)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P3) & 1)
+   const byte en13[] = "  ENAA_P2="
+   print_string(serial_hw_data,en13)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P2) & 1)
+   const byte en14[] = "  ENAA_P1="
+   print_string(serial_hw_data,en14)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P1) & 1)
+   const byte en15[] = "  ENAA_P0="
+   print_string(serial_hw_data,en15)
+   print_byte_dec(serial_hw_data,(en_aa >> NRF24_ENAA_P0) & 1)
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_setup_retr() is  
+   var byte setup_retr 
+   
+   setup_retr = _nrf24_read_byte_register(NRF24_SETUP_RETR)      
+   const byte ret25[] = "SETUP_RETR\t = "    
+   print_string(serial_hw_data,ret25)
+   print_byte_bin(serial_hw_data,setup_retr)
+   const byte ret26[] = "  ARD="
+   print_string(serial_hw_data,ret26)
+   print_byte_dec(serial_hw_data,(setup_retr >> NRF24_ARD) & 0b1111)
+   const byte ret27[] = "  ARC="
+   print_string(serial_hw_data,ret27)
+   print_byte_dec(serial_hw_data,(setup_retr >> NRF24_ARC) & 0b1111)
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_observe_tx() is  
+   var byte counter 
+   
+   counter = _nrf24_read_byte_register(NRF24_OBSERVE_TX)      
+   const byte ret28[] = "OBSERVE_TX\t = "    
+   print_string(serial_hw_data,ret28)
+   print_byte_bin(serial_hw_data,counter)
+   const byte ret29[] = "  PLOS_CNT="
+   print_string(serial_hw_data,ret29)
+   print_byte_dec(serial_hw_data,(counter >> NRF24_PLOS_CNT) & 0b1111)
+   const byte ret30[] = "  ARC_CNT="
+   print_string(serial_hw_data,ret30)
+   print_byte_dec(serial_hw_data,(counter >> NRF24_ARC_CNT) & 0b1111)
+   print_crlf(serial_hw_data)
+end procedure
+
+
+procedure nrf24_print_address_register(byte in str[], byte in reg, byte in qty) is
+   var byte _trash, data
+   print_string(serial_hw_data,str)
+   while qty != 0 loop
+      nrf24_csn_pin = low
+      _trash = spi_master_hw_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
+      -- Now get all data.
+      for count(NRF24_RECEIVE_ADDR) loop
+         data  = spi_master_hw_exchange(NRF24_NOP)
+         print_byte_hex(serial_hw_data,data)  
+      end loop
+      nrf24_csn_pin = high
+      serial_hw_data = " "
+      qty = qty - 1
+      reg = reg + 1 -- moving to next adjacent register
+   end loop
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_byte_register(byte in str[],byte in reg, byte in qty) is
+   var byte data
+   
+   print_string(serial_hw_data,str)
+   while qty != 0 loop
+      data = _nrf24_read_byte_register(reg)
+      print_byte_hex(serial_hw_data,data)
+      qty = qty - 1
+      reg = reg + 1 -- moving to next adjacent register
+   end loop
+   print_crlf(serial_hw_data)
+end procedure
+
+procedure nrf24_print_details() is
+
+  nrf24_print_config()
+  nrf24_print_en_aa()
+
+  const byte pd00[] = "RX_ADDR_P0-1 "
+  nrf24_print_address_register(pd00,NRF24_RX_ADDR_P0,2)
+  const byte pd01[] = "RX_ADDR_P2-5 "
+  nrf24_print_byte_register(pd01,NRF24_RX_ADDR_P2,4)
+  const byte pd02[] = "TX_ADDR "
+  nrf24_print_address_register(pd02,NRF24_TX_ADDR,1)
+  const byte pd03[] = "RX_PW_P0-6 "
+  nrf24_print_byte_register(pd03,NRF24_RX_PW_P0,6)
+  const byte pd04[] = "EN_AA "
+  nrf24_print_byte_register(pd04,NRF24_EN_AA,1)
+  const byte pd05[] = "EN_RXADDR "
+  nrf24_print_byte_register(pd05,NRF24_EN_RXADDR,1)
+  const byte pd11[] = "SETUP_AW "
+  nrf24_print_byte_register(pd11,NRF24_SETUP_AW,1)
+  const byte pd06[] = "RF_CH "
+  nrf24_print_byte_register(pd06,NRF24_RF_CH,1)
+  const byte pd07[] = "RF_SETUP "
+  nrf24_print_byte_register(pd07,NRF24_RF_SETUP,1)
+  const byte pd08[] = "CONFIG "
+  nrf24_print_byte_register(pd08,NRF24_CONFIG,1)
+  const byte pd09[] = "DYNPD/FEATURE "
+  nrf24_print_byte_register(pd09,NRF24_DYNPD,2)
+  const byte pd10[] = "FEATURE "
+  nrf24_print_byte_register(pd10,NRF24_FEATURE,1)
+
+  nrf24_print_setup_retr()
+  nrf24_print_observe_tx()
+  nrf24_print_rf_setup()
+  nrf24_print_status()
+
+end procedure
+
+end if

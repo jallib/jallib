@@ -1,0 +1,158 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the nRF24L01+  
+--
+-- Author: Rob Jansen, Copyright (c) 2019..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r3
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This program sends a message once every two seconds to two different 
+--              nRF24L01+ devices and will print any received message from these 
+--              devices. The pipe from which the message was received will be 
+--              printed as to show from which device the message was received.
+--    
+-- Sources:
+--
+-- Notes:       See sample program 16f1823_nrf24l01.jal for the counter part of  
+--              this sample program (the receiver of the message sent).
+--
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
+WPUC = 0b0011_1000       -- Weak pull-up for unused pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP.
+alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+-- nRF24L01+ pin definition.
+alias nrf24_spi_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias nrf24_spi_sck_direction is pin_C0_direction
+alias nrf24_spi_sdi is pin_C1 -- Pin 9 for 14 pin DIP.    
+alias nrf24_spi_sdi_direction is pin_C1_direction   
+alias nrf24_spi_sdo is pin_C2 -- Pin 8 for 14 pin DIP.
+alias nrf24_spi_sdo_direction is pin_C2_direction 
+alias nrf24_ce_pin  is pin_A4 -- Pin 3 for 14 pin DIP. 
+alias nrf24_ce_pin_direction is pin_A4_direction 
+alias nrf24_csn_pin is pin_A5 -- Pin 2 for 14 pin DIP. 
+alias nrf24_csn_pin_direction is pin_A5_direction 
+
+-- nRF24L01 transmit and receive address for this module must be defined, 5 bytes.
+-- In case of more receive addresses only the first byte (LSB) of the receive 
+-- address is used, all remaining address bytes are the same.
+-- Address must be given with Least Significant Byte first {LSB, .., .., .., MSB}.
+const byte NRF24_TRANSMIT_ADDR[5]   = {0x66, 0x77, 0x88, 0x99, 0xAA}
+const byte NRF24_RECEIVE_ADDR[5]    = {0x01, 0x22, 0x33, 0x44, 0x55}
+-- Addresses for second device. For the receive address, only the Least
+-- Significant Byte (LSB) is relevant. The rest of the receive address is equal 
+-- to NRF24_RECEIVE_ADDR, so {LSB, x, x, x, x}.
+const byte NRF24_TRANSMIT_ADDR_2[5] = {0xBB, 0xCC, 0xDD, 0xEE, 0xFF}
+const byte NRF24_RECEIVE_ADDR_2[5]  = {0x02, 0x22, 0x33, 0x44, 0x55}  
+
+include nrf24l01
+nrf24_init() -- This also sets the receive address on pipe 1. 
+nrf24_set_transmit_address(NRF24_TRANSMIT_ADDR)
+-- Receive address for second device on second pipe.
+nrf24_set_rx_pipe(2, NRF24_RECEIVE_ADDR_2)
+ 
+include print
+
+const byte start[] = "Test program for nRF24L01+\r\n"
+const byte hello[] = "Hello World!"
+var byte counter, index, pipe
+var byte device_to_send_to
+var word timer
+var bit sending_data
+
+-- Show welcome message.
+print_string(serial_hw_data,start)
+print_crlf(serial_hw_data)
+
+timer = 0  
+sending_data = FALSE
+device_to_send_to = 1
+
+forever loop
+   -- Loop timer 1 ms.
+   _usec_delay(1_000)
+   
+   -- Send a message to one of the devices and alternate devices..
+   timer = timer + 1
+   if (timer >= 2_000) then
+      print_crlf(serial_hw_data)
+      if (device_to_send_to == 1)
+      then
+         -- Send to first device.
+         print_string(serial_hw_data,"Sending data to device 1 ... ")   
+         nrf24_set_transmit_address(NRF24_TRANSMIT_ADDR)
+         device_to_send_to = 2
+      elsif (device_to_send_to == 2)
+      then
+         -- Send to second device.
+         print_string(serial_hw_data,"Sending data to device 2 ... ")   
+         nrf24_set_transmit_address(NRF24_TRANSMIT_ADDR_2)
+         device_to_send_to = 1
+      end if
+      -- Enable the transmitter and send the data.
+      nrf24_power_up_tx()
+      nrf24_send_data(hello, count(hello))
+      sending_data = TRUE
+      timer = 0
+   end if
+
+   -- Print the transmission status and enable the receiver.
+   if sending_data & nrf24_tx_ready() then
+      -- Transmission done, check if successful.
+      if nrf24_tx_ok() then
+         print_string(serial_hw_data,"Transmission OK! \r\n")   
+      else
+         print_string(serial_hw_data,"Transmission failed! \r\n")   
+      end if
+      print_crlf(serial_hw_data)
+      print_string(serial_hw_data,"Enabling receiver ... \r\n")   
+      nrf24_power_up_rx()
+      sending_data = FALSE
+   end if 
+
+   -- Print the message from any of the 2 devices.
+   if nrf24_get_data(pipe, counter) then
+       print_crlf(serial_hw_data)
+       print_string(serial_hw_data,"Receiving data from pipe (device) ")   
+      -- Print pipe number in ASCII and then the data.
+      serial_hw_data = pipe + 0x30
+      print_string(serial_hw_data,": ")
+      for counter using index loop
+         serial_hw_data = nrf24_read_buffer[index]
+      end loop
+      print_crlf(serial_hw_data)
+  end if
+end loop
+
