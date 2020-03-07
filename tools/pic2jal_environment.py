@@ -4,7 +4,7 @@ Title: Check if requirements for pic2jal scripts are satisfied:
 
 Author: Rob Hamerling, Copyright (c) 2017-2017. All rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018 .. 2019. All rights reserved.
+Adapted-by: Rob Jansen, Copyright (c) 2018 .. 2020. All rights reserved.
 
 Revision: $Revision$
 
@@ -63,7 +63,7 @@ def check_and_set_environment():
    try:
       mplabxversion = os.environ["MPLABXVERSION"]  # obtain existing MPLABX version
    except:                                         # when not present: create new
-      mplabxversion = "5.30"
+      mplabxversion = "5.35"
       sys.stdout.write("MPLABX version: " + mplabxversion + "\n")
       os.environ["MPLABXVERSION"] = mplabxversion
 
