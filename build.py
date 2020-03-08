@@ -47,65 +47,76 @@ debug            = False
 
 # Read TORELEASE into a list of lines (comments removed) and get all JAL files.
 def read_torelease():
-   print("Reading", torelease, " ...")
-   global in_release
-   try:
-      with open(torelease, "r") as ft:
-         for ln in ft:
-            ln = ln.strip()
-            if (len(ln) > 0):
-                if (ln[0] != "#"):  # blank comment lines
-                    in_release.append(ln)
-                    if debug:
-                       print(ln)
-         print("Done!")
-   except:
-      print("Failed to open", torelease)
-      sys.exit(1)
+    print("Reading", torelease, " ...")
+    global in_release
+    result = True
+    try:
+        with open(torelease, "r") as ft:
+            for ln in ft:
+                ln = ln.strip()
+                if (len(ln) > 0):
+                    position = ln.find(".jal")
+                    # Only store no commented files and JAL files
+                    if (ln[0] != "#") & (position > 0):
+                        in_release.append(ln)
+                        if debug:
+                            print(ln)
+    except:
+        print("Failed to open", torelease)
+        result = False
+    if result:
+        print("   Done!")
+    return result
 
 
 # Validate all jal files given in 'in_release'. This includes device files and sample files.
 def validate_jalfile():
-   print("Validating JAL files ...")
-   global in_release
-   for ln in in_release:
-      # Only validate JAL files.
-      position = ln.find(".jal")
-      if position > 0:
-         print("File", ln)
-         cmdlist = [python_exe, validator, "validate", ln]
-         try:
+    print("Validating JAL files ...")
+    global in_release
+    counter = 0
+    result = True
+    for ln in in_release:
+        cmdlist = [python_exe, validator, "validate", ln]
+        try:
             log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
+            counter = counter + 1
             if debug:
-               print(log)
-         except subprocess.CalledProcessError as e:
+                print(log)
+        except subprocess.CalledProcessError as e:
             print("Validation failed for:", ln)
-            sys.exit(1)
-   print("Done!")
+            result = False
+    if result:
+        print("   Validated ", counter, "files.")
+    return result
 
 
 # Compile sample files.
 def compile_samples():
     print("Compiling sample files ...")
     global in_release
+    counter = 0
+    result = True
     for ln in in_release:
         # Only build sample files.
         position = ln.find("sample/")
         if position != -1:
-           # Get the sample file and replace \ by /
-           samplefile = os.path.join(dir_samples, ln[7:])
-           if debug:
-              print("File", samplefile)
-           cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", samplefile, "-s", compiler_include]
-           try:
-               log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
-               if debug:
-                  print(log)
-           except subprocess.CalledProcessError as e:
-               print("Compiling failed for:", samplefile)
-               print(e.output)
-               sys.exit(1)
-    print("Done!")
+            # Get the sample file and replace \ by /
+            samplefile = os.path.join(dir_samples, ln[7:])
+            if debug:
+               print("File", samplefile)
+            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", samplefile, "-s", compiler_include]
+            try:
+                log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
+                counter = counter + 1
+                if debug:
+                    print(log)
+            except subprocess.CalledProcessError as e:
+                print("Compiling failed for:", samplefile)
+                print(e.output)
+                result = False
+    if result:
+        print("   Compiled ", counter, "files.")
+    return result
 
 
 # ----------------------------
@@ -113,11 +124,19 @@ def compile_samples():
 # ----------------------------
 if (__name__ == "__main__"):
 
-   # Start process
-   print("Starting the build")
-   read_torelease()
-   validate_jalfile()
-   compile_samples()
+    # Start process
+    print("Starting the build")
+    all_ok = read_torelease()
+    if all_ok:
+        all_ok = all_ok & validate_jalfile()
+    if all_ok:
+        all_ok = all_ok * compile_samples()
+    if all_ok:
+        print("Build succeeded!")
+    else:
+        print("Build failed!")
+
+
 
 
 
