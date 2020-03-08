@@ -24,9 +24,6 @@ Notes:
 import sys
 import os
 import subprocess
-import shutil
-import json
-import platform
 
 # Global data
 validator        = os.path.join("tools","jallib3.py")
@@ -39,10 +36,14 @@ dir_networking   = os.path.join("include","networking")
 dir_peripheral   = os.path.join("include","peripheral")
 dir_protocol     = os.path.join("include","protocol")
 dir_samples      = os.path.join("sample")
-compiler_include = "include\jal;include\device;include\external;include\filesystem;include\networking;include\peripheral;include\protocol"
+compiler_include = "include\jal;include\device;" \
+                   "include\\networking;include\\filesystem;" \
+                   "include\peripheral;include\protocol;" \
+                   "include\external"
 python_exe       = "python"
 torelease        = "TORELEASE"
 in_release       = []          # contents of TORELEASE
+debug            = False
 
 # Read TORELEASE into a list of lines (comments removed) and get all JAL files.
 def read_torelease():
@@ -55,7 +56,8 @@ def read_torelease():
             if (len(ln) > 0):
                 if (ln[0] != "#"):  # blank comment lines
                     in_release.append(ln)
-                    print(ln)
+                    if debug:
+                       print(ln)
          print("Done!")
    except:
       print("Failed to open", torelease)
@@ -73,7 +75,9 @@ def validate_jalfile():
          print("File", ln)
          cmdlist = [python_exe, validator, "validate", ln]
          try:
-            subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
+            log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
+            if debug:
+               print(log)
          except subprocess.CalledProcessError as e:
             print("Validation failed for:", ln)
             sys.exit(1)
@@ -90,11 +94,13 @@ def compile_samples():
         if position != -1:
            # Get the sample file and replace \ by /
            samplefile = os.path.join(dir_samples, ln[7:])
-           print("File", samplefile)
+           if debug:
+              print("File", samplefile)
            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", samplefile, "-s", compiler_include]
            try:
                log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
-               print(log)
+               if debug:
+                  print(log)
            except subprocess.CalledProcessError as e:
                print("Compiling failed for:", samplefile)
                print(e.output)
