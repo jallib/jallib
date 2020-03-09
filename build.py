@@ -133,8 +133,10 @@ if (__name__ == "__main__"):
         all_ok = all_ok * compile_samples()
     if all_ok:
         print("Build succeeded!")
+		sys.exit(0)
     else:
         print("Build failed!")
+		sys.exit(1)
 
 
 
