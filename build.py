@@ -27,7 +27,7 @@ import subprocess
 
 # Global data
 validator        = os.path.join("tools","jallib3.py")
-compiler         = os.path.join("compiler","jalv2")
+compiler         = os.path.join("compiler","jalv2-i686")
 dir_device       = os.path.join("include","device")
 dir_jal          = os.path.join("include","jal")
 dir_external     = os.path.join("include","external")
@@ -36,10 +36,10 @@ dir_networking   = os.path.join("include","networking")
 dir_peripheral   = os.path.join("include","peripheral")
 dir_protocol     = os.path.join("include","protocol")
 dir_samples      = os.path.join("sample")
-compiler_include = "include\jal;include\device;" \
-                   "include\\networking;include\\filesystem;" \
-                   "include\peripheral;include\protocol;" \
-                   "include\external"
+compiler_include = "include/jal;include/device;" \
+                   "include/networking;include/filesystem;" \
+                   "include/peripheral;include/protocol;" \
+                   "include/external"
 python_exe       = "python"
 torelease        = "TORELEASE"
 in_release       = []          # contents of TORELEASE
@@ -84,6 +84,7 @@ def validate_jalfile():
                 print(log)
         except subprocess.CalledProcessError as e:
             print("Validation failed for:", ln)
+            print(e.output)
             result = False
     if result:
         print("   Validated ", counter, "files.")
@@ -100,7 +101,7 @@ def compile_samples():
         # Only build sample files.
         position = ln.find("sample/")
         if position != -1:
-            # Get the sample file and replace \ by /
+            # Get the sample file
             samplefile = os.path.join(dir_samples, ln[7:])
             if debug:
                print("File", samplefile)
@@ -127,16 +128,16 @@ if (__name__ == "__main__"):
     # Start process
     print("Starting the build")
     all_ok = read_torelease()
-    if all_ok:
-        all_ok = all_ok & validate_jalfile()
+#    if all_ok:
+#        all_ok = all_ok & validate_jalfile()
     if all_ok:
         all_ok = all_ok * compile_samples()
     if all_ok:
         print("Build succeeded!")
-		sys.exit(0)
+        sys.exit(0)
     else:
         print("Build failed!")
-		sys.exit(1)
+        sys.exit(1)
 
 
 
