@@ -128,8 +128,8 @@ if (__name__ == "__main__"):
     # Start process
     print("Starting the build")
     all_ok = read_torelease()
-#    if all_ok:
-#        all_ok = all_ok & validate_jalfile()
+    if all_ok:
+        all_ok = all_ok & validate_jalfile()
     if all_ok:
         all_ok = all_ok * compile_samples()
     if all_ok:
