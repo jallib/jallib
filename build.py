@@ -99,20 +99,20 @@ def compile_samples():
     result = True
     for ln in in_release:
         # Only build sample files.
-        position = ln.find("sample/")
-        if position != -1:
-            # Get the sample file
-            samplefile = os.path.join(dir_samples, ln[7:])
+        is_sample = ln.find("sample/")
+        # Temporary! Only compile blink files.
+        is_blink = ln.find("blink")
+        if (is_sample != -1) & (is_blink != -1):
             if debug:
-               print("File", samplefile)
-            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", samplefile, "-s", compiler_include]
+               print("File", ln)
+            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", ln, "-s", compiler_include]
             try:
                 log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
                 counter = counter + 1
                 if debug:
                     print(log)
             except subprocess.CalledProcessError as e:
-                print("Compiling failed for:", samplefile)
+                print("Compiling failed for:", ln)
                 print(e.output)
                 result = False
     if result:
