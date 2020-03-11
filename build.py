@@ -30,7 +30,6 @@ compiler_include = "include/jal;include/device;" \
                    "include/networking;include/filesystem;" \
                    "include/peripheral;include/protocol;" \
                    "include/external"
-python_exe       = "python"
 torelease        = "TORELEASE"
 in_release       = []          # contents of TORELEASE
 debug            = False
@@ -65,9 +64,9 @@ def validate_jalfile():
     global in_release
     counter = 0
     result = True
+    validator = os.path.join("tools","jallib3.py")
     for ln in in_release:
-        validator = os.path.join("tools","jallib3.py")
-        cmdlist = [python_exe, validator, "validate", ln]
+        cmdlist = ["python", validator, "validate", ln]
         try:
             log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
             counter = counter + 1
