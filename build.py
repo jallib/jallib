@@ -26,16 +26,6 @@ import os
 import subprocess
 
 # Global data
-validator        = os.path.join("tools","jallib3.py")
-compiler         = os.path.join("compiler","jalv2-i686")
-dir_device       = os.path.join("include","device")
-dir_jal          = os.path.join("include","jal")
-dir_external     = os.path.join("include","external")
-dir_filesystem   = os.path.join("include","filesystem")
-dir_networking   = os.path.join("include","networking")
-dir_peripheral   = os.path.join("include","peripheral")
-dir_protocol     = os.path.join("include","protocol")
-dir_samples      = os.path.join("sample")
 compiler_include = "include/jal;include/device;" \
                    "include/networking;include/filesystem;" \
                    "include/peripheral;include/protocol;" \
@@ -76,6 +66,7 @@ def validate_jalfile():
     counter = 0
     result = True
     for ln in in_release:
+        validator = os.path.join("tools","jallib3.py")
         cmdlist = [python_exe, validator, "validate", ln]
         try:
             log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
@@ -103,6 +94,8 @@ def compile_samples():
         # Temporary! Only compile blink files.
         is_blink = ln.find("blink")
         if (is_sample != -1) & (is_blink != -1):
+            THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
+            compiler = os.path.join(THIS_FOLDER,"compiler","jalv2-i686")
             if debug:
                print("File", ln)
             cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", ln, "-s", compiler_include]
