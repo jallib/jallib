@@ -87,14 +87,14 @@ def compile_samples():
     global in_release
     counter = 0
     result = True
+    THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
+    compiler = os.path.join(THIS_FOLDER,"compiler","jalv2-x86-64")
     for ln in in_release:
         # Only build sample files.
         is_sample = ln.find("sample/")
         # Temporary! Only compile blink files.
         is_blink = ln.find("blink")
         if (is_sample != -1) & (is_blink != -1):
-            THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
-            compiler = os.path.join(THIS_FOLDER,"compiler","jalv2-i686")
             if debug:
                print("File", ln)
             cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", ln, "-s", compiler_include]
