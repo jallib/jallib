@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 """ Create and compile blink-a-led samples.
 
-  Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
+  Author: Rob Hamerling, Copyright (c) 2008..2020, all rights reserved.
 
   Adapted-by: Rob Jansen
 
@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.2
+  Version: 0.3
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -508,7 +508,7 @@ def build_sample(pic, pin, osctype, oscword):
    fusedef_insert("cswen", "ENABLED", "allow writing OSCCON1 NOSC and NDIV")
    fusedef_insert("ieso", "DISABLED", "no int/ext osc switching")
    fusedef_insert("vregen", "ENABLED", "voltage regulator used")
-   fusedef_insert("lvp", "DISABLED", "no low voltage programming")
+   fusedef_insert("lvp", "ENABLED", "low voltage programming")
    fusedef_insert("mclr", "EXTERNAL", "external reset")
    fp.write("--\n")
    fp.write("-- The configuration bit settings above are only a selection, sufficient\n")
