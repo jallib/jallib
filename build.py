@@ -67,6 +67,9 @@ def validate_jalfile():
         try:
             log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
             counter = counter + 1
+            # We have to print something to prevent a timeout on TravisCI
+            if ((counter % 50) == 0):
+                print(counter)
             if debug:
                 print(log)
         except subprocess.CalledProcessError as e:
@@ -120,6 +123,9 @@ def compile_samples():
             try:
                 log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
                 counter = counter + 1
+                # We have to print something to prevent a timeout on TravisCI
+                if ((counter % 50) == 0):
+                    print(counter)
                 if debug:
                     print(log)
             except subprocess.CalledProcessError as e:
