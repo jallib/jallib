@@ -26,12 +26,9 @@ import os
 import subprocess
 
 # Global data
-compiler_include = "include/jal;include/device;" \
-                   "include/networking;include/filesystem;" \
-                   "include/peripheral;include/protocol;" \
-                   "include/external"
 torelease        = "TORELEASE"
 in_release       = []          # contents of TORELEASE
+include_list     = []          # list of include directories
 debug            = False
 
 # Read TORELEASE into a list of lines (comments removed) and get all JAL files.
@@ -81,25 +78,45 @@ def validate_jalfile():
     return result
 
 
+# Create the complete include path for compiler.
+def build_include_list(parent):
+    global include_list
+    file_count = 0                          # include files in this directory
+    incl_dir = os.path.join(parent)
+    for child in os.listdir(parent):
+        incl_sub = os.path.join(parent, child)
+        if os.path.isdir(incl_sub):         # this is a directory
+            build_include_list(incl_sub)    # recurse!
+        else:
+            if child.endswith(".jal"):      # count only jal include files
+                file_count += 1
+    if file_count > 0:                      # dir contains at least 1 include file
+        include_list.append(incl_dir)
+
+
 # Compile sample files.
 def compile_samples():
     print("Compiling sample files ...")
     global in_release
     counter = 0
     result = True
-#    THIS_FOLDER = os.path.dirname(os.path.abspath(__file__))
-#    compiler = os.path.join(THIS_FOLDER,"compiler","jalv2-x86-64")
+    # Compiler path
     compiler = os.path.join("compiler","jalv2-x86-64")
+    # Build the include path of all include directories
+    current_path = os.path.join("include")
+    build_include_list(current_path)
+    include_string = ";".join(include_list)
+    if debug:
+        print("Include path:", include_string)
+        print("Number of include directories:", len(include_list))
+        print("Length of include string:", len(include_string))
     for ln in in_release:
         # Only build sample files.
         is_sample = ln.find("sample/")
-        # Temporary! Only compile blink files and exclude one sample blink file
-        is_blink = ln.find("blink")
-        is_excluded = ln.find("18f4585")  
-        if (is_sample != -1) & (is_blink != -1) & (is_excluded == -1):
+        if (is_sample != -1):
             if debug:
                print("File", ln)
-            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", ln, "-s", compiler_include]
+            cmdlist = [compiler, "-no-asm", "-no-codfile", "-no-hex", ln, "-s", include_string]
             try:
                 log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
                 counter = counter + 1
@@ -119,13 +136,13 @@ def compile_samples():
 # ----------------------------
 if (__name__ == "__main__"):
 
-    # Start process
+   # Start process
     print("Starting the build")
     all_ok = read_torelease()
     if all_ok:
         all_ok = all_ok & validate_jalfile()
     if all_ok:
-        all_ok = all_ok * compile_samples()
+        all_ok = all_ok & compile_samples()
     if all_ok:
         print("Build succeeded!")
         sys.exit(0)
