@@ -1,31 +1,23 @@
 -- Title: Test program for Large Array 
--- Author: Rob Jansen, copyright (c) 2019..2019, all rights reserved.
+--
+-- Author: Rob Jansen, copyright (c) 2019..2020, all rights reserved.
+--
 -- Adapted-by: 
--- Compiler: >=2.5r2
+---
+-- Compiler: >=2.5r3
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
 -- Description: This is an example large array for creating an array that
---              take up more then 256 bytes memory. 
+--              take up more than 256 bytes of data memory. 
+--              It creates one large byte array and one large word array and
+--              one large dword array, fills the arrays and prints the contents 
+--              to the serial port.
 --
--- Sources:
+-- Sources: Orignal test program from Matt Schinkel.
 --
--- Notes:
--- Supports byte array with up to 2048 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 1)
--- Supports word array with up to 1024 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 2)
--- Supports dword array with up to 512 entries (LARGE_ARRAY_1_VARIABLE_SIZE = 4)
--- Creates an array named large_array_1
--- Use "alias new_array_name is large_array_1" to rename the array
---
--- Important: There is no range check on the index in the array.
---
--- Example:
--- const dword LARGE_ARRAY_1_SIZE = 600        -- choose number of array variables
--- const dword LARGE_ARRAY_1_VARIABLE_SIZE = 2 -- choose bytes size of variables
--- include large_array_1                       -- include the array library
--- alias test is large_array_1                 -- rename/alias the array
---
+-- Notes: See large_array_1.jal, large_array_2.jal and large_array_2.jal for usage.
 --
 
 include 16f1825                 
@@ -39,7 +31,7 @@ pragma target PWRTE    ENABLED         -- Power up timer enabled
 pragma target BROWNOUT DISABLED        -- No brownout reset
 pragma target FCMEN    DISABLED        -- No clock monitoring
 pragma target IESO     DISABLED        -- int/ext osc. switch
-pragma target LVP      ENABLED         -- No low voltage programming
+pragma target LVP      ENABLED         -- Use low voltage programming
 pragma target MCLR     INTERNAL        -- Reset internal
 -- Set the internal clock frequency to 32 MHz.
 OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
@@ -59,6 +51,7 @@ const serial_hw_baudrate = 115_200
 -- setup uart for communication
 include serial_hardware
 serial_hw_init()
+include print
 
 -- some aliases so it is easy to change from serial hw to serial sw.
 alias serial_write is serial_hw_write
@@ -66,44 +59,113 @@ alias serial_read is serial_hw_read
 alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
 
--- Setup the large array
+-- Setup a large byte array.
 const dword LARGE_ARRAY_1_SIZE = 200         -- choose number of array variables
 const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1  -- choose size of variables (byte*1)
 include large_array_1                        -- include the array library
-alias test is large_array_1                  -- rename/alias the array to test
+alias byte_array is large_array_1            -- rename/alias the array to byte_array
 
--- send start via serial port
-serial_hw_write("S")
-serial_hw_write("T")
-serial_hw_write("A")
-serial_hw_write("R")
-serial_hw_write("T")
+-- Setup a large word array.
+const dword LARGE_ARRAY_2_SIZE = 150         -- choose number of array variables
+const dword LARGE_ARRAY_2_VARIABLE_SIZE = 2  -- choose size of variables (byte*1)
+include large_array_2                        -- include the array library
+alias word_array is large_array_2            -- rename/alias the array to word_array
 
-_usec_delay(1_000_000) -- 1 sec delay
+-- Setup a large dword array.
+const dword LARGE_ARRAY_3_SIZE = 100         -- choose number of array variables
+const dword LARGE_ARRAY_3_VARIABLE_SIZE = 4  -- choose size of variables (byte*1)
+include large_array_3                        -- include the array library
+alias dword_array is large_array_3           -- rename/alias the array to word_array
 
--- store some values
-test[50] = 0x11
-test[51] = 0x22
-test[26] = 0x33
-test[27] = 0x44
-test[56] = 0x55
-test[57] = 0x66
-test[49] = 0x77
-test[17] = 0x88
+var dword counter
 
--- read some values
-serial_hw_write(test[50])
-serial_hw_write(test[51])
-serial_hw_write(test[26])
-serial_hw_write(test[27])
-serial_hw_write(test[56])
-serial_hw_write(test[57])
-serial_hw_write(test[49])
-serial_hw_write(test[17])
+-- The main loop starts here.
+forever loop
+   print_string(serial_hw_data, "Intializing arrays ...\r\n")
+   for LARGE_ARRAY_1_SIZE using counter loop
+      byte_array[counter] = 0xFF
+   end loop
+   for LARGE_ARRAY_2_SIZE using counter loop
+      word_array[counter] = 0xFFFF
+   end loop
+   for LARGE_ARRAY_3_SIZE using counter loop
+      dword_array[counter] = 0xFFFFFFFF
+   end loop
 
-_usec_delay(1_000_000) -- 1 sec delay
+   -- Store some values in the byte array.
+   byte_array[00] = 0x11
+   byte_array[21] = 0x22
+   byte_array[42] = 0x33
+   byte_array[63] = 0x44
+   byte_array[84] = 0x55
+   byte_array[125] = 0x66
+   byte_array[146] = 0x77
+   byte_array[167] = 0x88
 
--- send end via serial port
-serial_hw_write ("E")
-serial_hw_write ("N")
-serial_hw_write ("D")
+   -- Read some values from the byte array.
+   print_string(serial_hw_data, "Byte array: ")
+   print_byte_hex(serial_hw_data, byte_array[00])
+   print_byte_hex(serial_hw_data, byte_array[21])
+   print_byte_hex(serial_hw_data, byte_array[42])
+   print_byte_hex(serial_hw_data, byte_array[50]) -- This should be 0xFF.
+   print_byte_hex(serial_hw_data, byte_array[63])
+   print_byte_hex(serial_hw_data, byte_array[84])
+   print_byte_hex(serial_hw_data, byte_array[125])
+   print_byte_hex(serial_hw_data, byte_array[146])
+   print_byte_hex(serial_hw_data, byte_array[167])
+   print_crlf(serial_hw_data)
+   
+   _usec_delay(1_000_000) -- 1 sec delay
+
+   -- Store some values in the word array.
+   word_array[00] = 0x1111
+   word_array[21] = 0x2222
+   word_array[42] = 0x3333
+   word_array[63] = 0x4444
+   word_array[84] = 0x5555
+   word_array[105] = 0x6666
+   word_array[126] = 0x7777
+   word_array[147] = 0x8888
+
+   -- Read some values from the word array.
+   print_string(serial_hw_data, "Word array: ")
+   print_word_hex(serial_hw_data, word_array[00])
+   print_word_hex(serial_hw_data, word_array[21])
+   print_word_hex(serial_hw_data, word_array[42])
+   print_word_hex(serial_hw_data, word_array[50]) -- This should be 0xFFFF.
+   print_word_hex(serial_hw_data, word_array[63])
+   print_word_hex(serial_hw_data, word_array[84])
+   print_word_hex(serial_hw_data, word_array[105])
+   print_word_hex(serial_hw_data, word_array[126])
+   print_word_hex(serial_hw_data, word_array[147])
+   print_crlf(serial_hw_data)
+ 
+   _usec_delay(1_000_000) -- 1 sec delay
+
+   -- Store some values in the dword array.
+   dword_array[00] = 0x11111111
+   dword_array[21] = 0x22222222
+   dword_array[32] = 0x33333333
+   dword_array[43] = 0x44444444
+   dword_array[54] = 0x55555555
+   dword_array[75] = 0x66666666
+   dword_array[86] = 0x77777777
+   dword_array[99] = 0x88888888
+
+   -- Read some values from the dword array.
+   print_string(serial_hw_data, "Dword array: ")
+   print_dword_hex(serial_hw_data, dword_array[00])
+   print_dword_hex(serial_hw_data, dword_array[21])
+   print_dword_hex(serial_hw_data, dword_array[32])
+   print_dword_hex(serial_hw_data, dword_array[43])
+   print_dword_hex(serial_hw_data, dword_array[50]) -- This should be 0xFFFFFFFF.
+   print_dword_hex(serial_hw_data, dword_array[54])
+   print_dword_hex(serial_hw_data, dword_array[75])
+   print_dword_hex(serial_hw_data, dword_array[86])
+   print_dword_hex(serial_hw_data, dword_array[99])
+   print_crlf(serial_hw_data)
+   
+   _usec_delay(1_000_000) -- 1 sec delay
+ 
+end loop
+
