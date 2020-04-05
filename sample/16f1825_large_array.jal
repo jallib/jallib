@@ -9,15 +9,24 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
 --
--- Description: This is an example large array for creating an array that
---              take up more than 256 bytes of data memory. 
---              It creates one large byte array and one large word array and
+-- Description: This is an example large array for creating an array that can
+--              take up more than 80 bytes of data memory. 
+--              It creates two large byte arrays and one large word array and
 --              one large dword array, fills the arrays and prints the contents 
---              to the serial port.
+--              to the serial port. 
 --
 -- Sources: Orignal test program from Matt Schinkel.
 --
--- Notes: See large_array_1.jal, large_array_2.jal and large_array_2.jal for usage.
+-- Notes: Supports byte array with up to 2048 entries, 
+--        (LARGE_ARRAY_x_VARIABLE_SIZE = 1)
+--        Supports word array with up to 1024 entries,
+--        (LARGE_ARRAY_x_VARIABLE_SIZE = 2)
+--        Supports dword array with up to 512 entries,
+--        (LARGE_ARRAY_x_VARIABLE_SIZE = 4)
+--        Where (x = 1 to 4). For more info see large_array_1.jal, 
+--        large_array_2.jal, large_array_2.jal and large_array_4.jal.  
+--
+-- Important: There is no range check on the index in the array.
 --
 
 include 16f1825                 
@@ -60,22 +69,28 @@ alias serial_data is serial_hw_data
 alias serial_data_available is serial_hw_data_available
 
 -- Setup a large byte array.
-const dword LARGE_ARRAY_1_SIZE = 200         -- choose number of array variables
+const dword LARGE_ARRAY_1_SIZE = 120         -- choose number of array variables
 const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1  -- choose size of variables (byte*1)
 include large_array_1                        -- include the array library
 alias byte_array is large_array_1            -- rename/alias the array to byte_array
 
 -- Setup a large word array.
-const dword LARGE_ARRAY_2_SIZE = 150         -- choose number of array variables
+const dword LARGE_ARRAY_2_SIZE = 120         -- choose number of array variables
 const dword LARGE_ARRAY_2_VARIABLE_SIZE = 2  -- choose size of variables (byte*1)
 include large_array_2                        -- include the array library
 alias word_array is large_array_2            -- rename/alias the array to word_array
 
 -- Setup a large dword array.
-const dword LARGE_ARRAY_3_SIZE = 100         -- choose number of array variables
+const dword LARGE_ARRAY_3_SIZE = 120         -- choose number of array variables
 const dword LARGE_ARRAY_3_VARIABLE_SIZE = 4  -- choose size of variables (byte*1)
 include large_array_3                        -- include the array library
-alias dword_array is large_array_3           -- rename/alias the array to word_array
+alias dword_array is large_array_3           -- rename/alias the array to dword_array
+
+-- Setup another large byte array.
+const dword LARGE_ARRAY_4_SIZE = 120         -- choose number of array variables
+const dword LARGE_ARRAY_4_VARIABLE_SIZE = 1  -- choose size of variables (byte*1)
+include large_array_4                        -- include the array library
+alias another_byte_array is large_array_4    -- rename/alias the array to byte_array
 
 var dword counter
 
@@ -91,16 +106,18 @@ forever loop
    for LARGE_ARRAY_3_SIZE using counter loop
       dword_array[counter] = 0xFFFFFFFF
    end loop
+   for LARGE_ARRAY_4_SIZE using counter loop
+      another_byte_array[counter] = 0xFF
+   end loop
 
-   -- Store some values in the byte array.
+   -- Store some values in the byte array including first and last location.
    byte_array[00] = 0x11
    byte_array[21] = 0x22
    byte_array[42] = 0x33
    byte_array[63] = 0x44
    byte_array[84] = 0x55
-   byte_array[125] = 0x66
-   byte_array[146] = 0x77
-   byte_array[167] = 0x88
+   byte_array[105] = 0x66
+   byte_array[119] = 0x77
 
    -- Read some values from the byte array.
    print_string(serial_hw_data, "Byte array: ")
@@ -110,22 +127,20 @@ forever loop
    print_byte_hex(serial_hw_data, byte_array[50]) -- This should be 0xFF.
    print_byte_hex(serial_hw_data, byte_array[63])
    print_byte_hex(serial_hw_data, byte_array[84])
-   print_byte_hex(serial_hw_data, byte_array[125])
-   print_byte_hex(serial_hw_data, byte_array[146])
-   print_byte_hex(serial_hw_data, byte_array[167])
+   print_byte_hex(serial_hw_data, byte_array[105])
+   print_byte_hex(serial_hw_data, byte_array[119])
    print_crlf(serial_hw_data)
    
    _usec_delay(1_000_000) -- 1 sec delay
 
-   -- Store some values in the word array.
+   -- Store some values in the word array including first and last location. 
    word_array[00] = 0x1111
    word_array[21] = 0x2222
    word_array[42] = 0x3333
    word_array[63] = 0x4444
    word_array[84] = 0x5555
    word_array[105] = 0x6666
-   word_array[126] = 0x7777
-   word_array[147] = 0x8888
+   word_array[119] = 0x7777
 
    -- Read some values from the word array.
    print_string(serial_hw_data, "Word array: ")
@@ -136,36 +151,59 @@ forever loop
    print_word_hex(serial_hw_data, word_array[63])
    print_word_hex(serial_hw_data, word_array[84])
    print_word_hex(serial_hw_data, word_array[105])
-   print_word_hex(serial_hw_data, word_array[126])
-   print_word_hex(serial_hw_data, word_array[147])
+   print_word_hex(serial_hw_data, word_array[119])
    print_crlf(serial_hw_data)
  
    _usec_delay(1_000_000) -- 1 sec delay
 
-   -- Store some values in the dword array.
+   -- Store some values in the dword array including first and last location. 
    dword_array[00] = 0x11111111
    dword_array[21] = 0x22222222
-   dword_array[32] = 0x33333333
-   dword_array[43] = 0x44444444
-   dword_array[54] = 0x55555555
-   dword_array[75] = 0x66666666
-   dword_array[86] = 0x77777777
-   dword_array[99] = 0x88888888
+   dword_array[42] = 0x33333333
+   dword_array[63] = 0x44444444
+   dword_array[84] = 0x55555555
+   dword_array[105] = 0x66666666
+   dword_array[119] = 0x77777777
 
    -- Read some values from the dword array.
    print_string(serial_hw_data, "Dword array: ")
    print_dword_hex(serial_hw_data, dword_array[00])
    print_dword_hex(serial_hw_data, dword_array[21])
-   print_dword_hex(serial_hw_data, dword_array[32])
-   print_dword_hex(serial_hw_data, dword_array[43])
+   print_dword_hex(serial_hw_data, dword_array[42])
+   print_dword_hex(serial_hw_data, dword_array[63])
    print_dword_hex(serial_hw_data, dword_array[50]) -- This should be 0xFFFFFFFF.
-   print_dword_hex(serial_hw_data, dword_array[54])
-   print_dword_hex(serial_hw_data, dword_array[75])
-   print_dword_hex(serial_hw_data, dword_array[86])
-   print_dword_hex(serial_hw_data, dword_array[99])
+   print_dword_hex(serial_hw_data, dword_array[84])
+   print_dword_hex(serial_hw_data, dword_array[105])
+   print_dword_hex(serial_hw_data, dword_array[119])
    print_crlf(serial_hw_data)
    
    _usec_delay(1_000_000) -- 1 sec delay
+
+   -- Store some values in the other byte array including first and last location.
+   another_byte_array[00] = 0x77
+   another_byte_array[21] = 0x66
+   another_byte_array[42] = 0x55
+   another_byte_array[63] = 0x44
+   another_byte_array[84] = 0x33
+   another_byte_array[105] = 0x22
+   another_byte_array[119] = 0x11
+
+   -- Read some values from the byte array.
+   print_string(serial_hw_data, "Another byte array: ")
+   print_byte_hex(serial_hw_data, another_byte_array[00])
+   print_byte_hex(serial_hw_data, another_byte_array[21])
+   print_byte_hex(serial_hw_data, another_byte_array[42])
+   print_byte_hex(serial_hw_data, another_byte_array[50]) -- This should be 0xFF.
+   print_byte_hex(serial_hw_data, another_byte_array[63])
+   print_byte_hex(serial_hw_data, another_byte_array[84])
+   print_byte_hex(serial_hw_data, another_byte_array[105])
+   print_byte_hex(serial_hw_data, another_byte_array[119])
+   print_crlf(serial_hw_data)
+
+   print_string(serial_hw_data, "Done!\r\n\r\n")
+
+   _usec_delay(1_000_000) -- 1 sec delay
+  
  
 end loop
 
