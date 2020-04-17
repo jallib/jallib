@@ -1,7 +1,7 @@
 -- Title: Memory Pointers (indirect registers)
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4ql
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2020, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: >=2.5r3 
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -10,10 +10,10 @@
 --
 -- Sources:
 --
--- Notes: This lib will not produce errors if POSTINC2 is not supported by
---        your chip. Your code should check if defined(mem_pointer2) before
---        using, otherwise use another method of doing whatever it is your
---        trying to do.
+-- Notes: If POSTINC2 is not supported, another method is used to provide the
+--        same functionality. Your code should check if defined(mem_pointer2)
+--        before using, otherwise use another method of doing whatever it is
+--        your trying to do. Only works on var arrays not const arrays.
 --
 
 --------------------------------------------------------------------------------
@@ -78,5 +78,219 @@ if defined(POSTINC2) then
          return data
       end function
    end if
+else
+   -- No POSTINC2, use alternative method.
+   var volatile word mem_pointer2_address
+
+   if !defined(MEM_POINTER2_VAR_SIZE) then
+      const MEM_POINTER2_VAR_SIZE = 1
+   end if
+
+   -- memory pointer data retreval variable
+   if MEM_POINTER2_VAR_SIZE == 1 then
+      procedure mem_pointer2'put(byte in data) is
+      pragma inline
+         assembler
+            -- get value from pointer address
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf data,w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+      end procedure
+
+      function mem_pointer2'get() return byte is
+      pragma inline
+      var byte data
+         assembler
+            -- get value from pointer address
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf data
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+         return data
+      end function
+   end if -- MEM_POINTER2_VAR_SIZE == 1
+
+   if MEM_POINTER2_VAR_SIZE == 2 then     
+      procedure mem_pointer2'put(word in data) is
+      pragma inline
+         var byte _data[2] at data
+         assembler
+            -- get value from pointer address for first half of word
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[0],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for seond half of word
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[1],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+      end procedure
+
+      function mem_pointer2'get() return word is
+      pragma inline
+         var word data
+         var byte _data[2] at data
+         assembler
+            -- get value from pointer address for first half of word      
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[0]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for second half of word      
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[1]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+         return data
+      end function
+   end if -- MEM_POINTER2_VAR_SIZE == 2
+
+   if MEM_POINTER2_VAR_SIZE == 4 then     
+      procedure mem_pointer2'put(dword in data) is
+      pragma inline
+         var byte _data[4] at data
+         assembler
+            -- get value from pointer address for _data[0]
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[0],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[1]
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[1],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[2]
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[2],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[3]
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf _data[3],w
+            bank movwf indf0
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+      end procedure
+
+      function mem_pointer2'get() return dword is
+      pragma inline
+         var dword data
+         var byte _data[4] at data
+         assembler
+            -- get value from pointer address for _data[0]       
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[0]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[1]       
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[1]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[2]       
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[2]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+            -- get value from pointer address for _data[3]       
+            bank movf mem_pointer2_address,w
+            bank movwf fsr0l
+            bank movf mem_pointer2_address+1,w
+            bank movwf fsr0h
+            bank movf indf0,w
+            bank movwf _data[3]
+            -- increment pointer
+            bank incf mem_pointer2_address,f
+            btfsc status, 2
+            incf mem_pointer2_address+1,f
+         end assembler
+         return data
+      end function
+   end if -- MEM_POINTER2_VAR_SIZE == 4
    
-end if
+end if  -- POSTINC2 
