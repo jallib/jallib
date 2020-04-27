@@ -1,0 +1,142 @@
+-- -----------------------------------------------------------------------------
+-- Title: Digital potentiometer library for X9C102, X9C103, X9C104, X9C503.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This library controls digital potentiometer x9c10x using a 3
+--              wire serial interface. Define the following pins:
+--              -) x9c10x_increment_pin & x9c10x_increment_pin_direction
+--              -) x9c10x_up_down_pin & x9c10x_up_down_pin_direction
+--              -) x9c10x_chip_select_pin & x9c10x_chip_select_pin_direction 
+--
+-- Sources: Renesas datasheet for X9C102, X9C103, X9C104, X9C503.  
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Wiper values, 100 positions.
+const byte X9C10X_MIN_VALUE = 0
+const byte X9C10X_MAX_VALUE = 99
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+procedure x9c10x_init()
+procedure x9c10x_wiper'put(byte in value)
+procedure x9c10x_increment()
+procedure x9c10x_decrement()
+procedure x9c10x_store()
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- LOCAL VARIABLES  --------------------------------
+-- -----------------------------------------------------------------------------
+-- Shadow value of the current wiper position. Needed because the value cannot
+-- be read back and can only be changed by increment and decrement.
+var byte _x9c10x_wiper_shadow
+
+--------------------------------------------------------------------------------
+-- Inititialize wiper and put it at X9C10X_MIN_VALUE.
+--------------------------------------------------------------------------------
+procedure x9c10x_init() is
+   -- Intialize all pins.
+   x9c10x_increment_pin = HIGH          
+   x9c10x_increment_pin_direction = OUTPUT
+   x9c10x_up_down_pin = HIGH 
+   x9c10x_up_down_pin_direction = OUTPUT  
+   x9c10x_chip_select_pin = HIGH 
+   x9c10x_chip_select_pin_direction = OUTPUT  
+   -- Set wiper at X9C10X_MIN_VALUE by starting at the maximum position and
+   -- counting down.
+   _x9c10x_wiper_shadow = X9C10X_MAX_VALUE
+   for X9C10X_MAX_VALUE loop
+      x9c10x_decrement()
+   end loop 
+end procedure
+
+--------------------------------------------------------------------------------
+-- Set the location of the wiper to change pot resistance but do not store
+-- it in the non volatile memory of the chip. 
+-- Value must be in range X9C10X_MIN_VALUE .. X9C10X_MAX_VALUE.
+--------------------------------------------------------------------------------
+procedure x9c10x_wiper'put(byte in value) is
+   var byte current_value = _x9c10x_wiper_shadow
+    
+   if (value <= X9C10X_MAX_VALUE) & (value != current_value) then
+      -- Check where we are as to determine if we need to go up or down.
+      if (value > current_value) then
+         for (value - current_value) loop
+            x9c10x_increment() 
+         end loop
+      else
+         for (current_value - value) loop
+            x9c10x_decrement() 
+         end loop
+      end if
+      _x9c10x_wiper_shadow = value
+   end if 
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Increment the location of the wiper to change pot resistance but do not store 
+-- it in the non volatile memory of the chip.
+--------------------------------------------------------------------------------
+procedure x9c10x_increment() is
+   if (_x9c10x_wiper_shadow <= X9C10X_MAX_VALUE) then
+      x9c10x_increment_pin = HIGH     
+      x9c10x_chip_select_pin = LOW
+      x9c10x_up_down_pin = HIGH
+      _usec_delay(3)
+      x9c10x_increment_pin = LOW         
+      _usec_delay(1)
+      x9c10x_chip_select_pin = HIGH 
+     _x9c10x_wiper_shadow = _x9c10x_wiper_shadow + 1
+   end if  
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Decrement the location of the wiper to change pot resistance but do not store 
+-- it in the non volatile memory of the chip.                            
+--------------------------------------------------------------------------------
+procedure x9c10x_decrement() is
+   if (_x9c10x_wiper_shadow > X9C10X_MIN_VALUE) then
+      x9c10x_increment_pin = HIGH     
+      x9c10x_chip_select_pin = LOW
+      x9c10x_up_down_pin = LOW
+      _usec_delay(3)
+      x9c10x_increment_pin = LOW         
+      _usec_delay(1)
+      x9c10x_chip_select_pin = HIGH  
+     _x9c10x_wiper_shadow = _x9c10x_wiper_shadow - 1
+   end if  
+end procedure
+
+--------------------------------------------------------------------------------
+-- Store the current wiper value in the non volatile memory of the chip. 
+-- Note that this procedure waits some time to make sure that there is 
+-- suffient time to store the value.
+--------------------------------------------------------------------------------
+procedure x9c10x_store() is
+   x9c10x_chip_select_pin = HIGH  
+   x9c10x_increment_pin = HIGH     
+   _usec_delay(1)
+   x9c10x_chip_select_pin = LOW  
+   _usec_delay(1)
+   -- Store value and wait store time.  
+   x9c10x_chip_select_pin = HIGH  
+   _usec_delay(20_000)
+end procedure
+
+
