@@ -98,27 +98,98 @@ const byte NRF24_MAX_PAYLOAD = 32
 -- -----------------------------------------------------------------------------
 -- -------------------------- Public API ---------------------------------------
 -- -----------------------------------------------------------------------------
+
+-- Initializes the SPI interface to communicate with the nRF24L01+ module and 
+-- initializes the module after which the module is powered down. The procedure 
+-- also waits for power up time to pass and initializes the module as follows:
+-- -) Set CRC coding scheme to 2 bytes.
+-- -) Set transmit/receive address width to 5 bytes (default).
+-- -) Sets the module receive address to NRF24_RECEIVE_ADDR on pipe 1 including
+--    the payload size to NRF24_PAYLOAD_SIZE. 
+-- -) Enable plus mode which means setting auto acknowledge on all pipes. 
+-- -) Set the retransmit delay 750 us and the retransmit count to 5.  
+-- -) Set RF Channel to 2 (default).
+-- -) Set bitrate to 2 Mbits/s (default).
+-- -) Set RF TX power power to 0 dBm (default).
+-- -) Enable dynamic payload length.
 procedure nrf24_init()
+
+-- Sets the transmitting address and pipe 0 as to enable auto acknowledge.
 procedure nrf24_set_transmit_address(byte in addr[])
+
+-- Sets the receiving address for a pipe number, and sets payload width as well.
 procedure nrf24_set_rx_pipe(byte in pipe, byte in addr[])
+
+-- Set the address width on all pipes.   
 procedure nrf24_set_address_width(byte in width)
+
+-- Set the RF channel, value 0 - 127 or 0 - 84 in the US.   
 procedure nrf24_set_rf_channel(byte in channel) 
-procedure nrf24_set_data_rate(byte in data_rate)           
+
+-- Set the data rate. Use the defined data rate constants.
+procedure nrf24_set_data_rate(byte in data_rate)  
+         
+-- Set the power level of the transmitter. Use the defined power rate constants.
 procedure nrf24_set_power_level(byte in power_level)  
+
+-- Sets the auto re-transmit count from 0 (no re-transmits) to 15 re-transmits.
 procedure nrf24_set_auto_retransmit_count(byte in retransmit_count)
+
+-- Sets the auto re_transmit delay from 0 (250 us) to 15 (4000 us) in steps of
+-- 250 us. Note that the delay is defined as the time between the start of a 
+-- transmission and the start of the next transmission. This means that 
+-- tranmitting a message with a high payload, a short delay and a low bitrate 
+-- can cause transmission failures. A safe value is 1500 us minimum for a 32 
+-- byte payload at 250 kbps, also see the datasheet.
 procedure nrf24_set_auto_retransmit_delay(byte in retransmit_delay)
+
+-- Enable the nRF24L01+ mode. This enables auto acknowledge on all pipes and
+-- sets auto retransmit delay to 250 us and the auto retransmit count to 3,
+-- both are the default values.
 procedure nrf24_enable_plus_mode()
+
+-- Disable the nRF24L01+ mode. Needed for backwards compatibilty when
+-- communicating with an nRF24L01 non-plus device. This disables auto
+-- acknowedge on all pipes, sets the auto retranmit delay to 250 us and sets
+-- the auto retransmit count to 0. The data rate is set to 1 Mbit/s
 procedure nrf24_enable_compatibility_mode()
+
+-- Enable dynamic payload on all pipes.
 procedure nrf24_enable_dynamic_payload()
+
+-- Disable dynamic payload on all pipes.
 procedure nrf24_disable_dynamic_payload()
+
+-- Power down the device. Device is powered up when a message is transmitted.
 procedure nrf24_power_down()
-procedure nrf24_power_up_tx()
+
+-- Power up the receiver and clear all pending RX and TX status bits.
 procedure nrf24_power_up_rx()
+
+-- Power up the transmitter and clear all pending RX and TX status bits.
+procedure nrf24_power_up_tx()
+
+-- Check for the presense of a carrier and return TRUE when detected.
 function  nrf24_carrier_detected() return bit
+
+-- Check if the transmission status and returns TRUE when ready.
 function  nrf24_tx_ready() return bit
+
+-- Returns the the status of the last transmission. If the maximum number of 
+-- retries were used FALSE is returned indicating a tranmission failure, 
+-- otherwise TRUE is returned indicating a succesful transmission.
 function  nrf24_tx_ok() return bit
+
+-- Checks if data is available for reading and returns TRUE when data is present.
 function  nrf24_data_available() return bit
+
+-- Sends the number of data bytes given in length from the given buffer. When
+-- dynamic payload is not active the procedure will fill the remaining payload
+-- with '00' as to always start a transmission.
 procedure nrf24_send_data(byte in data[], byte in length)
+
+-- Checks if data is received, copies it to the nrf24_read_buffer[] and returns
+-- TRUE when data is available.
 function  nrf24_get_data(byte out pipe, byte in out how_long) return bit   
 
 -- Read buffer containing the data received from the nrf24.
@@ -599,8 +670,8 @@ procedure nrf24_send_data(byte in data[], byte in length) is
 end procedure
 
 
--- Checks if data is received, copies it to the receive buffer and returns TRUE
--- when data is available.
+-- Checks if data is received, copies it to the nrf24_read_buffer[] and returns
+-- TRUE when data is available.
 function nrf24_get_data(byte out pipe, byte in out how_long) return bit is
    var byte status, index, _trash
    
