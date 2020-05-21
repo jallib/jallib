@@ -1,0 +1,105 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample data HEF write and read for the Microchip PIC16F1765
+-- 
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+-- 
+-- Adapted-by: 
+-- 
+-- Compiler: 2.5r4
+--
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib  (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--  
+-- Description: Sample data HEF write and read for the Microchip PIC16F1765. 
+--              During HEF writing and reading the LED is blinking. After 
+--              verifying all HEF addresses successfully the LED should stay on. 
+--              If the data read is not the same as the data written the LED 
+--              will be off.                        
+--
+-- Sources:
+-- 
+-- Notes: 
+--
+
+-- chip setup
+include 16f1765
+
+-- This program uses the internal oscillator at 4 MHz.
+pragma target clock    4_000_000        -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCCON_SCS = 0                          -- select primary oscillator
+OSCCON_IRCF = 0b1101                    -- 4 MHz
+                                   
+-- Make all pins digital I/O instead of analog.
+enable_digital_io()
+
+-- High Endurance Flash (HEF) address declarations.
+const HEF_NR_OF_BYTES    = 128
+const HEF_ADDRESS_OFFSET = 8192 - HEF_NR_OF_BYTES
+include pic_data_hef
+
+-- LED IO definition
+alias led             is pin_a0
+alias led_direction   is pin_a0_direction
+led_direction = output
+
+var byte i,j                         
+var bit led_value = ON
+var bit all_ok = TRUE
+
+led = OFF
+i = 0
+
+forever loop
+   _usec_delay(100_000)          
+
+   -- As long as the led blinks all written data equals the data is read back.
+   -- In case of a difference in data the led will be turned off. After a 
+   -- succesfull write and read cycle of HEF_NR_OF_BYTES bytes the LED stays on.
+   if all_ok then
+      led_value = !led_value   -- toggle the led
+      data_hef_write(i,i)      -- write value
+      j = data_hef(i)          -- read back
+      if (j != i) then
+         all_ok = FALSE
+         led_value = OFF
+      end if 
+   end if
+   i = i + 1
+
+   led = led_value
+
+   if (i == HEF_NR_OF_BYTES) then
+      -- Final check, see if values where not overwritten.
+      j = 0
+      while all_ok & (j < HEF_NR_OF_BYTES) loop
+         if (j != data_hef(j)) then
+            all_ok = FALSE -- Error, data was overwritten.
+         end if
+         j = j + 1
+      end loop
+      if all_ok then 
+          led = ON
+      else
+         led = OFF
+      end if
+      while true loop
+         -- This will never end.
+      end loop
+   end if         
+ 
+end loop
+
+

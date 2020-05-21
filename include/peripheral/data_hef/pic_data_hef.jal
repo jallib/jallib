@@ -1,0 +1,353 @@
+-- ------------------------------------------------------------------------
+-- Title: Reading/writing of PIC's data in High Endurance Flash (HEF)
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by: 
+--
+-- Compiler: 2.5r4
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+-- Read from or write to HEF/data a byte, word or double word.
+-- Available procedures:
+--   * data_hef_read(<offset>,<byte>)
+--   * data_hef_write(<offset>,<byte>)
+--   * data_hef_read_word(<offset>,<word>)
+--   * data_hef_write_word(<offset>,<word>)
+--   * data_hef_read_dword(<offset>,<dword>)
+--   * data_hef_write_dword(<offset>,<dword>)
+-- Available functions:
+--   * <byte>  = data_hef(<offset>)
+--   * <word>  = data_hef_word(<offset>)
+--   * <dword> = data_hef_dword(<offset>)
+-- In all cases <offset> must be in the range of the High Endurance Flash
+-- Examples of use:
+--   * Read a byte of HEF at offset 7 into x:
+--         var byte x
+--         data_hef_read(7, x)
+--   * Read a word from HEF at offset 4 into y:
+--         var word y
+--         y = data_hef_word(4)
+--   * Write a byte to HEF at offset 18:
+--         data_hef_write(18, 0b1111_0000)
+--
+-- Sources: AN1673. Using the PIC16F1XXX High-Endurance Flash (HEF) Block.
+-- 
+-- Notes:
+-- * You must always define the HEF offset address (start address of the HEF)
+--   by definining a connstant called HEF_ADDRESS_OFFSET with the correct value.
+--   See the datasheet of the PICs for more information. 
+-- * Write-protect bits in configuration memory may prohibit writing.
+-- * Writing to locations outside the available memory range may have
+--   unexpected effects!
+--
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- ------------------------------------------------------------------------
+-- Title:     Read byte from data HEF at given offset
+-- Arguments: - Offset of data HEF of byte to be read
+--            - Data (byte) to store data HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure  data_hef_read(word in offset, byte out data)
+
+-- ------------------------------------------------------------------------
+-- Title:     Write byte to data HEF at given offset
+-- Arguments: - Offset of data HEF of byte to be written
+--            - Data (byte) to be stored in data HEF
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write(word in offset, byte in data) 
+
+-- ------------------------------------------------------------------------
+-- Title:     Read byte of data HEF at given offset
+-- Arguments: Offset in data HEF of byte to be read
+-- Returns:   Byte of data HEF
+-- ------------------------------------------------------------------------
+function data_hef(word in offset) return byte 
+
+-- ------------------------------------------------------------------------
+-- Title:     Read word from data HEF at given offset
+-- Arguments: - Offset in data HEF of word to be read
+--            - Data (word) to store HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_read_word(word in offset, word out data) 
+
+-- ------------------------------------------------------------------------
+-- Title:     Read word from data HEF at given offset
+-- Arguments: Offset in data HEF of word to be read
+-- Returns:   Word of data HEF
+-- ------------------------------------------------------------------------
+function data_hef_word(word in offset) return word 
+
+-- ------------------------------------------------------------------------
+-- Title:     Write word to data HEF at given offset
+-- Arguments: - Offset in data HEF of word to be written
+--            - Data (word) to store in HEF
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write_word(word in offset, word in data)
+
+-- ------------------------------------------------------------------------
+-- Title:     Read doubleword from data HEF at given offset
+-- Arguments: - Offset in data HEF of doubleword to be read
+--            - Data (dword) to store HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_read_dword(word in offset, dword out data)
+
+-- ------------------------------------------------------------------------
+-- Title:     Read doubleword from data HEF at given offset
+-- Arguments: Offset in data HEF of doubleword to be read
+-- Returns:   Doubleword of data HEF
+-- ------------------------------------------------------------------------
+function data_hef_dword(word in offset) return dword 
+
+-- ------------------------------------------------------------------------
+-- Title:     Write doubleword to data HEF at given offset
+-- Arguments: - Offset in data HEF of doubleword to be written
+--            - Data (dword) to be stored
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write_dword(word in offset, dword in data) 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Internal used constants. The rowsize (numer of latches) depends on the size 
+-- of the program memory. Devices with 1k and 2k program memory have 16 latches 
+-- per row, 4k devices and higher have 32 latches per row so we use 3k as 
+-- boundary since that does not exist as program memory size. The address offset
+-- is the start address of the HEF which is the program memory size minus the 
+-- size of the HEF area.
+if (HEF_ADDRESS_OFFSET < 3072) then
+   const _HEF_ROWSIZE = 16
+else
+   const _HEF_ROWSIZE = 32
+end if
+
+
+-- Execute the High Endurance Flash unlock sequence for writing or erasing.
+procedure _hef_unlock() is
+   PMCON2 = 0x55
+   PMCON2 = 0xAA
+   PMCON1_WR = TRUE
+   assembler
+      nop  
+      nop
+   end assembler
+end procedure
+
+
+-- Write a byte from the High Endurance Flash and return it. 
+procedure _hef_erase(word in address) is
+   var bit  saved_gie
+
+   saved_gie = INTCON_GIE
+   INTCON_GIE = FALSE
+   PMADR = address
+   PMCON1_CFGS = FALSE
+   PMCON1_FREE = TRUE
+   PMCON1_WREN = TRUE
+   _hef_unlock() -- This will erase one row.
+   INTCON_GIE = saved_gie
+end procedure
+
+
+-- Read a byte from the High Endurance Flash and return it. Note that although
+-- you can store (14-bit) words we only return one byte.
+function _hef_read_byte(word in address) return byte is
+   PMADR = address
+   PMCON1_CFGS = FALSE
+   PMCON1_RD = TRUE
+   ; See datasheet why nops are needed.
+   assembler
+      nop  
+      nop
+   end assembler
+   return byte(PMDAT & 0x00FF)
+end function 
+
+
+-- Write a byte from the High Endurance Flash and return it. 
+procedure _hef_write_flash(word in address, byte in data, bit in latch) is
+   var bit  saved_gie
+
+   saved_gie = INTCON_GIE
+   INTCON_GIE = FALSE
+   PMADR = address
+   PMDAT = data
+   PMCON1_LWLO = latch
+   PMCON1_CFGS = FALSE
+   PMCON1_FREE = FALSE
+   PMCON1_WREN = TRUE
+   _hef_unlock() -- This will store the data in the latch or flash.
+   INTCON_GIE = saved_gie
+end procedure 
+
+
+-- Write one byte to the High Endurance Flash. Data is written to Flash in rows
+-- of (14-bit) words, called a latch. We only store bytes here. 
+procedure _hef_write_byte(word in address, byte in hef_data) is
+   var word write_address
+   var word row_address
+   var byte row_data[_HEF_ROWSIZE]
+   var byte counter
+
+   write_address = address  
+   -- Determine the start address of the row for erase and write. The start
+   -- address of the flash must always be the start address of a row. 
+   row_address = (address / _HEF_ROWSIZE) * _HEF_ROWSIZE 
+   address = row_address
+   for _HEF_ROWSIZE using counter loop
+      row_data[counter] = _hef_read_byte(address)
+      address = address + 1
+   end loop
+   -- Map the index back to a location within one row.
+   address = write_address % _HEF_ROWSIZE
+   row_data[byte(address)] = hef_data   
+   -- Now erase this flash row.
+   _hef_erase(row_address)
+   -- Fill the latches with the new data.
+   address = row_address
+   for _HEF_ROWSIZE using counter loop
+      _hef_write_flash(address, row_data[counter], TRUE)
+      address = address + 1
+   end loop
+   -- Store the contents of the latches into the Flash. Note that the datasheets
+   -- describe that it is sufficient to write the whole latch but that does not
+   -- work correctly. Instead we use the approach below as described in AN1673.
+   address = row_address
+   for _HEF_ROWSIZE using counter loop
+      _hef_write_flash(address, row_data[counter], FALSE)
+      address = address + 1
+   end loop
+end procedure 
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read byte from data HEF at given offset
+-- Arguments: - Offset of data HEF of byte to be read
+--            - Data (byte) to store data HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure  data_hef_read(word in offset, byte out data) is
+   data = _hef_read_byte(HEF_ADDRESS_OFFSET + offset)               
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Write byte to data HEF at given offset
+-- Arguments: - Offset of data HEF of byte to be written
+--            - Data (byte) to be stored in data HEF
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write(word in offset, byte in data) is
+   _hef_write_byte(HEF_ADDRESS_OFFSET + offset, data)
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read byte of data HEF at given offset
+-- Arguments: Offset in data HEF of byte to be read
+-- Returns:   Byte of data HEF
+-- ------------------------------------------------------------------------
+function data_hef(word in offset) return byte is
+   var byte data                               
+
+   data_hef_read(offset, data)
+   return data
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read word from data HEF at given offset
+-- Arguments: - Offset in data HEF of word to be read
+--            - Data (word) to store HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_read_word(word in offset, word out data) is
+   var byte tempbyte[2] at data                 
+
+   data_hef_read(offset+0, tempbyte[0])
+   data_hef_read(offset+1, tempbyte[1])
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read word from data HEF at given offset
+-- Arguments: Offset in data HEF of word to be read
+-- Returns:   Word of data HEF
+-- ------------------------------------------------------------------------
+function data_hef_word(word in offset) return word is
+   var word data                                
+
+   data_hef_read_word(offset, data)
+   return data
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Write word to data HEF at given offset
+-- Arguments: - Offset in data HEF of word to be written
+--            - Data (word) to store in HEF
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write_word(word in offset, word in data) is
+   var byte tempbyte[2] at data                 
+
+   data_hef_write(offset+0, tempbyte[0])
+   data_hef_write(offset+1, tempbyte[1])
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read doubleword from data HEF at given offset
+-- Arguments: - Offset in data HEF of doubleword to be read
+--            - Data (dword) to store HEF contents
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_read_dword(word in offset, dword out data) is
+   var word tempword[2] at data                 
+
+   data_hef_read_word(offset+0, tempword[0])
+   data_hef_read_word(offset+2, tempword[1])
+end procedure
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Read doubleword from data HEF at given offset
+-- Arguments: Offset in data HEF of doubleword to be read
+-- Returns:   Doubleword of data HEF
+-- ------------------------------------------------------------------------
+function data_hef_dword(word in offset) return dword is
+   var dword data
+
+   data_hef_read_dword(offset, data)
+   return data
+end function
+
+
+-- ------------------------------------------------------------------------
+-- Title:     Write doubleword to data HEF at given offset
+-- Arguments: - Offset in data HEF of doubleword to be written
+--            - Data (dword) to be stored
+-- Returns:   (nothing)
+-- ------------------------------------------------------------------------
+procedure data_hef_write_dword(word in offset, dword in data) is
+   var word tempword[2] at data                 
+
+   data_hef_write_word(offset+0, tempword[0])
+   data_hef_write_word(offset+2, tempword[1])
+end procedure
+

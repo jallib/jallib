@@ -1,0 +1,115 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample data HEF write and read for the Microchip PIC16F1455
+-- 
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+-- 
+-- Adapted-by: 
+-- 
+-- Compiler: 2.5r4
+--
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib  (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--  
+-- Description: Sample data HEF write and read for the Microchip PIC16F1455. 
+--              During HEF writing and reading the LED is blinking. After 
+--              verifying all HEF addresses successfully the LED should stay on. 
+--              If the data read is not the same as the data written the LED 
+--              will be off.                        
+--
+-- Sources:
+-- 
+-- Notes: 
+--
+
+-- chip setup
+include 16f1455
+
+pragma target clock       48_000_000
+
+-- Settings for external 12 MHz crystal and system clock 48 MHz.
+pragma target OSC           HS       -- External crystal
+pragma target CLKOUTEN      ENABLED  -- CLKOUT function is enabled
+pragma target PLLMULT       N4X      -- PLL Multipler Selection Bit, 4x Output Frequency Selected
+
+-- Other fuses
+pragma target CPUDIV        P1       -- NO CPU system divide
+pragma target USBLSCLK      F48MHZ   -- System clock expects 48 MHz, FS/LS USB CLKENs divide-by is set to 8.
+pragma target PLLEN         ENABLED  -- 3x or 4x PLL Enabled
+pragma target FCMEN         DISABLED -- Fail-Safe Clock Monitor is disabled
+pragma target WRT           DISABLED -- Write protection off
+pragma target STVR          ENABLED  -- Stack Overflow or Underflow will cause a Reset
+pragma target LPBOR         DISABLED -- Low-Power BOR is disabled
+pragma target IESO          DISABLED -- Internal/External Switchover Mode is disabled
+pragma target PWRTE         DISABLED -- power up timer
+pragma target BROWNOUT      DISABLED -- no brownout detection
+pragma target WDT           DISABLED -- Watchdog disabled
+pragma target MCLR          INTERNAL -- Internal reset
+pragma target LVP           ENABLED  -- Use low-voltage programming
+pragma target VOLTAGE       MAXIMUM  -- brown out voltage
+pragma target CP            DISABLED -- Program memory code protection is disabled
+OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator
+                                  
+-- Make all pins digital I/O instead of analog.
+enable_digital_io()
+
+-- High Endurance Flash (HEF) address declarations. It starts at the last FLASH 
+-- address minus 128 bytes. 
+const HEF_NR_OF_BYTES    = 128
+const HEF_ADDRESS_OFFSET = 8192 - HEF_NR_OF_BYTES
+include pic_data_hef
+
+-- LED IO definition
+alias led             is pin_c2
+alias led_direction   is pin_c2_direction
+led_direction = output
+
+var byte i,j                         
+var bit led_value = ON
+var bit all_ok = TRUE
+var bit once = true
+led = OFF
+i = 0
+
+forever loop
+   _usec_delay(100_000)          
+
+   -- As long as the led blinks all written data equals the data is read back.
+   -- In case of a difference in data the led will be turned off. After a 
+   -- succesfull write and read cycle of HEF_NR_OF_BYTES bytes the LED stays on.
+   if all_ok then
+      led_value = !led_value   -- toggle the led
+      data_hef_write(i,i)      -- write value
+      j = data_hef(i)          -- read back
+      if (j != i) then
+         all_ok = FALSE
+         led_value = OFF
+      end if 
+   end if
+   i = i + 1
+
+   led = led_value
+   
+   if (i == HEF_NR_OF_BYTES) then
+      -- Final check, see if values where not overwritten.
+      j = 0
+      while all_ok & (j < HEF_NR_OF_BYTES) loop
+         if (j != data_hef(j)) then
+            all_ok = FALSE -- Error, data was overwritten.
+         end if
+         j = j + 1
+      end loop
+      if all_ok then 
+          led = ON
+      else
+         led = OFF
+      end if
+      while true loop
+         -- This will never end.
+      end loop
+   end if         
+
+end loop
+
+
