@@ -655,6 +655,132 @@ pinmap = {
           "RE2" : ["RE2", "AN7"], 
           "RE3" : ["RE3"]
           },
+   "16F15213": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"]
+          },
+   "16F15214": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"]
+          },
+   "16F15223": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RC0" : ["RC0", "SMB_I2C"], 
+          "RC1" : ["RC1", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F15224": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RC0" : ["RC0", "SMB_I2C"], 
+          "RC1" : ["RC1", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F15225": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RC0" : ["RC0", "SMB_I2C"], 
+          "RC1" : ["RC1", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F15243": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RB4" : ["RB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0"], 
+          "RC1" : ["RC1"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6"], 
+          "RC7" : ["RC7"]
+          },
+   "16F15244": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RB4" : ["RB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0"], 
+          "RC1" : ["RC1"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6"], 
+          "RC7" : ["RC7"]
+          },
+   "16F15245": 
+          {
+          "RA0" : ["RA0", "ANA0"], 
+          "RA1" : ["RA1", "ANA1", "VREF+"], 
+          "RA2" : ["RA2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "ANA4", "CLKOUT"], 
+          "RA5" : ["RA5", "ANA5", "CLKIN", "ECIN"], 
+          "RB4" : ["RB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0"], 
+          "RC1" : ["RC1"], 
+          "RC2" : ["RC2", "ANC2"], 
+          "RC3" : ["RC3", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6"], 
+          "RC7" : ["RC7"]
+          },
    "16F1526": 
           {
           "RA0" : ["RA0", "AN0"], 
@@ -9830,6 +9956,96 @@ pinmap = {
           "RB6" : ["RB6", "AN5", "T1OSO", "T1CKI"], 
           "RB7" : ["RB7", "AN6", "T1OSI"]
           },
+   "18F04Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "18F04Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "OPA1IN0+", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "OPA1IN0-", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "18F05Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "18F05Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "OPA1IN0+", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "OPA1IN0-", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "18F06Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "18F06Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "OPA1IN0+", "SMB_I2C", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "OPA1IN0-", "SMB_I2C", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
    "18F1220": 
           {
           "RA0" : ["RA0", "AN0"], 
@@ -10008,6 +10224,132 @@ pinmap = {
           "RC5" : ["RC5", "CCP1", "P1A", "T0CKI"], 
           "RC6" : ["RC6", "AN8", "SS", "T13CKI", "T1OSCI"], 
           "RC7" : ["RC7", "AN9", "SDO", "T1OSCO"]
+          },
+   "18F14Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "18F14Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "OPA1IN0-", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "OPA1IN0+", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "18F15Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "18F15Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "OPA1IN0-", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "OPA1IN0+", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "18F16Q40": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "18F16Q41": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "C1IN0+", "OPA1IN3-", "OPA1IN3+", "ANA0"], 
+          "RA1" : ["RA1", "C1IN0-", "C2IN0-", "VREF+", "ANA1"], 
+          "RA2" : ["RA2", "OPA1IN2-", "OPA1IN2+", "DAC1OUT2", "VREF-", "ZCD", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "SOSCI", "ANA5"], 
+          "RB4" : ["RB4", "OPA1IN0-", "SMB_I2C", "ANB4"], 
+          "RB5" : ["RB5", "OPA1IN0+", "ANB5"], 
+          "RB6" : ["RB6", "SMB_I2C", "ANB6"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "C2IN0+", "ANC0"], 
+          "RC1" : ["RC1", "C1IN1-", "C2IN1-", "ANC1"], 
+          "RC2" : ["RC2", "OPA1OUT", "C1IN2-", "C2IN2-", "ANC2"], 
+          "RC3" : ["RC3", "OPA1IN1-", "OPA1IN1+", "C1IN3-", "C2IN3-", "ANC3"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
           },
    "18F2220": 
           {
