@@ -4,7 +4,7 @@ Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2019, all rights reserved.
+Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
 
 Revision: $Revision$
 
@@ -61,8 +61,8 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.3.3"     # script version
-compilerversion = "2.5r3"   # latest JalV2 compiler version
+scriptversion = "1.4.0"     # script version
+compilerversion = "2.5r4"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
@@ -609,6 +609,17 @@ def list_devicefile_header(fp, picfile):
     fp.write("--\n")
 
 
+def determine_max_fuse_size():
+    max_fuse_size = 0
+    for i in range(cfgvar["fusesize"]):
+        if (cfgvar["fusename"][i]) != "RESERVED":
+            max_fuse_size = i
+    return max_fuse_size + 1
+
+
+#RJ 2020-06-20: Fix for errors in XML files to correct the fuse size. We go through all config register and define
+#               the maximum size as the last defined config register. This problem was found in PIC18F56Q43 and
+#               when fixed by Microchip this could be removed but the function does not do any harm.
 def list_config_memory(fp):
     """ Generate configuration memory declaration and defaults
 
@@ -617,35 +628,50 @@ def list_config_memory(fp):
    Output:  part of device files
    Returns: (nothing)
    """
-    fp.write("const word   _FUSES_CT             = " + "%d" % cfgvar["fusesize"] + "\n")
+    size = determine_max_fuse_size()
+    fp.write("const word   _FUSES_CT             = " + "%d" % size + "\n")
     if cfgvar["fusesize"] == 1:  # single word: only with baseline/midrange
         fp.write("const word   _FUSE_BASE            = 0x%X" % cfgvar["fuseaddr"] + "\n")
         fp.write("const word   _FUSES                = 0x%X" % cfgvar["fusedefault"][0] + "\n")
     else:
+        # RJ 2020-06-20: Added correction to fix the fuse size.
         if cfgvar["core"] != "16":
-            fp.write("const word   _FUSE_BASE[_FUSES_CT] = { 0x%X" % cfgvar["fuseaddr"])
+            fp.write("const word   _FUSE_BASE[_FUSES_CT] = {\n")
         else:
-            fp.write("const byte*3 _FUSE_BASE[_FUSES_CT] = { 0x%X" % cfgvar["fuseaddr"])
-        for i in range(cfgvar["fusesize"] - 1):
-            fp.write(",\n" + " " * 39 + "0x%X" % (cfgvar["fuseaddr"] + i + 1))
-        fp.write(" }\n")
+            fp.write("const byte*3 _FUSE_BASE[_FUSES_CT] = {\n")
+        # Write the addresses of the valid fuses.
+        for i in range(size):
+            fp.write(" " * 39 + "0x%X" % (cfgvar["fuseaddr"] + i))
+            # Check if last element was written.
+            if (i == (size - 1)):
+                fp.write(" \n")
+            else:
+                fp.write(",\n")
+        fp.write(" " * 36 + " }\n")
+        # Now write the names of the fuses (config registers).
         if cfgvar["core"] != "16":
-            fp.write("const word   _FUSES[_FUSES_CT]     = { 0x%04X," % (cfgvar["fusedefault"][0]) +
-                     " " * 10 + "-- CONFIG1\n")
-            for i in range(cfgvar["fusesize"] - 2):
-                fp.write(" " * 39 + "0x%04X" % (cfgvar["fusedefault"][i + 1]) + "," +
-                         " " * 10 + "-- CONFIG" + "%d" % (i + 2) + "\n")
-            fp.write(" " * 39 + "0x%04X" % (cfgvar["fusedefault"][-1]) + " }" +
-                     " " * 9 + "-- CONFIG" + "%d\n" % (cfgvar["fusesize"]))
+            fp.write("const word   _FUSES[_FUSES_CT]     = {\n")
+            for i in range(size):
+                fp.write(" " * 39 + "0x%04X" % (cfgvar["fusedefault"][i]))
+                if (i == (size - 1)):
+                    fp.write(" ")
+                else:
+                    fp.write("," )
+                fp.write(" " * 5 + "-- " + (cfgvar["fusename"][i]) + "\n")
+            fp.write(" " * 36 + " }\n")
         else:
-            fp.write("const byte   _FUSES[_FUSES_CT]     = { 0x%02X," % (cfgvar["fusedefault"][0]) +
-                     " " * 10 + "-- CONFIG1L" + "\n")
-            for i in range(cfgvar["fusesize"] - 2):
-                fp.write(" " * 39 + "0x%02X," % (cfgvar["fusedefault"][i + 1]) +
-                         " " * 10 + "-- CONFIG" + "%d" % ((i + 3) / 2) + "HL"[i % 2] + "\n")
-            fp.write(" " * 39 + "0x%02X }" % (cfgvar["fusedefault"][-1]) +
-                     " " * 9 + "-- CONFIG" + "%d" % (cfgvar["fusesize"] / 2) + "H\n")
+            fp.write("const byte   _FUSES[_FUSES_CT]     = {\n")
+            for i in range(size):
+                fp.write(" " * 39 + "0x%02X" % (cfgvar["fusedefault"][i]) )
+                if (i == (size - 1)):
+                    fp.write(" ")
+                else:
+                    fp.write(",")
+                fp.write( " " * 5 + "-- " + (cfgvar["fusename"][i]) + "\n")
+            fp.write(" " * 36 + " }\n")
+
     fp.write("--\n")
+
 
 
 def list_osccal(fp):
@@ -3286,21 +3312,22 @@ def collect_config_info(root, picname):
 
         if "FUSESDEFAULT" in picdata:
             cfgvar["fusedefault"] = [eval("0x" + picdata["FUSESDEFAULT"])]
+            #RJ 2020-06-20: Only one register, so defined.
+            cfgvar["fusename"] = ["CONFIG"] # Any value other than 'RESERVED' is OK.
         else:
-            core = cfgvar["core"]
-            if core == "12":
-                cfgvar["fusedefault"] = [0xFFF] * cfgvar["fusesize"]
-            elif (core == "14") | (core == "14H"):
-                cfgvar["fusedefault"] = [0x3FFF] * cfgvar["fusesize"]
-            else:
-                cfgvar["fusedefault"] = [0] * cfgvar["fusesize"]
-                load_fuse_defaults(root)
+            cfgvar["fusedefault"] = [255] * cfgvar["fusesize"]
+            #RJ 2020-06-20: Fix for error in config name. Now obtain config name from XML.
+            cfgvar["fusename"] = ["RESERVED"] * cfgvar["fusesize"]
+            load_fuse_defaults(root)
+
     wormholesectors = pgmspace[0].getElementsByTagName("edc:WORMHoleSector")
     if (len(wormholesectors) > 0):  # expected with 16-bits code only
         cfgvar["fuseaddr"] = eval(wormholesectors[0].getAttribute("edc:beginaddr"))
         cfgvar["fusesize"] = eval(wormholesectors[0].getAttribute("edc:endaddr")) - \
                              eval(wormholesectors[0].getAttribute("edc:beginaddr"))
-        cfgvar["fusedefault"] = [0] * cfgvar["fusesize"]
+        cfgvar["fusedefault"] = [255] * cfgvar["fusesize"]
+        # RJ 2020-06-20: Fix for error in config name. Now obtain config name from XML and address.
+        cfgvar["fusename"] = ["RESERVED"] * cfgvar["fusesize"]
         load_fuse_defaults(root)
 
     sfraddr = 0  # startvalue of SFR reg addr.
@@ -3437,8 +3464,7 @@ def load_fuse_defaults(root):
    Input:   - xml structure
    Output:  cfgvar["fusedefault"]
    Returns: (nothing)
-   Notes:   Can be used for all cores, but only useful with 16-bits
-            core since only defaults of 16-bits core will be updated.
+   Notes:   -
    """
     configfusesectors = root.getElementsByTagName("edc:ConfigFuseSector")
     if (len(configfusesectors) == 0):
@@ -3453,20 +3479,23 @@ def load_fuse_defaults(root):
                 dcraddr = load_dcrdef_default(dcrdef, dcraddr)
 
 
+
 def load_dcrdef_default(dcrdef, addr):
     """ Load individual configuration byte/word
 
    Input:   - dcrdef
             - current fuse address
+            - current fuse name
    Output:  part of device file
    Returns: next config fuse address
    """
     if (dcrdef.nodeName == "edc:AdjustPoint"):
         addr = addr + eval(dcrdef.getAttribute("edc:offset"))
     elif (dcrdef.nodeName == "edc:DCRDef"):
-        if (cfgvar["core"] == "16"):
-            index = addr - cfgvar["fuseaddr"]  # position in array
-            cfgvar["fusedefault"][index] = eval(dcrdef.getAttribute("edc:default"))
+        index = addr - cfgvar["fuseaddr"]  # position in array
+        cfgvar["fusedefault"][index] = eval(dcrdef.getAttribute("edc:default"))
+        # RJ 2020-06-22: Fix for error in config name. Now obtain config name from XML.
+        cfgvar["fusename"][index] = dcrdef.getAttribute("edc:cname")
         addr = addr + 1
     return addr
 
