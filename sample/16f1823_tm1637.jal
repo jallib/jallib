@@ -1,0 +1,223 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the TM1637 with six 7-segment displays.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Shows all features of the TM1637 library for the display 
+--              display functionality as well as the keyboard functionality.
+--              The default number of displays is 6 which can be overruled by 
+--              defining the constant TM1637_WIDTH with a value of 1 .. 6.
+--                 
+-- Sources:
+--
+-- Notes:       
+--
+include 16f1823                 
+
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all ports. 
+WPUA = 0b0011_1111       
+WPUC = 0b0011_1111       
+OPTION_REG_WPUEN = FALSE 
+
+enable_digital_io()
+
+-- TM1637 pin definition.
+alias tm1637_clk is pin_C0 -- Pin 10 for 14 pin DIP
+alias tm1637_clk_direction is pin_C0_direction
+alias tm1637_dio is pin_C1 -- Pin 9 for 14 pin DIP.    
+alias tm1637_dio_direction is pin_C1_direction   
+
+-- You can change the display width (default is 6 when not defined).
+; const byte TM1637_WIDTH = 4
+
+include tm1637
+tm1637_init() 
+
+--- Display 'hELLo ' on the display.
+const byte DISPLAY_HELLO[TM1637_WIDTH] = 
+             {
+             0b1000_0000, -- decimal point
+             0b0101_1100, -- o
+             0b0011_1000, -- L
+             0b0011_1000, -- L
+             0b0111_1001, -- E
+             0b0111_0100  -- h
+             }
+
+-- Wait for some time. 
+procedure wait_long() is
+   _usec_delay(5_000_000)
+end procedure
+
+
+procedure wait_short() is
+   _usec_delay(500_000)
+end procedure
+
+-- Check if a key is pressed. If so display it and wait for key release.
+procedure do_key() is
+
+   var byte key
+   
+   -- Check if a key was present and display it as ' NR   ' where NR is the
+   -- key number that has been pressed. 
+   key = tm1637_scan_key()
+   if (key != TM1637_NO_KEY) then
+      tm1637_display_clear()
+      tm1637_display_byte_dec(key,3,FALSE)
+   end if
+   while (tm1637_scan_key() != TM1637_NO_KEY) loop
+      -- Wait for key release.
+   end loop
+   
+end procedure
+ 
+         
+var dword big_pos_counter
+var sdword big_neg_counter
+var word word_counter
+var byte counter
+
+
+forever loop
+
+   -- Write a 'hELLo ' message by writing the segment data directly into the
+   -- global display data buffer.
+   for TM1637_WIDTH using counter loop
+      tm1637_display_data[counter] = DISPLAY_HELLO[counter]
+   end loop
+   -- We need to update the display with this segment data.
+   tm1637_display_update() 
+   wait_long()
+   
+   -- Switch display off for some time
+   tm1637_display_off()
+   wait_short()
+   tm1637_display_on()
+         
+   -- Change the brightness.
+   for (TM1637_MAX_BRIGHTNESS + 1) using counter loop
+      tm1637_set_brightness(counter)
+      wait_short()
+   end loop
+
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+   
+   -- Now clear the display, that is all segments are off.
+   tm1637_display_clear()
+   wait_short()
+
+   -- Set the dots on and off.
+   for TM1637_WIDTH using counter loop
+      tm1637_set_dot(TRUE, counter)
+      wait_short()
+      tm1637_set_dot(FALSE, counter)
+    end loop
+
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+    
+   -- Set an individual display and show its number.
+   tm1637_display_clear()
+   for TM1637_WIDTH using counter loop
+      tm1637_set_display(tm1637_digit_to_segment(counter), counter)
+      wait_short()
+      tm1637_set_display(TM1637_SEGMENT_OFF,counter)
+   end loop
+
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Write a hexdecimal nibble on the rightmost display.
+   tm1637_display_clear()
+   for 16 using counter loop
+      tm1637_display_nibble_hex(counter,0)
+      _usec_delay(200_000)
+   end loop
+   wait_short()
+  
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Write a hexdecimal byte on the rightmost display.
+   tm1637_display_clear()
+   for 256 using counter loop
+      tm1637_display_byte_hex(counter,0)
+      _usec_delay(10_000)
+   end loop
+   wait_short()
+   
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Write a hexdecimal word on the rightmost display.
+   tm1637_display_clear()
+   for 512 using word_counter loop
+      tm1637_display_word_hex(word_counter,0)
+   end loop
+   wait_short()
+   
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Show a counter in another way with leading zero's.
+   tm1637_display_clear()
+   for 2021 using big_pos_counter loop
+      tm1637_display_dword_dec(big_pos_counter,0,TRUE)
+   end loop
+   wait_short()
+   
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Show a counter in another way without leading zero's, skipping 3 positions.
+   tm1637_display_clear()
+   for 1_000 using big_pos_counter loop
+      tm1637_display_dword_dec(big_pos_counter,3,FALSE)
+   end loop
+   wait_short()
+   
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+   -- Show a negative counter in another way without leading zero's.
+   tm1637_display_clear()
+   for 2021 using big_pos_counter loop
+      big_neg_counter = -big_pos_counter
+      tm1637_display_sdword_dec(big_neg_counter,0,FALSE)
+   end loop
+   wait_short()
+
+   -- Check if a key was pressed and if so show its number on the display.
+   do_key()
+
+end loop
+

@@ -1,0 +1,626 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for the TM1637 LED drive control special circuit.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Libray for use of the TM1637 LED drive control special circuit.
+--              It provides functions to write data to the LED displays and a 
+--              function to read the keyboard.
+--
+-- Sources: Inspired by: https://github.com/avishorp/TM1637
+--          Also see the TM1637 datasheet of Titan Micro Electronics 
+--
+-- Notes:   The following pins must be defined by the main program before 
+--          including this library:
+--          -) alias tm1637_clk            -- To CLK of the TM1637
+--          -) alias tm1637_clk_direction 
+--          -) alias tm1637_dio            -- To DIO of the TM1637 
+--          -) alias tm1637_dio_direction 
+--
+--          The default number of displays is 6 which can be overruled by 
+--          defining the constant TM1637_WIDTH with a value of 1 .. 6.
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Display constants. We assume 6 displays unless defined otherwise.
+if !defined(TM1637_WIDTH) then  
+   const byte TM1637_WIDTH = 6
+end if
+
+-- Brightness values to control the brightness of the LED displays.
+const byte TM1637_MIN_BRIGHTNESS = 0
+const byte TM1637_MAX_BRIGHTNESS = 7
+
+-- Definition of the 7 segment display of the TM1637:
+--      A
+--     ---
+--  F |   | B
+--     -G-
+--  E |   | C
+--     ---
+--      D   dp
+--
+const byte TM1637_SEGMENT_A   = 0b0000_0001
+const byte TM1637_SEGMENT_B   = 0b0000_0010
+const byte TM1637_SEGMENT_C   = 0b0000_0100
+const byte TM1637_SEGMENT_D   = 0b0000_1000
+const byte TM1637_SEGMENT_E   = 0b0001_0000
+const byte TM1637_SEGMENT_F   = 0b0010_0000
+const byte TM1637_SEGMENT_G   = 0b0100_0000
+const byte TM1637_SEGMENT_DP  = 0b1000_0000
+const byte TM1637_SEGMENT_OFF = 0b0000_0000
+const byte TM1637_SEGMENT_ALL = 0b1111_1111
+const byte TM1637_SEGMENT_MIN = 0b0100_0000
+
+-- Keyboard constants. The numbering follows the numbering shown in the datasheet.
+const byte TM1637_NO_KEY  = 0
+const byte TM1637_MIN_KEY = 1
+const byte TM1637_MAX_KEY = 16
+
+-- The data and clock pins must be defined by the main program.
+if !(defined(tm1637_dio) & defined(tm1637_dio_direction)) then
+   _error "tm1637_dio and tm1637_dio_direction must be defined"
+end if
+if !(defined(tm1637_clk) & defined(tm1637_clk_direction)) then
+   _error "tm1637_clk and tm1637_clk _direction must be defined"
+end if
+
+-- Global array that keeps the display data in segment format. It can be
+-- used to set segment data directly from the main program.
+-- Note: Use function tm1637_digit_to_segment() to translate a digit (0..F) to
+-- the correct segment value for the display. A segment data of '0' will clear
+-- all segments of that display. When this array is used, always call 
+-- tm1637_display_update() afterwards to send the data to the display.
+var byte tm1637_display_data[TM1637_WIDTH]
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Initialize and clear the display. The display is on but all segments are off.
+procedure tm1637_init()
+
+-- Turn all displays on.
+procedure tm1637_display_on()
+
+-- Turn all displays off.
+procedure tm1637_display_off()
+
+-- Set the brightness of the displays. Brightness is in range 0..7.
+procedure tm1637_set_brightness(byte in brightness)
+
+-- Switch all segments off.
+procedure tm1637_display_clear()
+
+-- Display a hexadecimal nibble on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 1 (most left)                           
+procedure tm1637_nibble_hex(byte in value, byte in display_number)
+
+-- Display a hexadecimal byte on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 2 (most left)                           
+procedure tm1637_display_byte_hex(byte in value, byte in display_number)
+
+-- Display a hexadecimal word on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 4 (most left)                           
+procedure tm1637_display_word_hex(word in value, byte in display_number)
+
+-- Display a byte in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number op positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+procedure tm1637_display_byte_dec(byte in number, byte in display_offset,
+                                  bit in leading_zeros) 
+                                  
+-- Display a word in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number op positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+procedure tm1637_display_word_dec(word in number, byte in display_offset,
+                                   bit in leading_zeros) 
+
+-- Display a dword in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number op positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+procedure tm1637_display_dword_dec(dword in number, byte in display_offset,
+                                   bit in leading_zeros) 
+
+-- Display a sdword in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number of positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- Number is limited to -99999. 
+procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
+                                    bit in leading_zeros)
+                                  
+-- Encode the given digit to the correct display segments. 
+function tm1637_digit_to_segment(byte in value) return byte
+
+-- Send the data stored in the global array tm1637_display_data to the displays.
+procedure tm1637_display_update()
+
+-- Set the segments for the given display with the given segment data.
+-- Note: Use function tm1637_digit_to_segment() to translate a digit (0..F) to
+-- the correct segment value for the display. 
+-- A segment data of TM1637_SEGMENT_OFF will clear all segments of that display. 
+-- Display number must be in range 0 (most right) to TM1637_WIDTH - 1 (most left)
+procedure tm1637_set_display(byte in segment_data, byte in display_number)
+
+-- Set or clear the dot of the given display determined by the dot value. 
+-- A value of 'dot_on' TRUE will turn the dot on, FALSE will turn it off.
+-- Display number must be in range 0 (most right) to TM1637_WIDTH - 1 (most left)
+procedure tm1637_set_dot(bit in dot_on, byte in display_number)
+
+-- Check if a key was pressed and if so return the key number. The number is
+-- between TM1637_MIN_KEY and TM1637_MAX_KEY or TM1637_NO_KEY if no key was
+-- pressed.
+function tm1637_scan_key() return byte 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Translation table for converting 0..F to the 7-segment display.
+const byte _TM1637_DIGIT_TO_SEGMENT[16] = 
+{
+  0b0011_1111,    -- 0
+  0b0000_0110,    -- 1
+  0b0101_1011,    -- 2
+  0b0100_1111,    -- 3
+  0b0110_0110,    -- 4
+  0b0110_1101,    -- 5
+  0b0111_1101,    -- 6
+  0b0000_0111,    -- 7
+  0b0111_1111,    -- 8
+  0b0110_1111,    -- 9
+  0b0111_0111,    -- A
+  0b0111_1100,    -- b
+  0b0011_1001,    -- C
+  0b0101_1110,    -- d
+  0b0111_1001,    -- E
+  0b0111_0001     -- F
+  }
+
+-- Translation table for converting key data to key numbers
+const byte _TM1637_KEY_VALUE_TO_KEY_NUMBER[TM1637_MAX_KEY] =
+{
+   0b1111_0111, -- S1
+   0b1110_1111, -- S2
+   0b1110_1011, -- S3
+   0b1111_0011, -- S4
+   0b1111_0110, -- S5
+   0b1110_1110, -- S6
+   0b1110_1010, -- S7
+   0b1111_0010, -- S8
+   0b1111_0101, -- S9
+   0b1110_1101, -- S10
+   0b1110_1001, -- S11
+   0b1111_0001, -- S12
+   0b1111_0100, -- S13
+   0b1110_1100, -- S14
+   0b1110_1000, -- S15
+   0b1111_0000  -- S16
+}
+
+-- TM1637 commands.
+const byte _TM1637_COMMAND_DATA     = 0x40
+const byte _TM1637_COMMAND_KEY_DATA = 0x42
+const byte _TM1637_COMMAND_DISPLAY  = 0x80
+const byte _TM1637_COMMAND_ADDRESS  = 0xC0
+
+-- Variable to keep track of the display brightness and display on/off.
+var byte _tm1637_brightness
+
+-- -------------------- Private function prototypes ---------------------------
+procedure _tm1673_clock_delay()
+procedure _tm1637_start_transmission()
+procedure _tm1637_acknowlege_transmission()
+procedure _tm1637_stop_transmission()
+function _tm1637_read_byte() return byte
+procedure _tm1637_write_byte(byte in data)
+
+-- ------------------------- Final implementation  -----------------------------
+ 
+-- Initialize and clear the display. The display is on but all segments are off.
+procedure tm1637_init() is
+
+   -- Initialize interface pins. There are pull-up resistors so we make the
+   -- pins input as to pull the pins high. Both clock and data are default
+   -- set to LOW as to use this for controlling the output level.
+   tm1637_clk = LOW
+   tm1637_clk_direction = input
+   tm1637_dio = LOW
+   tm1637_dio_direction = input
+   -- Set brightness to display on and a default brightness value.
+   _tm1637_brightness = 0b1000_1100
+   tm1637_display_clear()
+
+end procedure
+
+
+-- Turn all displays on.
+procedure tm1637_display_on() is
+
+   _tm1637_brightness = _tm1637_brightness | 0b0000_1000 
+   tm1637_display_update()
+
+end procedure
+
+
+-- Turn all displays off.
+procedure tm1637_display_off() is
+
+   _tm1637_brightness = _tm1637_brightness & 0b1111_0111 
+   tm1637_display_update()
+
+end procedure 
+
+
+-- Set the brightness of the displays. Brightness is in range 0..7.
+procedure tm1637_set_brightness(byte in brightness) is
+
+   -- First clear the old brightness setting.
+   _tm1637_brightness = _tm1637_brightness & 0b1000_1000 
+   _tm1637_brightness = _tm1637_brightness | (brightness & 0b0000_0111)    
+   tm1637_display_update()
+
+end procedure
+
+
+-- Switch all segments off.
+procedure tm1637_display_clear() is
+
+   var byte counter
+   
+   for TM1637_WIDTH using counter loop
+      tm1637_display_data[counter] = TM1637_SEGMENT_OFF
+   end loop
+  tm1637_display_update()
+
+end procedure
+
+
+-- Display a hexadecimal nibble on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 1 (most left)                           
+procedure tm1637_display_nibble_hex(byte in value, byte in display_number) is
+
+   if (display_number < TM1637_WIDTH) then 
+      tm1637_display_data[display_number] = tm1637_digit_to_segment(value)
+      tm1637_display_update()
+   end if  
+
+end procedure
+
+
+-- Display a hexadecimal byte on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 2 (most left)                           
+procedure tm1637_display_byte_hex(byte in value, byte in display_number) is
+
+    tm1637_display_nibble_hex(value & 0x0F, display_number)
+    tm1637_display_nibble_hex(value >> 4, display_number + 1)
+    
+end procedure
+
+
+-- Display a hexadecimal word on a specific display. The display_number must
+-- be in range 0 (most right) to TM1637_WIDTH - 4 (most left)                           
+procedure tm1637_display_word_hex(word in value, byte in display_number) is
+
+    tm1637_display_byte_hex(value & 0x00FF, display_number)
+    tm1637_display_byte_hex(value >> 8, display_number + 2)
+    
+end procedure
+
+
+-- Display a byte in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number op positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+procedure tm1637_display_byte_dec(byte in number, byte in display_offset,
+                                  bit in leading_zeros) is 
+
+   tm1637_display_dword_dec(dword(number), display_offset, leading_zeros)    
+
+end procedure
+
+
+-- Display a word in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number op positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+procedure tm1637_display_word_dec(word in number, byte in display_offset,
+                                  bit in leading_zeros) is 
+
+   tm1637_display_dword_dec(dword(number), display_offset, leading_zeros)    
+
+end procedure
+
+
+-- Display a dword in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number of positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- Number is limited to 999999.  When 0 is given as number, nothing is displayed.
+-- unless 'leading_zeros' is set.
+procedure tm1637_display_dword_dec(dword in number, byte in display_offset,
+                                   bit in leading_zeros) is 
+
+   var dword quotient
+   var byte counter, remaining
+  
+   if (display_offset < TM1637_WIDTH) then 
+      for (TM1637_WIDTH - display_offset) using counter loop
+         if (number > 0) then
+            quotient = number / 10
+            remaining = byte(number % 10)
+            tm1637_display_data[counter + display_offset] = 
+                tm1637_digit_to_segment(remaining) 
+            number = quotient
+         else
+            if leading_zeros then
+               tm1637_display_data[counter + display_offset] = 
+                  tm1637_digit_to_segment(0) 
+            else
+               -- If the number is 0 we at least have to write that once.
+               if (counter == 0) then
+                  tm1637_display_data[counter + display_offset] = 
+                     _TM1637_DIGIT_TO_SEGMENT[0]
+               else
+                  tm1637_display_data[counter + display_offset] = 
+                     TM1637_SEGMENT_OFF  
+               end if
+            end if
+         end if 
+      end loop
+      tm1637_display_update() 
+   end if 
+
+end procedure
+
+
+-- Display a sdword in decimal format where the least significant digit is written
+-- at the location of 'display_offset' which is the number of positions from the right.
+-- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- Number is limited to -99999. 
+procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
+                                    bit in leading_zeros) is 
+
+   var dword pos_number
+   var byte minus_position
+                                    
+   if (number >= 0) then
+      pos_number = dword(number)
+   else
+      pos_number = dword(-number)
+      if (pos_number < 10) then
+         minus_position = 1
+      elsif (pos_number < 100) then
+         minus_position = 2
+      elsif (pos_number < 1_000) then
+         minus_position = 3
+      elsif (pos_number < 10_000) then
+         minus_position = 4
+      else
+         minus_position = 5
+      end if 
+   end if
+   tm1637_display_dword_dec(pos_number, display_offset, leading_zeros)
+   tm1637_display_data[minus_position] = TM1637_SEGMENT_MIN
+   tm1637_display_update() 
+end procedure
+
+ 
+-- Encode the given digit to the correct display segments. 
+function tm1637_digit_to_segment(byte in value) return byte is
+
+   return _TM1637_DIGIT_TO_SEGMENT[value & 0x0F]
+
+end function
+
+
+-- Send the data stored in the global array tm1637_display_data to the displays.
+procedure tm1637_display_update() is
+
+   var byte counter
+   
+   -- Write SRAM data in address auto increment mode 1 (see datasheet).l
+   _tm1637_start_transmission()
+   _tm1637_write_byte(_TM1637_COMMAND_DATA)
+   _tm1637_acknowlege_transmission()
+   _tm1637_stop_transmission()
+   -- Write the address of the first display.
+   _tm1637_start_transmission()
+   _tm1637_write_byte(_TM1637_COMMAND_ADDRESS)
+   _tm1637_acknowlege_transmission()
+   -- Now copy and write the data to the display.
+   for TM1637_WIDTH using counter loop
+      _tm1637_write_byte(tm1637_display_data[counter]) 
+      _tm1637_acknowlege_transmission()
+   end loop
+   _tm1637_stop_transmission() 
+   -- Write the third command to display the data.  
+   _tm1637_start_transmission()
+   _tm1637_write_byte(_TM1637_COMMAND_DISPLAY | _tm1637_brightness)
+   _tm1637_acknowlege_transmission()
+   _tm1637_stop_transmission()
+
+end procedure
+
+
+-- Set the segments for the given display with the given segment data.
+-- Note: Use function tm1637_digit_to_segment() to translate a digit (0..F) to
+-- the correct segment value for the display. 
+-- A segment data of TM1637_SEGMENT_OFF will clear all segments of that display. 
+-- Display number must be in range 0 (most right) to TM1637_WIDTH - 1 (most left)
+procedure tm1637_set_display(byte in segment_data, byte in display_number) is
+
+   if (display_number < TM1637_WIDTH) then 
+      tm1637_display_data[display_number] = segment_data
+      tm1637_display_update()
+   end if
+
+end procedure
+
+
+-- Set or clear the dot of the given display determined by the dot value. 
+-- A value of 'dot_on' TRUE will turn the dot on, FALSE will turn it off.
+-- Display number must be in range 0 (most right) to TM1637_WIDTH - 1 (most left)
+procedure tm1637_set_dot(bit in dot_on, byte in display_number) is
+
+   if (display_number < TM1637_WIDTH) then 
+      if dot_on then
+         tm1637_display_data[display_number] = 
+         tm1637_display_data[display_number] | TM1637_SEGMENT_DP
+      else
+         tm1637_display_data[display_number] = 
+         tm1637_display_data[display_number] & !TM1637_SEGMENT_DP
+      end if
+      tm1637_display_update()
+   end if
+
+end procedure
+
+
+-- Check if a key was pressed and if so return the key number. The number is
+-- between TM1637_MIN_KEY and TM1637_MAX_KEY or TM1637_NO_KEY if no key was
+-- pressed.
+function tm1637_scan_key() return byte is
+
+  var byte key, counter
+  var bit  found
+ 
+   _tm1637_start_transmission()
+   _tm1637_write_byte(_TM1637_COMMAND_KEY_DATA)
+   _tm1637_acknowlege_transmission()
+   -- Now read the data.   
+   key = _tm1637_read_byte()   
+   _tm1637_acknowlege_transmission()
+   _tm1637_stop_transmission() 
+   -- Convert value read to a key number.
+   counter = 0
+   found = FALSE
+   while !found & (counter < TM1637_MAX_KEY) loop
+      if (key == _TM1637_KEY_VALUE_TO_KEY_NUMBER[counter]) then
+         found = TRUE
+      else
+        counter = counter + 1
+     end if
+   end loop
+   if found then
+      key = counter + 1
+   else
+      key = TM1637_NO_KEY        
+   end if
+
+   return key  
+
+end function
+
+-- -------------------- Private function prototypes ---------------------------
+
+-- Lower the clock to the TM1673. 
+procedure _tm1673_clock_delay() is
+
+   _usec_delay(3)
+
+end procedure
+
+
+-- Start a data transmission.
+procedure _tm1637_start_transmission() is
+
+   tm1637_clk_direction = input
+   tm1637_dio_direction = input
+   _tm1673_clock_delay()  
+   tm1637_dio_direction = output
+
+end procedure
+
+
+-- Acknowledge a data transmission. 
+procedure _tm1637_acknowlege_transmission() is
+
+   -- Check acknowledge.
+   tm1637_clk_direction = output
+   _tm1673_clock_delay()
+   tm1637_dio_direction = input
+   _tm1673_clock_delay()
+   tm1637_clk_direction = input
+   _tm1673_clock_delay()
+   -- Acknowledge.
+   if !tm1637_dio then
+      tm1637_dio_direction = output
+      _tm1673_clock_delay()    
+   end if 
+   tm1637_clk_direction = output
+   _tm1673_clock_delay()
+
+end procedure
+
+
+-- Stop a data transmission.
+procedure _tm1637_stop_transmission() is
+
+   tm1637_clk_direction = input
+   _tm1673_clock_delay()  
+   tm1637_dio_direction = input
+   _tm1673_clock_delay()  
+
+end procedure
+
+
+-- Read one byte to the TM1673 and return it. Transmission must have been started. 
+function _tm1637_read_byte() return byte is
+
+  var byte data
+  var bit  data_bit_in at data:7
+
+   tm1637_dio_direction = input
+   tm1637_clk_direction = output
+   _tm1673_clock_delay()
+   for 8 loop
+      data = data >> 1
+      tm1637_clk_direction = input
+      _tm1673_clock_delay()
+      data_bit_in = tm1637_dio
+      _tm1673_clock_delay()  
+      tm1637_clk_direction = output
+      _tm1673_clock_delay()
+   end loop
+   return data
+
+end function
+
+
+-- Write one byte to the TM1673. Transmission must have been started. 
+procedure _tm1637_write_byte(byte in data) is
+
+  var bit data_bit_out at data:0
+ 
+   for 8 loop
+      -- Clock low.
+      tm1637_clk_direction = output
+      if data_bit_out then
+         -- Data high.
+         tm1637_dio_direction = input
+      else
+         -- Data low.
+         tm1637_dio_direction = output
+      end if
+      _tm1673_clock_delay() 
+      -- Clock high. 
+      tm1637_clk_direction = input
+      _tm1673_clock_delay()
+      data = data >> 1
+   end loop
+   tm1637_clk_direction = output
+  _tm1673_clock_delay()
+
+end procedure
+
+
