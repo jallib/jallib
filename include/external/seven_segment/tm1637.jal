@@ -25,11 +25,15 @@
 --          -) alias tm1637_clk_direction 
 --          -) alias tm1637_dio            -- To DIO of the TM1637 
 --          -) alias tm1637_dio_direction 
+--          Note that modules with 7-segement displays often have capacitors on
+--          the clk and dio line. These should be removed.
 --
 --          The default number of displays is 6 which can be overruled by 
 --          defining the constant TM1637_WIDTH with a value of 1 .. 6.
+--          Depending on the module used, the display order can be different.
+--          This can be set by defining an array TM1637_DISPLAY_ORDER.
 --
-
+--
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
 -- -----------------------------------------------------------------------------
@@ -38,6 +42,21 @@
 if !defined(TM1637_WIDTH) then  
    const byte TM1637_WIDTH = 6
 end if
+
+-- Modules may have different ways in which the displays are mounted. This
+-- is made configurable by defining the TM1637_DISPLAY_ORDER, array. It defines
+-- the order in which the data is written to the display. By default the library 
+-- writes data in the order that from the datasheet 'Data 1' matches with the 
+-- display connected to GRID 1. The numbers of the array must represent the
+-- GRID numbers.
+if !defined(TM1637_DISPLAY_ORDER) then 
+   -- Setting for a certain 6 times 7-segment display. The left most value
+   -- is the left most display on the module. Data is written from display 1
+   -- to TM1637_WIDTH.
+   const byte TM1637_DISPLAY_ORDER[TM1637_WIDTH] = {4,5,6,1,2,3} 
+end if
+
+
 
 -- Brightness values to control the brightness of the LED displays.
 const byte TM1637_MIN_BRIGHTNESS = 0
@@ -83,6 +102,8 @@ end if
 -- the correct segment value for the display. A segment data of '0' will clear
 -- all segments of that display. When this array is used, always call 
 -- tm1637_display_update() afterwards to send the data to the display.
+-- The first byte in the array contains the data for the display connected to
+-- Grid 1, the seconds to Grid 2, etc.
 var byte tm1637_display_data[TM1637_WIDTH]
 
 -- -----------------------------------------------------------------------------
@@ -119,25 +140,31 @@ procedure tm1637_display_word_hex(word in value, byte in display_number)
 -- Display a byte in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number op positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- When 0 is given as number, nothing is displayed unless 'leading_zeros' is set, 
+-- then only one 0 is displayed.  
 procedure tm1637_display_byte_dec(byte in number, byte in display_offset,
                                   bit in leading_zeros) 
                                   
 -- Display a word in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number op positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- When 0 is given as number, nothing is displayed unless 'leading_zeros' is set, 
+-- then only one 0 is displayed.  
 procedure tm1637_display_word_dec(word in number, byte in display_offset,
                                    bit in leading_zeros) 
 
 -- Display a dword in decimal format where the least significant digit is written
--- at the location of 'display_offset' which is the number op positions from the right.
+-- at the location of 'display_offset' which is the number of positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- Number is limited to 999999 when using 6 displays.  When 0 is given as number, 
+-- nothing is displayed unless 'leading_zeros' is set, then only one 0 is displayed.
 procedure tm1637_display_dword_dec(dword in number, byte in display_offset,
                                    bit in leading_zeros) 
 
 -- Display a sdword in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number of positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
--- Number is limited to -99999. 
+-- Number is limited to -99999 when using 6 displays. 
 procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
                                     bit in leading_zeros)
                                   
@@ -145,6 +172,8 @@ procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
 function tm1637_digit_to_segment(byte in value) return byte
 
 -- Send the data stored in the global array tm1637_display_data to the displays.
+-- The order in which the data from the global array is written is defined by
+-- TM1637_DISPLAY_ORDER.
 procedure tm1637_display_update()
 
 -- Set the segments for the given display with the given segment data.
@@ -323,6 +352,8 @@ end procedure
 -- Display a byte in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number op positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- When 0 is given as number, nothing is displayed unless 'leading_zeros' is set, 
+-- then only one 0 is displayed.  
 procedure tm1637_display_byte_dec(byte in number, byte in display_offset,
                                   bit in leading_zeros) is 
 
@@ -334,6 +365,8 @@ end procedure
 -- Display a word in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number op positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
+-- When 0 is given as number, nothing is displayed unless 'leading_zeros' is set, 
+-- then only one 0 is displayed.  
 procedure tm1637_display_word_dec(word in number, byte in display_offset,
                                   bit in leading_zeros) is 
 
@@ -345,8 +378,8 @@ end procedure
 -- Display a dword in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number of positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
--- Number is limited to 999999.  When 0 is given as number, nothing is displayed.
--- unless 'leading_zeros' is set.
+-- Number is limited to 999999 when using 6 displays.  When 0 is given as number, 
+-- nothing is displayed unless 'leading_zeros' is set, then only one 0 is displayed.
 procedure tm1637_display_dword_dec(dword in number, byte in display_offset,
                                    bit in leading_zeros) is 
 
@@ -386,7 +419,7 @@ end procedure
 -- Display a sdword in decimal format where the least significant digit is written
 -- at the location of 'display_offset' which is the number of positions from the right.
 -- If 'leading_zeros' is TRUE then '0' are written in front of the number.
--- Number is limited to -99999. 
+-- Number is limited to -99999 when using 6 displays.  
 procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
                                     bit in leading_zeros) is 
 
@@ -421,9 +454,11 @@ end function
 
 
 -- Send the data stored in the global array tm1637_display_data to the displays.
+-- The order in which the data from the global array is written is defined by
+-- TM1637_DISPLAY_ORDER.
 procedure tm1637_display_update() is
 
-   var byte counter
+   var byte counter, order
    
    -- Write SRAM data in address auto increment mode 1 (see datasheet).l
    _tm1637_start_transmission()
@@ -436,7 +471,8 @@ procedure tm1637_display_update() is
    _tm1637_acknowlege_transmission()
    -- Now copy and write the data to the display.
    for TM1637_WIDTH using counter loop
-      _tm1637_write_byte(tm1637_display_data[counter]) 
+      order = TM1637_DISPLAY_ORDER[counter] - 1
+      _tm1637_write_byte(tm1637_display_data[order]) 
       _tm1637_acknowlege_transmission()
    end loop
    _tm1637_stop_transmission() 
