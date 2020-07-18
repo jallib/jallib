@@ -1,0 +1,240 @@
+-- Title: GLCD SSD1306 demo sample showing text (fonts).
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.5r4 
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib  (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Demo program showing how to use GLCD SSD1306. It demonstrates
+--              all features of the glcd_ssd1360.jal library. This sample shows 
+--              the text (font usage). 
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
+WPUC = 0b0011_1000       -- Weak pull-up for unused pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+
+-- Define the pins. In this case we define only the IIC
+alias ssd1306_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias ssd1306_sck_direction is pin_C0_direction
+alias ssd1306_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
+alias ssd1306_sdo_direction is pin_C1_direction 
+
+-- Since this PIC does not have more than 1024 bytes of data memory we use
+-- will write the text only mode.
+const SSD1306_TEXT_ONLY = TRUE
+
+-- We use the IIC hardware of this PIC but if we want to be flexible in our
+-- pin assignment we can also use a software implementation by defining
+-- the following constant.
+-- const SSD1306_SOFTWARE_IIC = TRUE
+
+include delay
+include print
+
+-- Font libraries.
+include glcd_5x7_font
+include glcd_6x8_font
+include glcd_font
+glcd_font_use(FONT_5X7)
+
+-- Include and initialize the GLCD lib. This will also initialize the IIC
+-- interface.
+include glcd_ssd1306
+ssd1306_init()
+
+
+var byte x
+var bit use_font_1 = false
+
+-- First write the demo text.
+ssd1306_clear_screen()
+glcd_font_use(FONT_6X8)
+ssd1306_goto(22,0)
+print_string(glcd,"JAL SSD1306")
+ssd1306_goto(20,1)
+print_string(glcd,"Library Demo")
+ssd1306_goto(30,4)
+print_string(glcd,"2020-07-18")
+ssd1306_goto(30,5)
+print_string(glcd,"Text only")
+ssd1306_goto(32,6)
+print_string(glcd,"Font 6x8")
+delay_1s(3)
+
+-- Gotoxy test. Show all corners.
+glcd_font_use(FONT_6X8)
+-- Top left.
+ssd1306_goto(0,0)
+glcd = "8"
+-- Top utmost right for this font size.
+ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
+glcd = "8"          -- at 122 .. 127.
+-- Bottom left.
+ssd1306_goto(0,7)
+glcd = "8"
+-- Bottom utmost right for this font size.
+ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
+glcd = "8"          -- at 122 .. 127.
+delay_1s(3)
+
+forever loop
+
+   ssd1306_clear_screen()
+   ssd1306_goto(0,0)
+   
+   -- switch fonts and inform user
+   use_font_1 = !use_font_1
+   if use_font_1 then
+      glcd_font_use(FONT_5X7)
+      print_string(glcd,"Font 5*7          ")
+      delay_1s(1)
+   else
+      glcd_font_use(FONT_6X8)
+      print_string(glcd,"Font 6*8          ")
+      delay_1s(1)
+   end if
+
+   ssd1306_goto(0,3)
+   -- we'll print numbers starting with "0" in inverted format.
+   x = 48
+   -- numbers are printed inverted
+   glcd_background_color = GLCD_BLACK
+   while x <= 57 loop
+      glcd = x
+      delay_100ms(1)
+      x = x + 1
+   end loop
+
+   ssd1306_goto(0,4)
+   -- now print capital letters and small letters in normal format.
+   x = 65  -- this is "A"
+   -- not inverted (ie. normal)
+   glcd_background_color = GLCD_WHITE
+   while x <= 122 loop
+      glcd = x
+      delay_100ms(1)
+      x = x + 1
+   end loop
+   delay_1s(3)
+
+   ssd1306_goto(0,0)
+   print_string(glcd,"Brightness Demo")
+
+   -- Play with the contrast.
+   for 255 using x loop
+      ssd1306_set_contrast(x)
+      _usec_delay(20_000)
+   end loop
+
+   -- Show some display features.
+   ssd1306_goto(0,0)
+   print_string(glcd,"All Segments On   ")
+   delay_1s(3)
+   ssd1306_display_all_on()
+   delay_1s(3)
+   ssd1306_goto(0,0)
+   print_string(glcd,"Resume Display    ")
+   ssd1306_display_resume()
+   delay_1s(3)
+   ssd1306_goto(0,0)
+   print_string(glcd,"Inverse Display   ")
+   ssd1306_display_inverse()
+   delay_1s(3)
+   ssd1306_goto(0,0)
+   print_string(glcd,"Normal Display    ")
+   ssd1306_display_normal()
+   delay_1s(3)
+   ssd1306_goto(0,0)
+   print_string(glcd,"Display Off and On")
+   delay_1s(2)
+   ssd1306_display_off()
+   delay_1s(2)
+   ssd1306_display_on()
+   delay_1s(2)
+  
+   -- Show some display scroll features.
+   ssd1306_goto(0,0)
+   print_string(glcd,"Scroll Right...   ")
+   ssd1306_goto(0,1)
+   print_string(glcd,"...and Left       ")
+   delay_1s(2)
+   ssd1306_start_scroll_right(0x00, 0x07)
+   delay_1s(8)
+   ssd1306_stop_scroll()
+   delay_1s(1)
+   ssd1306_start_scroll_left(0x00, 0x07)
+   delay_1s(8)
+   ssd1306_stop_scroll()
+   delay_1s(2)
+ 
+   -- Custom made vertical scroll. There is no automatic vertical scroll
+   -- feature supported by the SSD1306 but we can use the set start line 
+   -- function to create one.
+   ssd1306_goto(0,0)
+   print_string(glcd,"Scroll Up...      ")
+   ssd1306_goto(0,1)
+   print_string(glcd,"...and Down       ")
+   delay_1s(2)
+   -- Up.
+   for SSD1306_MAX_Y_PIXELS using x loop
+     ssd1306_set_start_line(x)
+     delay_1ms(50)
+   end loop
+   -- Down.
+   delay_1s(3)
+   x = SSD1306_MAX_Y_PIXELS -1 
+   for SSD1306_MAX_Y_PIXELS loop
+      ssd1306_set_start_line(x)
+      x = x - 1
+      delay_1ms(50)
+   end loop
+   delay_1s(2)
+   -- Back to normal.
+   ssd1306_set_start_line(0) 
+
+   ssd1306_goto(0,0)
+   print_string(glcd,"Scroll Diagonal...")
+   ssd1306_goto(0,1)
+   print_string(glcd,"...Right and Left ")
+   delay_1s(2)
+   ssd1306_start_scroll_diagonal_right(0x00, 0x07)
+   delay_1s(5)
+   ssd1306_stop_scroll()
+   delay_1s(1)
+   ssd1306_start_scroll_diagonal_left(0x00, 0x07)
+   delay_1s(5)
+   ssd1306_stop_scroll()
+   delay_1s(3)
+   
+
+ 
+end loop
+
+
