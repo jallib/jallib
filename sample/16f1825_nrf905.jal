@@ -1,0 +1,194 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the nRF905  
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: This program sends a message once every two seconds to two different 
+--              nRF905 devices and will print any received message from these 
+--              devices. 
+--    
+-- Sources:
+--
+-- Notes:       See sample program 16f1823_nrf905.jal for the counter part of  
+--              this sample program (the receiver of the message sent).
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all pins.
+WPUA = 0b0011_1111       
+WPUC = 0b0011_1111       
+OPTION_REG_WPUEN = FALSE 
+
+enable_digital_io()
+
+-- For debugging purposes this constant can be defined. 
+-- const NRF905_DEBUG = TRUE
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP.
+alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+include print
+serial_hw_init()
+
+-- nRF905 pin definition.
+alias nrf905_spi_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias nrf905_spi_sck_direction is pin_C0_direction -- To SCK of nRF905
+alias nrf905_spi_sdi is pin_C1 -- Pin 9 for 14 pin DIP.    
+alias nrf905_spi_sdi_direction is pin_C1_direction -- To MISO of nRF905   
+alias nrf905_spi_sdo is pin_C2 -- Pin 8 for 14 pin DIP.
+alias nrf905_spi_sdo_direction is pin_C2_direction -- To MOSI of nRFF905 
+alias nrf905_csn_pin is pin_C3 -- Pin 7 for 14 pin DIP. 
+alias nrf905_csn_pin_direction is pin_C3_direction -- To csn of nRF905   
+alias nrf905_txen_pin is pin_A5 -- Pin 2 for 14 pin DIP. 
+alias nrf905_txen_pin_direction is pin_A5_direction -- To txen of nRF905 
+alias nrf905_trx_ce_pin is pin_A4 -- Pin 3 for 14 pin DIP. 
+alias nrf905_trx_ce_pin_direction is pin_A4_direction  -- To (tx_)ce of nRF905
+
+-- We use software SPI. If not defined, hardware SPI is used.
+const bit NRF905_SOFTWARE_SPI = TRUE
+
+-- When using the power pin, define it here. If not used connect the power pin
+-- of the module to VCC. 
+const NRF905_USE_PWR_PIN = TRUE
+if defined(NRF905_USE_PWR_PIN) then
+   alias nrf905_pwr_up_pin is pin_A1 -- Pin 12 for 14 pin DIP. 
+   alias nrf905_pwr_up_pin_direction is pin_A1_direction 
+end if 
+
+-- This program uses the interrupt way of receiving new data which gives the
+-- main program more time before processing it. But since the main program does
+-- not do very much this feature is not really needed here.
+const NRF905_USE_INTERRUPT = TRUE
+if defined(NRF905_USE_INTERRUPT) then
+   alias nrf905_dr_pin is pin_A2 -- Pin 11 for 14 pin DIP, external interrupt. 
+   alias nrf905_dr_pin_direction is pin_A2_direction  -- To DR of nRF905
+   alias nrf905_external_interrupt_enable is INTCON_INTE 
+   alias nrf905_global_interrupt_enable is INTCON_GIE
+   alias nrf905_external_interrupt_edge is OPTION_REG_INTEDG 
+   alias nrf905_external_interrupt_flag is INTCON_INTF 
+   alias nrf905_postive_interrupt_edge is TRUE
+end if 
+
+-- nRF905 addresses. We use 4-bit addresses (default).
+const dword NRF905_RX_ADDR_1 = 0x11223344  -- My address.
+const dword NRF905_TX_ADDR_1 = 0x55667788  -- Address of device 1.
+const dword NRF905_TX_ADDR_2 = 0xBBCCDDEE  -- Address of device 1.
+
+-- We do not use the library default payload size (default is maximum of 32). 
+const byte NRF905_TX_PAYLOAD_SIZE = 25
+const byte NRF905_RX_PAYLOAD_SIZE = 25
+-- The RX buffer size must be equal to or bigger than the highest payload size.
+const byte NRF905_RX_BUFFER_SIZE  = 25
+include nrf905 
+
+-- Some text constants.
+const byte start[] = "Test program for nRF905.\r\n"
+const byte hello_1[] = "Hello World 1!"
+const byte hello_2[] = "Hello World 2!"
+
+-- Used variables.
+var word timer
+var byte counter, index, pipe
+var byte device_to_send_to
+var bit sending_data
+
+-- Initialize the bRF905 module with the default values.
+nrf905_init()
+-- Set receiver address of this device.
+nrf905_set_rx_address(NRF905_RX_ADDR_1)
+-- Our module has a 16 MHz clock (init value is 20 MHz)
+nrf905_set_crystal_clock(NRF905_CRYSTAL_CLK_16MHZ)
+-- Set a different payload width for this program.
+nrf905_set_rx_payload_width(NRF905_RX_PAYLOAD_SIZE)
+nrf905_set_tx_payload_width(NRF905_TX_PAYLOAD_SIZE)
+-- A little bit more power please.
+nrf905_set_power_level(NRF905_POWER_LEVEL_MAX)  
+
+-- Show welcome message on the screen.
+print_string(serial_hw_data,start)
+print_crlf(serial_hw_data)
+
+timer = 0  
+sending_data = FALSE
+device_to_send_to = 1
+
+forever loop
+   -- Loop timer 1 ms.
+   _usec_delay(1_000)
+   
+   -- Send a message to one of the devices and alternate devices..
+   timer = timer + 1
+   -- Wait 1 second before sending the next message.
+   if (timer >= 1_000) then
+      print_crlf(serial_hw_data)
+      if (device_to_send_to == 1)
+      then
+         -- Send to first device.
+         print_string(serial_hw_data,"Sending data to device 1 ... ")   
+         nrf905_set_tx_address(NRF905_TX_ADDR_1)
+         nrf905_send_data(hello_1, count(hello_1))
+         device_to_send_to = 2
+      elsif (device_to_send_to == 2)
+      then
+         -- Send to second device.
+         print_string(serial_hw_data,"Sending data to device 2 ... ")   
+         nrf905_set_tx_address(NRF905_TX_ADDR_2)
+         nrf905_send_data(hello_2, count(hello_2))
+         device_to_send_to = 1
+      end if
+      sending_data = TRUE
+      timer = 0
+    end if
+
+   -- Print the transmission status and enable the receiver.
+   if sending_data & nrf905_tx_ready() then
+      -- Transmission done, check if successful.
+      print_string(serial_hw_data,"Transmission Done! \r\n")   
+      print_string(serial_hw_data,"Enabling receiver ... \r\n") 
+      -- Enable receiver again.  
+      nrf905_power_up_rx()
+      sending_data = FALSE
+   end if 
+
+   -- Print the message from any of the 2 devices. Ignore the values 0x00 which
+   -- can be added when the received message is shorter than the maximum payload.
+   if nrf905_get_data() then
+      print_crlf(serial_hw_data)
+      print_string(serial_hw_data,"Receiving data: ")   
+      for NRF905_RX_PAYLOAD_SIZE using index loop
+         if nrf905_rx_buffer[index] != 0x00 then
+            serial_hw_data = nrf905_rx_buffer[index]
+         end if
+      end loop
+      print_crlf(serial_hw_data)
+  end if
+  
+end loop
+

@@ -1,0 +1,1149 @@
+-- -----------------------------------------------------------------------------
+-- Title: nRF905 library for wireless communication.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Libray for wireless transmission and reception using the nRF905.
+--
+-- Sources: nRF905 product specification Revision 1.5 (April 2008)         
+--
+-- Notes:   The following pins must be defined by the main program before 
+--          including this library:
+--          -) alias nrf905_spi_sck               -- To sck of nRF905
+--          -) alias nrf905_spi_sck_direction 
+--          -) alias nrf905_spi_sdi               -- To MISO of nRF905
+--          -) alias nrf905_spi_sdi_direction 
+--          -) alias nrf905_spi_sdo               -- To MOSI of nRFF905
+--          -) alias nrf905_spi_sdo_direction 
+--          -) alias nrf905_csn_pin               -- To csn of nRF905
+--          -) alias nrf905_csn_pin_direction 
+--          -) alias nrf905_txen_pin              -- To txen of nRF905
+--          -) alias nrf905_txen_pin_direction 
+--          -) alias nrf905_trx_ce_pin            -- To (tx_)ce of nRF905
+--          -) alias nrf905_trx_ce_pin_direction 
+--          Optional pins (see defines below):
+--          -) alias nrf905_pwr_up_pin            -- To pwr(_up) of nRF905
+--          -) alias nrf905_pwr_up_pin_direction 
+--          -) alias nrf905_dr_pin                -- To DR of nRF905. Pin is
+--          -) alias nrf905_dr_pin_direction         connected to the INT pin.
+--
+--          A receive buffer called 'nrf905_rx_buffer' is used for storage of
+--          received data. The size of this buffer is defined as follows: 
+--          -) const byte NRF905_RX_BUFFER_SIZE = <your size>.
+--          The buffer size must be equal or greater than the payload size used
+--          for reception. If no buffer size is defined then the buffer will
+--          have the size NRF905_MAX_PAYLOAD.
+--     
+--          By default the SPI hardware is used. This library also implements
+--          a software SPI interface for making pin assignments more flexible 
+--          or when using a PIC that has no hardware SPI interface. 
+--          In order to use this featur define the following:
+--          -) const NRF905_SOFTWARE_SPI = TRUE 
+--
+--          The power of the nRF905 can be controlled with a power pin. This
+--          feature can be used by defining the following:
+--          -) const NRF905_USE_PWR_PIN = TRUE
+--          If not used, connect the PWR pin of the nRF905 to VCC. In this 
+--          case the pin definition nrf905_pwr_up_pin is not needed.   
+-- 
+--          The operation of the nRF905 can be controlled via the external PIC
+--          interrupt using the DR of the nRF905 pin. This feature can be 
+--          activated by defining the following:
+--          -) const NRF905_USE_INTERRUPT = TRUE
+--          If this feature is used, the new received data is immediately copied
+--          to the nrf905_rx_buffer, giving the main program more time before
+--          processing it. If this feature is not used the main program has to
+--          check frequently if new data is received. In that case the pin
+--          definition nrf905_dr_pin is not needed.
+-- 
+--          Some hardware related information:
+--          -) The nRF905 operates at a supply voltage of 3.3 Volt. 
+--             When using the PIC on 5 Volt, use a bidirectional level shifter.
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- General minimum and maximum definitions.
+const byte NRF905_MIN_PAYLOAD    = 1
+const byte NRF905_MAX_PAYLOAD    = 32
+const word NRF905_MAX_CHANNEL    = 511
+const byte NRF905_MAX_TX_ADDRESS = 4
+const byte NRF905_MAX_RX_ADDRESS = 4
+
+-- Crystal clock options, check your module which crystal clock is used.
+const byte NRF905_CRYSTAL_CLK_4MHZ  = 0x00
+const byte NRF905_CRYSTAL_CLK_8MHZ  = 0x01
+const byte NRF905_CRYSTAL_CLK_12MHZ = 0x02
+const byte NRF905_CRYSTAL_CLK_16MHZ = 0x03
+const byte NRF905_CRYSTAL_CLK_20MHZ = 0x04
+
+-- Output clock options.
+const byte NRF905_OUTPUT_CLK_4MHZ   = 0x00
+const byte NRF905_OUTPUT_CLK_2MHZ   = 0x01
+const byte NRF905_OUTPUT_CLK_1MHZ   = 0x02
+const byte NRF905_OUTPUT_CLK_500KHZ = 0x03
+
+-- Power levels. Default is -10 dBm.
+const byte NRF905_POWER_LEVEL_MIN = 0b000_0000  -- -10dBm
+const byte NRF905_POWER_LEVEL_LOW = 0b000_0100  -- -2dBm 
+const byte NRF905_POWER_LEVEL_MED = 0b000_1000  -- +6dBm 
+const byte NRF905_POWER_LEVEL_MAX = 0b000_1100  -- +10dBm 
+ 
+-- Size of the receive buffer in bytes. 
+if !defined(NRF905_RX_BUFFER_SIZE) then
+   const byte NRF905_RX_BUFFER_SIZE = NRF905_MAX_PAYLOAD
+end if
+
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Initialize the SPI interface and the nRF905 module. The module is placed in 
+-- its default mode: Channel 108, 433 MHz band, -10 dBm power, normal power use,
+-- no retransmit, tx and rx address width 4 bytes, maximum payload, output clock
+-- 500 kHz, output clock enabled, crystal clock 20 MHz, crc check enabled, 
+-- 16-bit crc check used. After intialized the module is in standby mode.
+procedure nrf905_init()
+
+-- Power up the device. Only used when power pin is defined.  
+procedure nrf905_power_up_device()
+
+-- Power down the device. Only used when a power pin is defined.
+procedure nrf905_power_down_device()
+
+-- Place the nRF905 in standby.
+procedure nrf905_standby()
+
+-- Switch the nRF905 on.
+procedure nrf905_on()
+
+-- Power up the transmitter.  
+procedure nrf905_power_up_tx()
+
+-- Power up the receiver  
+procedure nrf905_power_up_rx()
+
+-- Set the RF channel. Channel is a 9-bit value. Some info on channels:
+-- -) Channel 0 is 422.4MHz for the 433MHz band, each channel increments the 
+--    frequency by 100KHz, so channel 10 would be 423.4MHz
+-- -) Channel 0 is 844.8MHz for the 868/915MHz band, each channel increments the 
+--    frequency by 200KHz, so channel 10 would be 846.8MHz
+-- -) Max channel is 511 (473.5MHz / 947.0MHz)
+procedure nrf905_set_rf_channel(word in channel)
+
+-- Set the RF band to 433 MHz.
+procedure nrf905_set_rf_band_433()
+
+-- Set the RF band to 868 / 915 MHz.
+procedure nrf905_set_rf_band_868_915()
+
+-- Set the power level of the transmitter. Use the defined power rate constants.
+procedure nrf905_set_power_level(byte in power)
+
+-- Set low power receiver mode.
+procedure nrf905_set_rx_low_power() 
+
+-- Set normal power receiver mode.
+procedure nrf905_set_rx_normal_power()
+ 
+-- Enable the auto retransmit feature.
+procedure nrf905_enable_auto_retransmit()
+
+-- Disable the auto retransmit feature.
+procedure nrf905_disable_auto_retransmit()
+
+-- Set the receiver address field width to 1 byte.
+procedure nrf905_set_rx_address_width_1_byte() 
+
+-- Set the receiver address fieldt width to 4 bytes.
+procedure nrf905_set_rx_address_width_4_byte() 
+
+-- Set the transmitter address field width to 1 byte.
+procedure nrf905_set_tx_address_width_1_byte()
+
+-- Set the transmitter address fieldt width to 4 bytes.
+procedure nrf905_set_tx_address_width_4_byte() 
+
+-- Set the receiver payload width.
+procedure nrf905_set_rx_payload_width(byte in payload)
+
+-- Set the transmitter payload width.
+procedure nrf905_set_tx_payload_width(byte in payload)
+
+-- Set the receiver address. Address can be 1 byte or 4 bytes.
+procedure nrf905_set_rx_address(dword in address)
+
+-- Set the transmitter address. Address can be 1 byte or 4 bytes. 
+procedure nrf905_set_tx_address(dword in address)
+
+-- Set the output clock frequency. Use the defined ouput clock constants.
+procedure nrf905_set_output_clock_frequency(byte in output_clock)
+ 
+-- Enable the output clock feature.
+procedure nrf905_enable_output_clock()
+
+-- Disable the output clock feature.
+procedure nrf905_disable_output_clock()
+
+-- Set the crystal clock frequency.
+procedure nrf905_set_crystal_clock(byte in crystal_clock)
+
+-- Enable the CRC check.
+procedure nrf905_enable_crc_check()
+
+-- Disable the CRC check.
+procedure nrf905_disable_crc_check()
+
+-- Set the crc check to 8 bit.
+procedure nrf905_set_crc_check_8_bit()
+ 
+-- Set the crc check to 16 bit.
+procedure nrf905_set_crc_check_16_bit()
+
+-- Check the status of the transmission and return TRUE when ready.
+function  nrf905_tx_ready() return bit
+
+-- Check if there is data available and return TRUE when ready.
+function nrf905_data_available() return bit
+
+-- Power up the transmitter and send the given data to the previously set TX 
+-- address. The transmitter remains powered up after completion. 
+procedure nrf905_send_data(byte in data[], byte in nr_of_bytes)
+
+-- Checks if data is available and if so copies the data to the nrf905_read_buffer 
+-- and returns TRUE when done.
+function  nrf905_get_data() return bit
+
+-- Receiver buffer containing the data received by the nrf905.
+var volatile byte nrf905_rx_buffer[NRF905_RX_BUFFER_SIZE]
+ 
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Instruction set of the NRF905.
+const byte _NRF905_CMD_NOP              = 0xFF
+const byte _NRF905_CMD_WRITE_CONFIG_REG = 0x00
+const byte _NRF905_CMD_READ_CONFIG_REG  = 0x10
+const byte _NRF905_CMD_WRITE_TX_PAYLOAD = 0x20
+const byte _NRF905_CMD_READ_TX_PAYLOAD  = 0x21
+const byte _NRF905_CMD_WRITE_TX_ADDR    = 0x22
+const byte _NRF905_CMD_READ_TX_ADDR     = 0x23
+const byte _NRF905_CMD_READ_RX_PAYLOAD  = 0x24
+const byte _NRF905_CMD_CHANNEL_CONFIG   = 0x80
+
+-- Configuration register. This register is in fact 10 bytes wide with functions
+-- spread over several bits. The address mentioned below is the byte on which
+-- the function can be found. 
+const byte _NRF905_REG_CHANNEL            = 0x00
+const byte _NRF905_REG_PLL                = 0x01
+const byte _NRF905_REG_OUTPUT_POWER       = 0x01
+const byte _NRF905_REG_RX_POWER_REDUCTION = 0x01
+const byte _NRF905_REG_AUTO_RETRANSMIT    = 0x01
+const byte _NRF905_REG_RX_ADDRESS_WIDTH   = 0x02
+const byte _NRF905_REG_TX_ADDRESS_WIDTH   = 0x02
+const byte _NRF905_REG_RX_PAYLOAD_WIDTH   = 0x03
+const byte _NRF905_REG_TX_PAYLOAD_WIDTH   = 0x04
+const byte _NRF905_REG_RX_ADDRESS         = 0x05
+const byte _NRF905_REG_OUTPUT_CLK_FREQ    = 0x09
+const byte _NRF905_REG_OUTPUT_CLK_ENABLE  = 0x09
+const byte _NRF905_REG_OSC_FREQUENCY      = 0x09
+const byte _NRF905_REG_CRC_ENABLE         = 0x09
+const byte _NRF905_REG_CRC_MODE           = 0x09
+
+-- Register masks.
+const byte _NRF905_MASK_CONFIG        = 0b0000_1111
+const byte _NRF905_MASK_POWER         = 0b0000_1100
+const byte _NRF905_MASK_PAYLOAD       = 0b0011_1111
+const byte _NRF905_MASK_OUTPUT_CLOCK  = 0b0000_0011
+const byte _NRF905_MASK_CRYSTAL_CLOCK = 0b0011_1000
+
+-- Bit positions for Data Ready and Address Match.
+const _NRF905_STATUS_DR    = 0b0010_0000
+const _NRF905_STATUS_AM    = 0b1000_0000
+const _NRF905_STATUS_AM_DR = 0b1010_0000 -- Used to detect data for this device.
+
+
+-- -------------------- Private function prototypes ---------------------------
+
+function  _nrf905_read_configuration_register(byte in location) return byte 
+procedure _nrf905_write_configuration_register(byte in location, byte in value)
+function  _nrf905_get_status_register() return byte
+function  _nrf905_get_dr_status() return bit
+function  _nrf905_get_am_status() return bit
+procedure _nrf905_copy_data()
+procedure _nrf906_enable_interrupt()
+procedure _nrf906_disable_interrupt() 
+
+-- ------------------------- Final implementation  -----------------------------
+
+-- Print library is only needed for debugging purposes.
+if defined(NRF905_DEBUG) then
+   include print
+end if
+
+-- When using interrupt mode we need to indicate when data is received.
+if defined(NRF905_USE_INTERRUPT) then
+   var bit _nrf905_data_present
+end if 
+
+-- Variable to store the set payload sized. The main program can change the
+-- payload size dynamically.
+var byte _nrf905_rx_payload_size
+var byte _nrf905_tx_payload_size
+
+-- Indicates when we are busy sending data.
+var bit  _nrf905_tx_active
+
+-- Address width we need to remember.
+var byte  _nrf905_tx_address_width
+var byte  _nrf905_rx_address_width
+
+-- In case of doing SPI in software we will not include the SPI library but
+-- replace the used function by the software implementation with the same name.
+if defined(NRF905_SOFTWARE_SPI) then  
+  function spi_master_hw_exchange(byte in data) return byte
+else
+  -- Use the spi_master_hw_exchange function from hardware SPI library.
+  include spi_master_hw
+end if 
+
+-- ---------------------- Functions and Procedure  -----------------------------
+
+-- Initialize the SPI interface and the nRF905 module. The module is placed in 
+-- its default mode: Channel 108, 433 MHz band, -10 dBm power, normal power use,
+-- no retransmit, tx and rx address width 4 bytes, maximum payload, output clock
+-- 500 kHz, output clock enabled, crystal clock 20 MHz, crc check enabled, 
+-- 16-bit crc check used. After intialized the module is in standby mode.
+procedure nrf905_init() is
+
+   -- Initialize nRF905 control pin.
+   nrf905_txen_pin_direction = output
+   nrf905_trx_ce_pin_direction = output
+
+   if defined(NRF905_USE_PWR_PIN) then
+      nrf905_pwr_up_pin_direction = output
+   end if
+
+   -- Initialize SPI pins.
+   nrf905_spi_sck_direction = output
+   nrf905_spi_sdi_direction = input
+   nrf905_spi_sdo_direction = output
+   nrf905_csn_pin_direction = output
+
+   if defined(NRF905_SOFTWARE_SPI) then
+      -- SPI done in software, initialize the relevant pins.
+      nrf905_spi_sck = LOW
+      nrf905_spi_sdo = LOW 
+   else 
+      -- Setup hardware SPI interface. Not the maximum speed.
+      spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+   end if
+
+   if defined(NRF905_USE_INTERRUPT) then
+      nrf905_dr_pin_direction = input
+      -- Enable external interrupt on rising edge.
+      nrf905_external_interrupt_enable = TRUE
+      nrf905_global_interrupt_enable = TRUE   
+      nrf905_external_interrupt_edge = nrf905_postive_interrupt_edge
+      nrf905_external_interrupt_flag = FALSE
+      _nrf905_data_present = FALSE
+   end if
+
+   -- Set the device to its default values.
+   nrf905_power_up_device()
+   nrf905_set_rf_channel(108)
+   nrf905_set_rf_band_433()  
+   nrf905_set_power_level(NRF905_POWER_LEVEL_MIN)
+   nrf905_set_rx_normal_power() 
+   nrf905_disable_auto_retransmit() 
+   nrf905_set_rx_address_width_4_byte() 
+   nrf905_set_tx_address_width_4_byte() 
+   nrf905_set_rx_payload_width(NRF905_MAX_PAYLOAD)        
+   nrf905_set_tx_payload_width(NRF905_MAX_PAYLOAD)
+   nrf905_set_output_clock_frequency(NRF905_OUTPUT_CLK_500KHZ)
+   nrf905_enable_output_clock()          
+   nrf905_set_crystal_clock(NRF905_CRYSTAL_CLK_20MHZ)
+   nrf905_enable_crc_check() 
+   nrf905_set_crc_check_16_bit()
+   _nrf905_tx_active = FALSE
+   nrf905_standby()
+    
+end procedure 
+
+
+if defined(NRF905_SOFTWARE_SPI) then 
+-- SPI interface done in software using same the function name as hardware SPI.
+  function spi_master_hw_exchange(byte in data) return byte is
+
+  var bit data_bit_in at data:0
+  var bit data_bit_out at data:7
+
+     for 8 loop
+        nrf905_spi_sdo = data_bit_out
+        data = data << 1 
+        nrf905_spi_sck = HIGH
+        data_bit_in = nrf905_spi_sdi
+        nrf905_spi_sck = LOW
+    end loop
+    nrf905_spi_sdo = LOW -- Not needed but nicer to keep output low when done.
+
+    return data        
+
+  end function
+end if 
+
+
+-- Power up the device. Only used when power pin is defined.  
+procedure nrf905_power_up_device() is
+
+   if defined(NRF905_USE_PWR_PIN) then
+      nrf905_pwr_up_pin = HIGH
+     _usec_delay(1_000)
+   end if
+
+end procedure
+
+
+-- Power down the device. Only used when a power pin is defined.
+procedure nrf905_power_down_device() is
+
+   if defined(NRF905_USE_PWR_PIN) then
+      nrf905_pwr_up_pin = LOW
+   end if
+
+end procedure
+
+
+
+-- Place the nRF905 in standby.
+procedure nrf905_standby() is
+
+   nrf905_power_up_device()
+   nrf905_trx_ce_pin = LOW
+   _usec_delay(3_000)
+
+end procedure
+
+
+-- Switch the nRF905 on.
+procedure nrf905_on() is
+
+   nrf905_power_up_device()
+   nrf905_trx_ce_pin = HIGH
+
+end procedure
+
+
+-- Power up the transmitter.  
+procedure nrf905_power_up_tx() is
+
+   nrf905_power_up_device()
+   nrf905_txen_pin = HIGH
+   nrf905_trx_ce_pin = LOW
+   _nrf905_tx_active = TRUE
+
+end procedure
+
+
+-- Power up the receiver  
+procedure nrf905_power_up_rx() is
+
+   nrf905_power_up_device()
+   nrf905_txen_pin = LOW
+   nrf905_trx_ce_pin = HIGH
+   _nrf905_tx_active = FALSE
+
+end procedure
+
+
+-- Set the RF channel. Channel is a 9-bit value. Some info on channels:
+-- -) Channel 0 is 422.4MHz for the 433MHz band, each channel increments the 
+--    frequency by 100KHz, so channel 10 would be 423.4MHz
+-- -) Channel 0 is 844.8MHz for the 868/915MHz band, each channel increments the 
+--    frequency by 200KHz, so channel 10 would be 846.8MHz
+-- -) Max channel is 511 (473.5MHz / 947.0MHz)
+procedure nrf905_set_rf_channel(word in channel) is
+
+   var byte channel_data[2] at channel
+   var byte data
+   
+   channel = channel & 0x01FF 
+   _nrf905_write_configuration_register(_NRF905_REG_CHANNEL, channel_data[0])
+   -- Get the bit at the next location. We need to maintain the other data.
+   data = _nrf905_read_configuration_register(_NRF905_REG_CHANNEL + 1)
+   data = (data & 0b1111_1110) | channel_data[1] -- LSB is channel bit 8.
+   _nrf905_write_configuration_register(_NRF905_REG_CHANNEL + 1, data) 
+
+end procedure
+
+
+-- Set the RF band to 433 MHz.
+procedure nrf905_set_rf_band_433() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_PLL, 
+      _nrf905_read_configuration_register(_NRF905_REG_PLL) & 0b1111_1101)
+      
+end procedure
+
+
+-- Set the RF band to 868 / 915 MHz.
+procedure nrf905_set_rf_band_868_915() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_PLL, 
+      _nrf905_read_configuration_register(_NRF905_REG_PLL) | 0b0000_0010)
+
+end procedure
+
+
+-- Set the power level of the transmitter. Use the defined power rate constants.
+procedure nrf905_set_power_level(byte in power) is
+
+   -- Note. Steps are not combined to keep the code readable.
+   var byte data
+   
+   data = _nrf905_read_configuration_register(_NRF905_REG_OUTPUT_POWER) & !_NRF905_MASK_POWER
+   data = data | (power & _NRF905_MASK_POWER)
+   _nrf905_write_configuration_register(_NRF905_REG_OUTPUT_POWER, data)
+
+end procedure
+
+  
+-- Set low power receiver mode.
+procedure nrf905_set_rx_low_power() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_RX_POWER_REDUCTION, 
+      _nrf905_read_configuration_register(_NRF905_REG_RX_POWER_REDUCTION) | 
+         0b0001_0000)
+
+end procedure
+
+
+-- Set normal power receiver mode.
+procedure nrf905_set_rx_normal_power() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_RX_POWER_REDUCTION, 
+      _nrf905_read_configuration_register(_NRF905_REG_RX_POWER_REDUCTION) & 
+         0b1110_1111)
+
+end procedure
+
+
+-- Enable the auto retransmit feature.
+procedure nrf905_enable_auto_retransmit() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_AUTO_RETRANSMIT, 
+      _nrf905_read_configuration_register(_NRF905_REG_AUTO_RETRANSMIT) | 
+         0b0010_0000)
+
+end procedure
+
+-- Disable the auto retransmit feature.
+procedure nrf905_disable_auto_retransmit() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_AUTO_RETRANSMIT, 
+      _nrf905_read_configuration_register(_NRF905_REG_AUTO_RETRANSMIT) & 
+         0b1101_1111)
+
+
+end procedure
+
+
+-- Set the receiver address field width to 1 byte.
+procedure nrf905_set_rx_address_width_1_byte() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_RX_ADDRESS_WIDTH, 
+      (_nrf905_read_configuration_register(_NRF905_REG_RX_ADDRESS_WIDTH) & 
+         0b1111_1000) | 0b0000_0001)
+   _nrf905_rx_address_width = 1
+
+end procedure
+
+
+-- Set the receiver address fieldt width to 4 bytes.
+procedure nrf905_set_rx_address_width_4_byte() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_RX_ADDRESS_WIDTH, 
+      (_nrf905_read_configuration_register(_NRF905_REG_RX_ADDRESS_WIDTH) & 
+         0b1111_1000) | 0b0000_0100)
+   _nrf905_rx_address_width = 4
+
+end procedure
+
+
+-- Set the transmitter address field width to 1 byte.
+procedure nrf905_set_tx_address_width_1_byte() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_TX_ADDRESS_WIDTH, 
+      (_nrf905_read_configuration_register(_NRF905_REG_TX_ADDRESS_WIDTH) & 
+         0b1000_1111) | 0b0001_0000)
+   _nrf905_tx_address_width = 1
+
+end procedure
+
+
+-- Set the transmitter address fieldt width to 4 bytes.
+procedure nrf905_set_tx_address_width_4_byte() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_TX_ADDRESS_WIDTH, 
+      (_nrf905_read_configuration_register(_NRF905_REG_TX_ADDRESS_WIDTH) & 
+         0b1000_1111) | 0b0100_0000)
+   _nrf905_tx_address_width = 4
+
+end procedure
+
+
+-- Set the receiver payload width.
+procedure nrf905_set_rx_payload_width(byte in payload) is
+
+   if payload > NRF905_MAX_PAYLOAD then
+      payload = NRF905_MAX_PAYLOAD
+   end if
+   _nrf905_rx_payload_size = payload 
+   _nrf905_write_configuration_register(_NRF905_REG_RX_PAYLOAD_WIDTH, payload)
+
+  
+end procedure
+
+
+-- Set the transmitter payload width.
+procedure nrf905_set_tx_payload_width(byte in payload) is
+
+   if payload > NRF905_MAX_PAYLOAD then
+      payload = NRF905_MAX_PAYLOAD
+   end if
+   _nrf905_tx_payload_size = payload 
+   _nrf905_write_configuration_register(_NRF905_REG_TX_PAYLOAD_WIDTH, payload)
+
+end procedure
+
+
+-- Set the receiver address. Address can be 1 byte or 4 bytes.
+procedure nrf905_set_rx_address(dword in address) is
+   
+   var byte index
+   
+   for  _nrf905_rx_address_width using index loop
+      _nrf905_write_configuration_register(_NRF905_REG_RX_ADDRESS + index,
+         byte(address)) 
+      address = address >> 8
+   end loop
+   
+end procedure
+
+
+-- Set the transmitter address. Address can be 1 byte or 4 bytes. 
+procedure nrf905_set_tx_address(dword in address) is
+
+   var byte _trash
+      
+   -- This address is not set in the configuration register.
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low
+   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_TX_ADDR) 
+   for _nrf905_tx_address_width loop
+      _trash = spi_master_hw_exchange(byte(address))
+      address = address >> 8
+   end loop
+   nrf905_csn_pin = high
+   _nrf906_enable_interrupt()
+   
+end procedure
+
+
+-- Set the output clock frequency. Use the defined ouput clock constants.
+procedure nrf905_set_output_clock_frequency(byte in output_clock) is
+   
+
+   -- Note. Steps are not combined to keep the code readable.
+   var byte data
+   
+   data = _nrf905_read_configuration_register(_NRF905_REG_OUTPUT_CLK_FREQ) & 
+              !_NRF905_MASK_OUTPUT_CLOCK
+   data = data | (output_clock & _NRF905_MASK_OUTPUT_CLOCK)
+   _nrf905_write_configuration_register(_NRF905_REG_OUTPUT_CLK_FREQ, data)
+ 
+end procedure
+
+
+-- Enable the output clock feature.
+procedure nrf905_enable_output_clock() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_OUTPUT_CLK_ENABLE, 
+      _nrf905_read_configuration_register(_NRF905_REG_OUTPUT_CLK_ENABLE) | 
+         0b0000_0100)
+
+end procedure
+
+
+-- Disable the output clock feature.
+procedure nrf905_disable_output_clock() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_OUTPUT_CLK_ENABLE, 
+      _nrf905_read_configuration_register(_NRF905_REG_OUTPUT_CLK_ENABLE) & 
+         0b1111_1011)
+
+end procedure
+
+
+-- Set the crystal clock frequency.
+procedure nrf905_set_crystal_clock(byte in crystal_clock) is
+
+   -- Note. Steps are not combined to keep the code readable.
+   var byte data
+   
+   if (crystal_clock <= NRF905_CRYSTAL_CLK_20MHZ) then
+      data = _nrf905_read_configuration_register(_NRF905_REG_OSC_FREQUENCY) & 
+                 !_NRF905_MASK_CRYSTAL_CLOCK
+      data = data | (crystal_clock << 3)
+      _nrf905_write_configuration_register(_NRF905_REG_OSC_FREQUENCY, data)
+    end if 
+
+end procedure
+
+
+-- Enable the CRC check.
+procedure nrf905_enable_crc_check() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_CRC_ENABLE, 
+      _nrf905_read_configuration_register(_NRF905_REG_CRC_ENABLE) | 
+         0b0100_0000)
+
+end procedure
+
+
+-- Disable the CRC check.
+procedure nrf905_disable_crc_check() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_CRC_ENABLE, 
+      _nrf905_read_configuration_register(_NRF905_REG_CRC_ENABLE) & 
+         0b1011_1111)
+
+end procedure
+
+
+-- Set the crc check to 8 bit.
+procedure nrf905_set_crc_check_8_bit() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_CRC_MODE, 
+      _nrf905_read_configuration_register(_NRF905_REG_CRC_MODE) & 
+         0b0111_1111)
+ 
+end procedure
+
+
+-- Set the crc check to 16 bit.
+procedure nrf905_set_crc_check_16_bit() is
+
+   _nrf905_write_configuration_register(_NRF905_REG_CRC_MODE, 
+      _nrf905_read_configuration_register(_NRF905_REG_CRC_MODE) | 
+         0b1000_0000)
+
+end procedure
+
+
+-- Check the status of the transmission and return TRUE when ready.
+function nrf905_tx_ready() return bit is
+
+   return !(_nrf905_tx_active & _nrf905_get_dr_status())
+   
+end function
+
+
+-- Check if there is data available and return TRUE when ready.
+function nrf905_data_available() return bit is
+  
+   if defined(NRF905_USE_INTERRUPT) then
+      return _nrf905_data_present
+   else
+      return (_nrf905_get_status_register() & _NRF905_STATUS_AM_DR) == _NRF905_STATUS_AM_DR
+   end if
+   
+end function
+
+
+-- Power up the transmitter and send the given data to the previously set TX 
+-- address. The transmitter remains powered up after completion. 
+procedure nrf905_send_data(byte in data[], byte in nr_of_bytes) is
+
+   var byte index, _trash
+     
+   _nrf906_disable_interrupt()
+   nrf905_power_up_tx()
+   nrf905_csn_pin = LOW 
+   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_TX_PAYLOAD)
+   -- We do not write more than the set payload size.
+   if (nr_of_bytes > _nrf905_tx_payload_size) then
+       nr_of_bytes = _nrf905_tx_payload_size
+   end if 
+   -- Send the data
+   for nr_of_bytes using index loop
+      _trash = spi_master_hw_exchange(data[index])
+   end loop
+   -- We need to stuff the full payload, otherwise we are sending random stuff
+   -- at the end. Stuff with 0x00 to clear it.
+   for _nrf905_tx_payload_size - nr_of_bytes loop
+       _trash = spi_master_hw_exchange(0x00) 
+   end loop  
+   nrf905_csn_pin = HIGH
+   -- Start transmission.
+   nrf905_trx_ce_pin = HIGH 
+   if defined(NRF905_USE_INTERRUPT) then
+      -- Clear any pending interrupt flag.
+      nrf905_external_interrupt_flag = FALSE
+   end if
+   _nrf906_enable_interrupt()
+
+end procedure
+
+
+-- Checks if data is available and if so copies the data to the nrf905_read_buffer 
+-- and returns TRUE when done.
+function  nrf905_get_data() return bit is 
+
+    if nrf905_data_available() then
+       if defined(NRF905_USE_INTERRUPT) then
+          -- Data was already copied, clear data present flag.
+           _nrf905_data_present = FALSE
+       else
+          -- Copy the received data to the receive buffer.
+          _nrf905_copy_data() 
+       end if     
+       return TRUE
+    else    
+       return FALSE
+    end if
+    
+end function
+  
+ 
+-- ------------------------ Private functions ---------------------------------
+
+if defined(NRF905_USE_INTERRUPT) then
+   procedure _nrf905_interrupt() is pragma interrupt
+   
+      if (nrf905_external_interrupt_flag == TRUE) then
+         nrf905_external_interrupt_flag = FALSE
+         -- Copy the received payload to the receive buffer if we were receiving.
+         -- For transmission the main program checks the status of the DR flag 
+         -- using the function nrf905_tx_ready(). 
+         -- The address needs to be valid too.
+          if !_nrf905_tx_active & _nrf905_get_am_status() then
+            _nrf905_copy_data() 
+            _nrf905_data_present = TRUE 
+          end if
+      end if
+   
+   end procedure
+end if
+
+
+-- Disable the external interrupt.
+procedure _nrf906_disable_interrupt() is
+
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
+   
+end procedure
+
+
+-- Enable the external interrupt.
+procedure _nrf906_enable_interrupt() is
+
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
+   
+end procedure
+
+
+-- Copy the rx payload to the receive buffer. Depending on the selected mode
+-- this procedure can be called by the function nrf905_get_data() or by the
+-- function _nrf905_interrupt().
+procedure _nrf905_copy_data() is
+
+    var byte data, index
+
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low 
+   -- Send read payload command, ignore the data returned. 
+   data = spi_master_hw_exchange(_NRF905_CMD_READ_RX_PAYLOAD)
+   -- Copy the payload data but not more than the size of the receive buffer. 
+   for _nrf905_rx_payload_size using index loop
+      data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+      if index < NRF905_RX_BUFFER_SIZE then
+         nrf905_rx_buffer[index] = data
+      end if
+   end loop
+   nrf905_csn_pin = high 
+   -- We have to make sure that all payload data was read.
+   while _nrf905_get_dr_status() loop
+      -- Empty. Ready until data ready is cleard.
+   end loop
+   _nrf906_enable_interrupt()
+
+end procedure
+
+ 
+-- Read the status register and return the contents of it.
+function _nrf905_get_status_register() return byte is
+
+   var byte status
+
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low
+   -- Read from any register, the first data returned is always the status register.
+   status = spi_master_hw_exchange(_NRF905_CMD_NOP) 
+   nrf905_csn_pin = high
+   _nrf906_enable_interrupt()
+   
+   return status
+
+end function
+
+
+-- Get the status of the Data Ready flag and return its value.
+function _nrf905_get_dr_status() return bit is
+      
+   return (_NRF905_STATUS_DR & _nrf905_get_status_register()) != 0
+
+end function
+
+
+-- Get the status of the Address Match flag and return its value.
+function _nrf905_get_am_status() return bit is
+      
+   return (_NRF905_STATUS_AM & _nrf905_get_status_register()) != 0
+
+end function
+
+
+-- Read the configuration register from the given location and return the
+-- value read.
+function _nrf905_read_configuration_register(byte in location) return byte is
+
+   var byte data
+
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low
+   -- Read from the register, the first data returned is always the status 
+   -- register but we can ignore it.
+   data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG | 
+                                (location & _NRF905_MASK_CONFIG)) 
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP) 
+   nrf905_csn_pin = high
+   _nrf906_enable_interrupt()
+
+   return data
+
+end function
+
+
+-- Write the given value to the configuration register at the given location. 
+procedure _nrf905_write_configuration_register(byte in location,
+                                               byte in value) is
+
+   var byte _trash
+
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low
+   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_CONFIG_REG |
+                                  (location & _NRF905_MASK_CONFIG))  
+   _trash = spi_master_hw_exchange(value) 
+   nrf905_csn_pin = high
+   _nrf906_enable_interrupt()
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------- 
+-- -------------------- Print/Debug procedures ---------------------------------
+-- ----------------------------------------------------------------------------- 
+if defined(NRF905_DEBUG) then
+
+procedure nrf905_print_status_register() is
+
+   print_string(serial_hw_data,"Status Register: ")
+   print_byte_dec(serial_hw_data, _nrf905_get_status_register()  )
+   print_crlf(serial_hw_data)
+
+end procedure
+
+procedure nrf905_print_configuration_register() is
+
+   var word channel
+   var byte data
+
+   print_string(serial_hw_data,"RF-Configuration Register.\r\n")
+   _nrf906_disable_interrupt()
+   nrf905_csn_pin = low
+   -- First transfer is the command and returns irrelevant data so can be ignored.
+   data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG)   
+
+   -- Now get the data and print it. Channel is distributed over 2 positions.
+   channel = byte(spi_master_hw_exchange(_NRF905_CMD_NOP)) -- Byte 0
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP)          -- Byte 1
+   channel = channel + (16 * (data & 0b0000_0001))
+   print_string(serial_hw_data,"Channel: ")
+   print_word_dec(serial_hw_data, channel)
+   print_crlf(serial_hw_data)
+
+ 
+   -- First print byte 1 raw.
+   print_string(serial_hw_data,"Byte 1: ")
+   print_byte_bin(serial_hw_data, data)
+   print_crlf(serial_hw_data)
+
+   -- Print the rest of byte 1.
+   if (data & 0b0000_0010) == 0 then
+      print_string(serial_hw_data,"433 MHz band")
+   else
+      print_string(serial_hw_data,"869/915 MHz band")
+   end if 
+   print_crlf(serial_hw_data)
+
+   print_string(serial_hw_data,"Output power:")
+   if (data & 0b0000_1100) == 0 then
+      print_string(serial_hw_data,"-10 dBm")
+   elsif (data & 0b0000_1100) == 0b0000_0100 then    
+      print_string(serial_hw_data,"-2 dBm")
+   elsif (data & 0b0000_1100) == 0b0000_1000 then    
+      print_string(serial_hw_data,"+6 dBm")
+   else
+      print_string(serial_hw_data,"+10 dBm")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0001_0000) == 0 then
+      print_string(serial_hw_data,"Normal operation")
+   else
+      print_string(serial_hw_data,"Reduced power")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0010_0000) == 0 then
+      print_string(serial_hw_data,"No retransmission")
+   else
+      print_string(serial_hw_data,"Retransmission of data packet")
+   end if
+   print_crlf(serial_hw_data)
+
+   -- Info byte 2.
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   print_string(serial_hw_data,"Byte 2: ")
+   print_byte_bin(serial_hw_data, data)
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0000_0111) == 0b0000_0001 then
+      print_string(serial_hw_data,"1 byte RX address field width")
+   elsif (data & 0b0000_0111) == 0b0000_0100 then    
+      print_string(serial_hw_data,"4 byte RX address field width")
+   else
+      print_string(serial_hw_data,"Illegal value for RX address field width")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0111_0000) == 0b0001_0000 then
+      print_string(serial_hw_data,"1 byte TX address field width")
+   elsif (data & 0b0111_0000) == 0b0100_0000 then    
+      print_string(serial_hw_data,"4 byte TX address field width")
+   else
+      print_string(serial_hw_data,"Illegal value for TX address field width")
+   end if
+   print_crlf(serial_hw_data)
+
+   -- Byte 3.
+   print_string(serial_hw_data,"Receive Payload Width: ")
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   print_byte_dec(serial_hw_data, data)
+   print_crlf(serial_hw_data)
+
+   -- Byte 4.
+   print_string(serial_hw_data,"Transmit Payload Width: ")
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   print_byte_dec(serial_hw_data, data)
+   print_crlf(serial_hw_data)
+
+   -- Byte 5 to 8.
+   print_string(serial_hw_data,"RX address: ")
+   for 4 loop
+      data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+      print_byte_hex(serial_hw_data, data)
+   end loop
+   print_crlf(serial_hw_data)
+
+   -- Byte 9.
+   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   print_string(serial_hw_data,"Byte 9: ")
+   print_byte_bin(serial_hw_data, data)
+   print_crlf(serial_hw_data)
+
+   print_string(serial_hw_data,"Output clock frequency: ")
+   if (data & 0b0000_0011) == 0 then
+      print_string(serial_hw_data,"4 MHz")
+   elsif (data & 0b0000_0011) == 1 then    
+      print_string(serial_hw_data,"2 MHz")
+   elsif (data & 0b0000_0011) == 2 then    
+      print_string(serial_hw_data,"1 MHz")
+   else
+      print_string(serial_hw_data,"500 kHz")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0000_0100) == 0 then
+      print_string(serial_hw_data,"No external clock signal available")
+   else
+      print_string(serial_hw_data,"External clock signal enabled")
+   end if
+   print_crlf(serial_hw_data)
+ 
+   print_string(serial_hw_data,"Crystal oscillator frequency: ")
+   if (data & 0b0011_1000) == 0b0000_0000 then
+      print_string(serial_hw_data,"4 MHz")
+   elsif (data & 0b0011_1000) == 0b0000_1000 then    
+      print_string(serial_hw_data,"8 MHz")
+   elsif (data & 0b0011_1000) == 0b0001_0000 then    
+      print_string(serial_hw_data,"12 MHz")
+   elsif (data & 0b0011_1000) == 0b0001_1000 then    
+      print_string(serial_hw_data,"16 MHz")
+   elsif (data & 0b0011_1000) == 0b0010_0000 then    
+      print_string(serial_hw_data,"20 MHz")
+   else
+      print_string(serial_hw_data,"Illegal frequency")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b0100_0000) == 0 then
+      print_string(serial_hw_data,"CRC check disabled")
+   else
+      print_string(serial_hw_data,"CRC check enabled")
+   end if
+   print_crlf(serial_hw_data)
+
+   if (data & 0b1000_0000) == 0 then
+      print_string(serial_hw_data,"8 CRC bit check")
+   else
+      print_string(serial_hw_data,"16 CRC bit check")
+   end if
+   print_crlf(serial_hw_data)
+   print_crlf(serial_hw_data)
+
+   nrf905_csn_pin = high
+   _nrf906_enable_interrupt()
+   
+end procedure
+
+end if
