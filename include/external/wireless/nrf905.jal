@@ -329,19 +329,27 @@ end if
 -- 16-bit crc check used. After intialized the module is in standby mode.
 procedure nrf905_init() is
 
-   -- Initialize nRF905 control pin.
-   nrf905_txen_pin_direction = output
-   nrf905_trx_ce_pin_direction = output
-
    if defined(NRF905_USE_PWR_PIN) then
       nrf905_pwr_up_pin_direction = output
+      nrf905_power_up_device()
    end if
+
+   -- Initialize nRF905 control pin.
+   nrf905_txen_pin_direction = output
+   nrf905_txen_pin = HIGH
+   nrf905_trx_ce_pin_direction = output
+   nrf905_trx_ce_pin = LOW
 
    -- Initialize SPI pins.
    nrf905_spi_sck_direction = output
    nrf905_spi_sdi_direction = input
    nrf905_spi_sdo_direction = output
    nrf905_csn_pin_direction = output
+ 
+   -- We will make the csn pin low to fix a module start-up problem at power-up.
+   nrf905_csn_pin = LOW
+   _usec_delay(1_000)
+   nrf905_csn_pin = HIGH
 
    if defined(NRF905_SOFTWARE_SPI) then
       -- SPI done in software, initialize the relevant pins.
@@ -352,18 +360,7 @@ procedure nrf905_init() is
       spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
    end if
 
-   if defined(NRF905_USE_INTERRUPT) then
-      nrf905_dr_pin_direction = input
-      -- Enable external interrupt on rising edge.
-      nrf905_external_interrupt_enable = TRUE
-      nrf905_global_interrupt_enable = TRUE   
-      nrf905_external_interrupt_edge = nrf905_postive_interrupt_edge
-      nrf905_external_interrupt_flag = FALSE
-      _nrf905_data_present = FALSE
-   end if
-
    -- Set the device to its default values.
-   nrf905_power_up_device()
    nrf905_set_rf_channel(108)
    nrf905_set_rf_band_433()  
    nrf905_set_power_level(NRF905_POWER_LEVEL_MIN)
@@ -380,6 +377,17 @@ procedure nrf905_init() is
    nrf905_set_crc_check_16_bit()
    _nrf905_tx_active = FALSE
    nrf905_standby()
+
+   -- Set interrupts, if used.
+   if defined(NRF905_USE_INTERRUPT) then
+      nrf905_dr_pin_direction = input
+      -- Enable external interrupt on rising edge.
+      nrf905_external_interrupt_edge = nrf905_postive_interrupt_edge
+      nrf905_external_interrupt_flag = FALSE
+      _nrf905_data_present = FALSE
+      nrf905_external_interrupt_enable = TRUE
+      nrf905_global_interrupt_enable = TRUE   
+   end if
     
 end procedure 
 
@@ -651,13 +659,13 @@ procedure nrf905_set_tx_address(dword in address) is
       
    -- This address is not set in the configuration register.
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low
+   nrf905_csn_pin = LOW
    _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_TX_ADDR) 
    for _nrf905_tx_address_width loop
       _trash = spi_master_hw_exchange(byte(address))
       address = address >> 8
    end loop
-   nrf905_csn_pin = high
+   nrf905_csn_pin = HIGH
    _nrf906_enable_interrupt()
    
 end procedure
@@ -878,7 +886,7 @@ procedure _nrf905_copy_data() is
     var byte data, index
 
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low 
+   nrf905_csn_pin = LOW 
    -- Send read payload command, ignore the data returned. 
    data = spi_master_hw_exchange(_NRF905_CMD_READ_RX_PAYLOAD)
    -- Copy the payload data but not more than the size of the receive buffer. 
@@ -888,7 +896,7 @@ procedure _nrf905_copy_data() is
          nrf905_rx_buffer[index] = data
       end if
    end loop
-   nrf905_csn_pin = high 
+   nrf905_csn_pin = HIGH 
    -- We have to make sure that all payload data was read.
    while _nrf905_get_dr_status() loop
       -- Empty. Ready until data ready is cleard.
@@ -904,10 +912,10 @@ function _nrf905_get_status_register() return byte is
    var byte status
 
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low
+   nrf905_csn_pin = LOW
    -- Read from any register, the first data returned is always the status register.
    status = spi_master_hw_exchange(_NRF905_CMD_NOP) 
-   nrf905_csn_pin = high
+   nrf905_csn_pin = HIGH
    _nrf906_enable_interrupt()
    
    return status
@@ -938,13 +946,13 @@ function _nrf905_read_configuration_register(byte in location) return byte is
    var byte data
 
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low
+   nrf905_csn_pin = LOW
    -- Read from the register, the first data returned is always the status 
    -- register but we can ignore it.
    data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG | 
                                 (location & _NRF905_MASK_CONFIG)) 
    data = spi_master_hw_exchange(_NRF905_CMD_NOP) 
-   nrf905_csn_pin = high
+   nrf905_csn_pin = HIGH
    _nrf906_enable_interrupt()
 
    return data
@@ -959,11 +967,11 @@ procedure _nrf905_write_configuration_register(byte in location,
    var byte _trash
 
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low
+   nrf905_csn_pin = LOW
    _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_CONFIG_REG |
                                   (location & _NRF905_MASK_CONFIG))  
    _trash = spi_master_hw_exchange(value) 
-   nrf905_csn_pin = high
+   nrf905_csn_pin = HIGH
    _nrf906_enable_interrupt()
 
 end procedure
@@ -989,7 +997,7 @@ procedure nrf905_print_configuration_register() is
 
    print_string(serial_hw_data,"RF-Configuration Register.\r\n")
    _nrf906_disable_interrupt()
-   nrf905_csn_pin = low
+   nrf905_csn_pin = LOW
    -- First transfer is the command and returns irrelevant data so can be ignored.
    data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG)   
 
@@ -1141,7 +1149,7 @@ procedure nrf905_print_configuration_register() is
    print_crlf(serial_hw_data)
    print_crlf(serial_hw_data)
 
-   nrf905_csn_pin = high
+   nrf905_csn_pin = HIGH
    _nrf906_enable_interrupt()
    
 end procedure
