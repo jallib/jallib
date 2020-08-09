@@ -1,0 +1,464 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the Si5351a programmable any frequency clock 
+--        generator using a menu structure.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Shows the main features of the Si5351a library 
+--                 
+-- Sources:
+--
+-- Notes:       
+--
+include 16f18857                 
+
+-- Use a 20 MHz  crystal.
+pragma target clock 20_000_000      -- oscillator frequency
+
+pragma target OSC      HS           -- crystal or resonator
+pragma target RSTOSC   EXT1X        -- power-up clock select: OSC
+pragma target CLKOUTEN DISABLED     -- no clock output
+pragma target WDT      DISABLED     -- watchdog
+pragma target BROWNOUT DISABLED     -- no brownout reset
+pragma target FCMEN    DISABLED     -- no clock monitoring
+pragma target CSWEN    ENABLED      -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED      -- use low voltage programming
+pragma target MCLR     EXTERNAL     -- external reset
+
+enable_digital_io()
+-- Give the hardware some time to stabilize.
+_usec_delay(100_000)
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 18 for 28 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 17 for 28 pin DIP.
+const serial_hw_baudrate = 115200            
+include serial_hardware
+serial_hw_init()
+include print
+include strings                            
+
+-- IIC pin definitions for this chip.
+alias si5351a_scl is pin_C3 -- Pin 14 for 28 pin DIP
+alias si5351a_scl_direction is pin_C3_direction
+alias si5351a_sda is pin_C4 -- Pin 15 for 28 pin DIP.
+alias si5351a_sda_direction is pin_C4_direction 
+
+-- We do not use the software IIC but the default hardware IIC.
+-- const SI5351A_SOFTWARE_IIC = TRUE 
+-- Use the debugging info if you want more info about what has been set.
+--const SI5351A_DEBUG = TRUE
+
+-- We need to re-assign the pins to their default value.
+include pps
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX    -- TX1 re-assigned to C6  (default)             
+RXPPS  = PPS_RC7   -- C7 re-assigned to RX1  (default) 
+if !defined(SI5351A_SOFTWARE_IIC) then 
+   -- Do not remap pins otherwise software IIC does not work.          
+   RC4PPS = PPS_SDA1  -- SDA re-assigned to C4  (default)             
+   RC3PPS = PPS_SCK1  -- SCK re-assigned to C3  (default) 
+end if           
+pps_control_lock(TRUE)                 
+
+
+include si5351a
+si5351a_init() 
+
+-- Max length of input string.
+const byte MAX_INPUT = 35
+
+-- Global variables
+var byte input_string[MAX_INPUT]
+var byte command, parameter_count, input_length
+var dword parameter_1
+var dword parameter_2
+var dword parameter_3
+var dword parameter_4
+var bit function_executed, give_info
+
+-- -----------------------  Functions and Procedures ---------------------------
+
+procedure show_menu() is
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,"Select a command from the menu, followed by <CR><>LF>.\r\n")
+   print_string(serial_hw_data,"Note that spaces are required between command and parameters.\r\n")
+   print_string(serial_hw_data,"Parameters must be given as decimal numbers.\r\n")
+   print_string(serial_hw_data,"0  No command or just <CR><LF> shows this menu.\r\n")
+   print_string(serial_hw_data,"1  Set frequency on clock output. Parameters:\r\n")
+   print_string(serial_hw_data,"   <Clock Frequency> = Clock frequency in Hz, range 2500..225000000.\r\n")
+   print_string(serial_hw_data,"   <Clock Output> = Clock output in range 0..7.\r\n")
+   print_string(serial_hw_data,"   Example: 1 20000000 0<CR><LF>.\r\n")
+   print_string(serial_hw_data,"2  Set frequency on clock output and on PLL. Parameters:\r\n")
+   print_string(serial_hw_data,"   <Clock Frequency> = Clock frequency in Hz, range 2500..225000000.\r\n")
+   print_string(serial_hw_data,"   <Clock Output> = Clock output in range 0..7.\r\n")
+   print_string(serial_hw_data,"   <PLL> = PLL to use, select 0 for PLL A or 1 for PLL B.\r\n")
+   print_string(serial_hw_data,"   Example: 2 20000000 1 1<CR><LF>.\r\n")
+   print_string(serial_hw_data,"3  Set frequency manual. Parameters:\r\n")
+   print_string(serial_hw_data,"   <Clock Frequency> = Clock frequency in Hz, range 2500..225000000.\r\n")
+   print_string(serial_hw_data,"   <PLL Frequency> = PLL frequency given in Hz, range 600000000..900000000.\r\n")
+   print_string(serial_hw_data,"   <Clock Output> = Clock output in range 0..7.\r\n")
+   print_string(serial_hw_data,"   <PLL> = PLL to use, select 0 for PLL A or 1 for PLL B.\r\n")
+   print_string(serial_hw_data,"   Example: 3 10000000 600000000 2 0<CR><LF>.\r\n")
+   print_string(serial_hw_data,"4  Enable clock output. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"5  Disable clock output. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"6  Power up clock output. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"7  Power down clock output. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"8  Set clock output inverted. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"9  Set clock output not inverted. Parameter: <Clock Output> in range 0..7.\r\n")
+   print_string(serial_hw_data,"10 Set clock drive strength. Parameters:\r\n")
+   print_string(serial_hw_data,"   <Clock Output> in range 0..7, <Strength> in range 0..3 (see definition).\r\n")
+   print_string(serial_hw_data,"11 Set clock disable state. Parameters:\r\n")
+   print_string(serial_hw_data,"   <Clock Output> in range 0..7, <State> in range 0..3 (see definition).\r\n")
+   print_crlf(serial_hw_data)
+end procedure
+
+
+-- Get the input from the serial port and process it until CR + LF are received.
+-- Input is stored in the global variable 'input_string'
+function get_input() return byte is
+   var byte data, counter
+   var bit cr_received, lf_received
+
+   cr_received = FALSE
+   lf_received = FALSE
+   -- Clear the processed string.
+   for MAX_INPUT using counter loop
+      input_string[counter] = 0
+   end loop
+   counter = 0
+   while (counter < MAX_INPUT) & !cr_received &! lf_received loop
+      if serial_hw_read(data) then
+         if (data == 0x0D) then
+            cr_received = TRUE
+         elsif (data == 0x0A) then
+            lf_received = TRUE
+         else
+            input_string[counter] = data
+         end if
+         counter = counter + 1
+      end if  
+   end loop
+
+   return counter
+
+end function
+
+
+-- Process the global variable 'input_string' and extract the command and if
+-- present a parameter and store these in the corresponding global variables.
+-- If data is incorrect the global parameter 'command' will be zero which will
+-- result in showing the menu later.
+procedure process_input(byte in length) is
+   var byte processed_string[MAX_INPUT]
+   var byte counter, index
+   var bit command_processed, parameter_1_processed, parameter_2_processed
+   var bit parameter_3_processed, parameter_4_processed 
+   
+   -- Clear the processed string
+   for MAX_INPUT using index loop
+      processed_string[index] = 0
+   end loop
+   counter = 0
+   index = 0
+   command = 0
+   parameter_count = 0
+   parameter_1 = 0
+   parameter_2 = 0
+   parameter_3 = 0
+   parameter_4 = 0
+   command_processed = FALSE
+   parameter_1_processed = FALSE
+   parameter_2_processed = FALSE
+   parameter_3_processed = FALSE
+   parameter_4_processed = FALSE
+   while (counter < length) loop
+      -- Copy the number from the input.      
+      if (input_string[counter] >= "0" & input_string[counter] <= "9") then
+         -- This is still a part of a number.
+         processed_string[index] = input_string[counter]
+         index = index + 1
+      else
+         -- We assume that we now have either a number or reached the end.
+         if !command_processed then
+            command = byte(string_to_dword(processed_string)) 
+            -- If the data is incorrect the command will be 0 which means
+            -- that we will show the menu.
+            command_processed = TRUE
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_1_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_1 = string_to_dword(processed_string) 
+            parameter_1_processed = TRUE
+            parameter_count = 1
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_2_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_2 = string_to_dword(processed_string) 
+            parameter_2_processed = TRUE
+            parameter_count = 2
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_3_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_3 = string_to_dword(processed_string) 
+            parameter_3_processed = TRUE
+            parameter_count = 3
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_4_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_4 = word(string_to_dword(processed_string)) 
+            parameter_4_processed = TRUE
+            parameter_count = 4
+         end if 
+      end if
+      counter = counter + 1
+   end loop 
+   
+end procedure
+
+
+-- Execute the command, stored in the global variable 'command' with optional 
+-- a paramter in the global variable 'parameter'.
+function execute_command(bit out executed) return bit is
+
+   var bit ok
+   
+   ok = TRUE
+   executed = TRUE
+   case command of
+   
+      0: -- No command, show menu.
+      block
+         show_menu()
+      end block
+      
+      1: -- Set frequency on clock output. Check parameters.
+      block
+         if (parameter_1 >= SI5351A_MIN_OUT_FREQUENCY) &
+            (parameter_1 <= SI5351A_MAX_OUT_FREQUENCY) &
+            (parameter_2 <= SI5351A_CLOCK_7) &
+            (parameter_count == 2) then
+            executed = si5351a_set_frequency(parameter_1, byte(parameter_2))
+         else
+            ok = FALSE
+         end if 
+      end block
+      
+      2: -- Set frequency on clock output and on PLL. Check parameters.
+      block
+         if (parameter_1 >= SI5351A_MIN_OUT_FREQUENCY) &
+            (parameter_1 <= SI5351A_MAX_OUT_FREQUENCY) &
+            (parameter_2 <= SI5351A_CLOCK_7) &
+            (parameter_3 <= SI5351A_PLL_B) &
+            (parameter_count == 3) then
+            executed = si5351a_set_frequency_on_pll(parameter_1, byte(parameter_2),
+                       byte(parameter_3))
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      3: -- Set frequency manual. Check parameters.
+      block
+         if (parameter_1 >= SI5351A_MIN_OUT_FREQUENCY) &
+            (parameter_1 <= SI5351A_MAX_OUT_FREQUENCY) &
+            (parameter_2 >= SI5351A_MIN_PLL_FREQUENCY) &
+            (parameter_2 <= SI5351A_MAX_PLL_FREQUENCY) &
+            (parameter_3 <= SI5351A_CLOCK_7) &
+            (parameter_4 <= SI5351A_PLL_B) &
+            (parameter_count == 4) then
+            executed = si5351a_set_frequency_manual(parameter_1, parameter_2,
+                       byte(parameter_3), byte(parameter_4))
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      4: -- Enable clock output. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_enable_clock_output(byte(parameter_1))
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      5: -- Disable clock output. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_disable_clock_output(byte(parameter_1))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      6: -- Power up clock output. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_power_up_clock_output(byte(parameter_1))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      7: -- Power down clock output. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_power_down_clock_output(byte(parameter_1))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      8: -- Set clock output inverted. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_set_clock_output_inverted(byte(parameter_1))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      9: -- Set clock output not inverted. Check parameter.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) &
+            (parameter_count == 1) then
+           si5351a_set_clock_output_not_inverted(byte(parameter_1))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      10: -- Set clock drive strength. Check parameters.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) & 
+            (parameter_2 <= SI5351A_CLOCK_DRIVE_8_MA) &
+            (parameter_count == 2) then
+            si5351a_set_clock_drive_strength(byte(parameter_1),
+                                             byte(parameter_2))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      11: -- Set clock disable state. Check parameters.
+      block
+         if (parameter_1 <= SI5351A_CLOCK_7) & 
+            (parameter_2 <= SI5351A_CLOCK_DISABLE_STATE_NEVER) &
+            (parameter_count == 2) then
+            si5351a_set_clock_disable_state(byte(parameter_1),
+                                            byte(parameter_2))
+        else
+            ok = FALSE
+         end if 
+      end block
+
+      -- Invalid command.
+      otherwise ok = FALSE
+   
+   end case
+   
+   return ok
+   
+end function
+
+
+-- Print some status info of the Si5351a
+procedure print_status_info() is
+
+   print_crlf(serial_hw_data)
+   if si5351a_pll_a_is_locked() then
+      print_string(serial_hw_data,"PLL A is locked.\r\n")  
+   else
+      print_string(serial_hw_data,"PLL A is not locked.\r\n")  
+   end if 
+          
+   if si5351a_pll_b_is_locked() then
+      print_string(serial_hw_data,"PLL B is locked.\r\n")  
+   else
+      print_string(serial_hw_data,"PLL B is not locked.\r\n")  
+   end if
+      
+   if si5351a_crystal_signal_is_valid() then
+      print_string(serial_hw_data,"Cyrstal signal is valid.\r\n")  
+   else
+      print_string(serial_hw_data,"Cyrstal signal is not valid.\r\n")  
+   end if
+   
+   print_string(serial_hw_data,"Revision id is: ")  
+   print_byte_dec(serial_hw_data, si5351a_get_revision_id()) 
+
+   print_crlf(serial_hw_data)
+      
+end procedure
+
+-- -----------------------  Main program starts here ---------------------------
+
+print_string(serial_hw_data,"Sample program for the Si5351 clock generator.\r\n")
+give_info = TRUE
+
+-- We generate a menu from which actions can be started.
+show_menu()
+
+forever loop
+
+   input_length = get_input()
+   if input_length > 0 then
+      process_input(input_length)
+      if execute_command(function_executed) then
+         -- Command was OK but check if the function was executed.
+         if function_executed then
+            print_string(serial_hw_data,"Command and function executed succesfully!\r\n\r\n")  
+         else
+            print_string(serial_hw_data,"Command OK but function could not be executed!\r\n\r\n")  
+         end if       
+      else
+         print_string(serial_hw_data,"Invalid command!\r\n\r\n")
+      end if
+      -- Show any updated info.
+      give_info = TRUE
+   else
+      print_string(serial_hw_data,"Input too long!\r\n\r\n")
+   end if
+
+   -- Report new info if needed.
+   if give_info then
+      give_info = FALSE
+      print_status_info()
+      -- Some extra info about the setttings
+      si5361a_print_clock_settings() 
+   end if  
+   
+end loop
+
+ 

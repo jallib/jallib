@@ -1,0 +1,1555 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for the Si5351a programmable any frequence clock generator.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Libray for use of the Si5351a clock generator.
+--
+-- Sources: Inspired by the following sources:
+--          -) https://github.com/etherkit/Si5351Arduino
+--          -) https://radiotransmitter.wordpress.com/2017/02/23/a-simple-software-to-control-the-si5351a-generator-chip/
+--          -) https://www.rfzero.net/tutorials/si5351a/
+--          Application note AN619 from Silicon Labs. 
+--
+-- Notes: The following IIC pins must be defined by the main program before 
+--        including this library:
+--        -) alias si5351a_scl             -- To SCL of SI5351 
+--        -) alias si5351a_scl_direction    
+--        -) alias si5351a_sda             -- To SDA of SI5351       
+--        -) alias si5351a_sda_direction   
+--
+--        The default is hardware IIC control but this can be overruled using 
+--        software IIC control by defining the following constant:
+--        -) const SI5351A_SOFTWARE_IIC = TRUE 
+--        The IIC slave address can be set by defining the following constant:
+--        -) const byte SI5351A_IIC_ADDRESS = <IIC address>
+--        This library uses by default the IIC address of the device with A0 
+--        being 0: 0b0110_0000.
+--
+--        Important: Although the library is designed to support the Si5351a 
+--                   with 7 outputs, it has only been tested for the smaller 
+--                  (10-MSOP) version with 3 outputs. 
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- IIC address, depends on what is used for A0. We assume here A0 = 0.
+if !defined(SI5351A_IIC_ADDRESS) then
+   const byte SI5351A_IIC_ADDRESS = 0b0110_0000
+end if 
+
+-- Output clocks. Note that the 10-pin version only has clock outputs 0..2.
+const byte SI5351A_MIN_CLOCK = 1
+const byte SI5351A_MAX_CLOCK = 8
+const byte SI5351A_CLOCK_0 = 0
+const byte SI5351A_CLOCK_1 = 1
+const byte SI5351A_CLOCK_2 = 2
+const byte SI5351A_CLOCK_3 = 3
+const byte SI5351A_CLOCK_4 = 4
+const byte SI5351A_CLOCK_5 = 5
+const byte SI5351A_CLOCK_6 = 6
+const byte SI5351A_CLOCK_7 = 7
+
+-- Clock sources. Values valid for the SI5351A version only.
+const byte SI5351A_CLOCK_SOURCE_XTAL           = 0b0000_0000
+const byte SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4 = 0b0000_1000 
+const byte SI5351A_CLOCK_SOURCE_MULTISYNTH_X   = 0b0000_1100 -- X = 0..7.
+
+-- Clock drive strength.
+const byte SI5351A_CLOCK_DRIVE_2_MA = 0x00
+const byte SI5351A_CLOCK_DRIVE_4_MA = 0x01
+const byte SI5351A_CLOCK_DRIVE_6_MA = 0x02
+const byte SI5351A_CLOCK_DRIVE_8_MA = 0x03
+
+-- Clock disable states.
+const byte SI5351A_CLOCK_DISABLE_STATE_LOW   = 0x00
+const byte SI5351A_CLOCK_DISABLE_STATE_HIGH  = 0x01
+const byte SI5351A_CLOCK_DISABLE_STATE_FLOAT = 0x02  -- High impedance state.
+const byte SI5351A_CLOCK_DISABLE_STATE_NEVER = 0x03
+
+-- Crystal load capacitance constants. 
+const byte SI5351A_CRYSTAL_LOAD_6_PF  = 0b0101_0010
+const byte SI5351A_CRYSTAL_LOAD_8_PF  = 0b1001_0010
+const byte SI5351A_CRYSTAL_LOAD_10_PF = 0b1101_0010
+
+-- Default crystal frequency of most boards in Hz.
+const dword SI5351A_CRYSTAL_FREQUENCY = 25_000_000
+
+-- Clock frequency ranges in Hz. Range is from 2.5 kHz to 225 MHz. The chip 
+-- mentioned 200 MHz but the maximum clock it can produce is the maximum PLL
+-- frequency of 900 MHz divided by 4 which is 225 MHz
+const dword SI5351A_MIN_OUT_FREQUENCY  = 2_500
+const dword SI5351A_MAX_OUT_FREQUENCY  = 225_000_000
+
+-- PLL frequencies in Hz.
+const dword SI5351A_MIN_PLL_FREQUENCY  = 600_000_000
+const dword SI5351A_MAX_PLL_FREQUENCY  = 900_000_000
+
+-- PLL constants.
+const byte SI5351A_PLL_A = 0
+const byte SI5351A_PLL_B = 1
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Initialize the IIC interface and the Si5351a device.
+procedure si5351a_init() 
+
+-- Set the given frequency on the given clock output. The frequency is given 
+-- in Hz. Clock must be in range I5351A_CLOCK_0 .. SI5351A_CLOCK_7.
+-- This function selects the PLL automatically and tries to map the clocks as 
+-- much as possible on the same PLL as to enable multiple frequencies on 
+-- different clock outputs. The function returns TRUE when the frequency was set 
+-- succesfully on the given clock output.
+-- Note that this function requires much more ROM code for mapping more clocks
+-- on the same PLL so if you do not need the feature use the function 
+-- 'si5351a_set_frequency_manual' to limit ROM space.      
+function si5351a_set_frequency(dword in frequency, byte in clock) return bit
+
+-- Set the given frequency on the given clock output using the given PLL. 
+-- The frequency is given in Hz. Clock must be in range I5351A_CLOCK_0 .. 
+-- SI5351A_CLOCK_7. If 'pll' is SI5351A_PLL_A then PLL A is used, if 
+-- SI5351A_PLL_B then PLL B is used. 
+-- It is possible to set multiple outputs on different frequencies using the same
+-- pll as long as the pll frequency is the same for these outputs. 
+-- The function returns TRUE when the frequency was set succesfully.        
+function si5351a_set_frequency_on_pll(dword in frequency, byte in clock, byte in pll) return bit
+
+-- Set the given frequency with the given PLL frequency on the given clock 
+-- output using the given PLL. The clock frequency and PLL frequency are given in Hz. 
+-- Clock must be in range I5351A_CLOCK_0 .. SI5351A_CLOCK_7. If 'pll' is 
+-- SI5351A_PLL_A then PLL A is used, if SI5351A_PLL_B then PLL B is used. 
+-- It is possible to set multiple outputs on different frequencies using the same
+-- pll as long as the pll frequency is the same for these outputs. 
+-- Important: For frequencies below 150 MHz pll_frequency must be a multiple
+-- of the crystal frequency. For frequencies higher than 150 MHz the pll_frequency
+-- must be exactly 4 times the frequency.
+-- The function returns TRUE when the frequency was set succesfully.        
+function si5351a_set_frequency_manual(dword in frequency, dword in pll_frequency, 
+                                      byte in clock, byte in pll) return bit 
+
+--  Returns TRUE when PLL A is locked.
+function si5351a_pll_a_is_locked() return bit
+
+--  Returns TRUE when PLL B is locked.
+function si5351a_pll_b_is_locked() return bit
+
+--  Returns TRUE when a valid crystal signal is detected.
+function si5351a_crystal_signal_is_valid() return bit
+
+--  Returns the revision id of the device.
+function si5351a_get_revision_id() return byte
+
+-- Enable the given clock output. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7.
+procedure si5351a_enable_clock_output(byte in clock)
+
+-- Disable the given clock output. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. The level of the output signal depends on
+-- the set clock disable state as defined by si5351a_set_clock_disable_state(). 
+procedure si5351a_disable_clock_output(byte in clock)
+
+-- Power up given clock output. Parameter clock must be in range  
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_power_up_clock_output(byte in clock)
+
+-- Power down given clock output. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_power_down_clock_output(byte in clock)
+
+-- Set the clock output to inverted. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_clock_output_inverted(byte in clock)
+
+-- Set the clock output to not inverted. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_clock_output_not_inverted(byte in clock)
+
+-- Set the multisynth as clock input source. Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Drive strength must be one of the four
+-- values of SI5351A_CLOCK_DRIVE_X_MA (X = 2,4,6 or 8)
+procedure si5351a_set_clock_drive_strength(byte in clock, byte in strength)
+
+-- Set the clock disable state Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Disable state must be one of the four
+-- values of SI5351A_CLOCK_DISABLE_STATE
+procedure si5351a_set_clock_disable_state(byte in clock, byte in disable_state)
+
+-- Print the set frequencies and the assigned PLL per clock output. Can be used 
+-- for testing purposes.
+procedure si5361a_print_clock_settings()
+
+-- -----------------------------------------------------------------------------
+-- --------------- Additional public API for the expert -------------------------
+-- -----------------------------------------------------------------------------
+-- Some public functions for the experts. Note, calling these may cause some
+-- set frequency functions not to work correctly anymore. Call si5351a_init()
+-- to recover.
+
+-- Set multisynth in integer devision mode. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. 
+procedure si5351a_set_multisynth_integer_mode(byte in clock)
+
+-- Set multisynth in factional division mode. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. 
+procedure si5351a_set_multisynth_fractional_mode(byte in clock)
+
+-- Set force feedback A multisynth in integer division mode. 
+procedure si5351a_set_force_feedback_a_multisynth_integer_mode() 
+
+-- Set force feedback A multisynth in factional division mode. 
+procedure si5351a_set_force_feedback_a_multisynth_fractional_mode()
+
+-- Set force feedback B multisynth in integer division mode. 
+procedure si5351a_set_force_feedback_b_multisynth_integer_mode() 
+
+-- Set force feedback B multisynth in factional division mode. 
+procedure si5351a_set_force_feedback_b_multisynth_fractional_mode()
+
+-- Set multisynth source to PLL A. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_multisynth_source_pll_a(byte in clock)
+
+-- Set multisynth source to PLL B. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_multisynth_source_pll_b(byte in clock)
+
+-- Set clock input source. Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Source must be one of the values
+-- of SI5351A_CLOCK_SOURCE_XTAL, SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4 or
+-- SI5351A_CLOCK_SOURCE_MUTLISYNTH_X. Note that SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4
+-- cannot be used for clock 0 and clock 4. 
+procedure si5351a_set_clock_input_source(byte in clock, byte in source)
+
+-- Reset PPL A.
+procedure si5351a_reset_pll_a()
+
+-- Reset PPL B.
+procedure si5351a_reset_pll_b()
+
+-- Set initial clodk phase offset Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. The phase_offset is a 7 bit number in 
+-- units of the VCO/4 period.
+procedure si5351a_set_initial_phase_offset(byte in clock, byte in phase_offset)
+
+-- Set the crystal load capacitance. Load capacitance must be one of the three
+-- values SI5351A_CRYSTAL_LOAD_X_PF (X = 6, 8 or 10). 
+procedure si5351a_set_crystal_load_capacitance(byte in load_capacitance)
+
+-- Enable fanout of XO to clock output multiplexers.
+procedure si5351a_enable_xo_fanout()
+
+-- Disable fanout of XO to clock output multiplexers.          
+procedure si5351a_disable_xo_fanout()
+
+-- Enable fanout of Multisynth0 and Multisynth4 to all output multiplexers.
+procedure si5351a_enable_multisynth_fanout()
+
+-- Disable fanout of Multisynth0 and Multisynth4 to all output multiplexers.
+procedure si5351a_disable_multisynth_fanout()
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Private stuff ------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Registers.
+const byte _SI5351A_DEVICE_STATUS               = 0
+const byte _SI5351A_OUTPUT_ENABLE_CONTROL       = 3
+const byte _SI5351A_OUTPUT_ENABLE_PIN           = 9
+const byte _SI5351A_PLL_INPUT_SOURCE            = 15  
+const byte _SI5351A_CLOCK0_CONTROL              = 16  -- Used as base for clock 0..7.
+const byte _SI5351A_CLOCK3_0_DISABLE_STATE      = 24 
+const byte _SI5351A_CLOCK7_4_DISABLE_STATE      = 25 
+const byte _SI5351A_MULTISYNTH_NA_PARAMETERS    = 26 
+const byte _SI5351A_MULTISYNTH_NB_PARAMETERS    = 34 
+const byte _SI5351A_MULTISYNTH_0_PARAMETERS     = 42  -- Used as base for clock 0..7 
+const byte _SI5351A_MULTISYNTH_6_PARAMETERS     = 90  
+const byte _SI5351A_MULTISYNTH_7_PARAMETERS     = 91  
+const byte _SI5351A_CLOCK_6_7_OUTPUT_DIVIDER    = 92  
+const byte _SI5351A_CLOCK0_INITIAL_PHASE_OFFSET = 165 -- Used as base for clock 0..7.
+const byte _SI5351A_PLL_RESET                   = 177 
+const byte _SI5351A_CRYSTAL_LOAD_CAPACITANCE    = 183 
+const byte _SI5351A_FANOUT_ENABLE               = 187 
+
+
+-- Register Masks.
+const byte _SI5351A_MASK_SYS_INIT          = 0b1000_0000
+const byte _SI5351A_MASK_PLL_XTAL_SOURCE   = 0b0000_1100
+const byte _SI5351A_MASK_LOL_A             = 0b0010_0000
+const byte _SI5351A_MASK_LOL_B             = 0b0100_0000
+const byte _SI5351A_MASK_LOS_XTAL          = 0b0000_1000
+const byte _SI5351A_MASK_REVID             = 0b0000_0011
+const byte _SI5351A_MASK_CLKX_PDN          = 0b1000_0000 -- X = 0..7
+const byte _SI5351A_MASK_MSX_INT           = 0b0100_0000 -- X = 0..7
+const byte _SI5351A_MASK_FBA_INT           = 0b0100_0000 
+const byte _SI5351A_MASK_FBB_INT           = 0b0100_0000 
+const byte _SI5351A_MASK_MSX_SRC           = 0b0010_0000 -- X = 0..7
+const byte _SI5351A_MASK_CLKX_INV          = 0b0001_0000 -- X = 0..7
+const byte _SI5351A_MASK_CLKX_SOURCE       = 0b1111_0011 -- X = 0..7
+const byte _SI5351A_MASK_CLKX_IDRV         = 0b1111_1100 -- X = 0..7
+const byte _SI5351A_MASK_CLKX_DIS_STATE    = 0b0000_0011 -- X = 0..7
+const byte _SI5351A_MASK_CLKX_PHASE_OFFSET = 0b0111_1111 -- X = 0..7
+const byte _SI5351A_MASK_PLL_A_RESET       = 0b0010_0000 
+const byte _SI5351A_MASK_PLL_B_RESET       = 0b1000_0000 
+const byte _SI5351A_MASK_XO_FANOUT_ENABLE  = 0b0100_0000 
+const byte _SI5351A_MASK_MS_FANOUT_ENABLE  = 0b0001_0000 
+
+-- Internal PLL constant, must not be equal to SI5351A_PLL_A or SI5351A_PLL_B
+const byte _SI5351A_NO_PLL = 0xFF  
+
+-- For clock frequencies above the 150 MHz we need to switch from fractional mode
+-- to integer mode. In this mode the output is just 4 times the PLL frequency.
+const dword _SI5351A_FRACTIONAL_FREQUENCY = 150_000_000
+
+
+-- -------------------- Internal procedures and functions ----------------------
+
+-- Write a byte to the given Si5351a register via IIC.
+procedure _si5351a_write_register(byte in register, byte in data) 
+
+-- Read a byte from the given Si5351a register via IIC.
+function _si5351a_read_register(byte in register) return byte 
+
+-- Store the multisynth data available in the global array '_si5351a_ms_register_data'
+-- to the multisynth registers, starting at register 'start_register'.
+procedure _store_multisynth_data(byte in start_register)
+
+-- Determine the maximum PLL frequency in steps of the crystal frequency. This
+-- will guarantee an integer value when setting the PLL frequency.
+function _si5351a_determine_maximum_pll_frequency() return dword 
+
+-- Check if the given PLL is in use by any of the outputs, if so return the 
+-- number of the output.
+function _si5351a_pll_on_clock(byte in which_pll) return byte 
+
+-- Update all clocks with the current settings. This means re-calculating all 
+-- pll multisynth and output multisynth values and updating all registers. This
+-- function also assigns the clock source to the correct PLL.
+procedure _si5351a_update_all_clocks() 
+
+-- Recalculate all outputs on the given PLL by lowering the currently set
+-- PLL value. If a new PLL frequency is found it will be stored for all clocks
+-- that use that PLL.
+function _si5351a_recalculate_outputs(byte in which_pll) return bit
+
+-- Calculate the FMD divider. Note that we only use integer values so the PLL 
+-- freqency has to be set in steps of SI5351A_CRYSTAL_FREQUENCY.
+-- The Feedback Multisynth Divider (FMD) = a + (b/c) and since we use only
+-- integers (b=0) this makes calculation straight forward.
+-- The FMD ratio can be from 15 + 0/1048575 and to 90 + 0/1048575 which is 
+-- always the case for a PLL frequency between 600 MHz and 900 MHz and with a 
+-- crystal frequency of 25 MHz or 27 MHz.  
+-- The calculated values are stord in the global array _si5351a_ms_register_data
+procedure _si5351a_calculate_pll_setting(dword in pll_frequency)  
+
+-- Calculate the Output Multisynth Divider (OMD) = a + (b/c). 
+-- Some notes on the calulation of the OMD:
+-- -) For clock 0 .. 5 the OMD ratio can be 8 + 1/1048575 and 2048.
+-- -) For clock 6 .. 7 the OMD ratio can only be even integer from 6 to 254.
+-- -) The R divider can only be 1, 2, 4, 8, 16, 32, 64 or 128.
+-- -) If the output frequency is above 150 MHz use devide by 4.
+-- -) If the output frequency is below 500 kHz R should be used.
+-- The function returns TRUE when calculation is in range and the data is stored
+-- in the global array _si5351a_ms_register_data else it returns FALSE and 
+-- the data will not be stored.
+function _si5351a_calculate_output_setting(dword in frequency, 
+                                           dword in pll_frequency,
+                                           byte in clock) return bit
+
+
+-- -----------------------------------------------------------------------------
+-- ------------------------- Implementation ------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Type definition for keeping track of data set for one clock output.
+record _si5351a_clock_setting is
+   dword frequency
+   byte pll
+end record
+
+-- Array that stores the current setting of the clock outputs.
+var _si5351a_clock_setting _si5351a_clock_output[SI5351A_MAX_CLOCK] 
+-- Array that holds data for the 8 multisynth registers.
+var byte _si5351a_ms_register_data[8]
+-- Variable that holds the currently set PLL A frequency.
+var dword _si5351a_pll_a_frequency
+-- Variable that holds the currently set PLL B frequency.
+var dword _si5351a_pll_b_frequency
+
+-- For debugging purposes only. Commented out (disabled) for released library.
+-- const SI5351A_DEBUG = TRUE
+-- Print library is only needed for debugging purposes.
+if defined(SI5351A_DEBUG) then
+   include print
+end if
+
+-- Define the correct IIC pins, depending on software IIC or hardware IIC.
+alias i2c_scl is si5351a_scl
+alias i2c_sda is si5351a_sda
+const word _i2c_bus_speed = 1  -- 100kHz
+if defined(SI5351A_SOFTWARE_IIC) then 
+   alias i2c_scl_direction is si5351a_scl_direction
+   alias i2c_sda_direction is si5351a_sda_direction
+   include i2c_software
+else
+   -- Default is hardware IIC.
+   if !defined(pin_scl_direction) then
+      alias pin_scl_direction is si5351a_scl_direction
+   end if
+   if !defined(pin_sda_direction) then
+      alias pin_sda_direction is si5351a_sda_direction
+   end if
+   const bit _i2c_level  = true        -- i2c levels (not SMB)
+   include i2c_hardware
+end if
+
+
+-- Initialize the IIC interface and the Si5351a device.
+procedure si5351a_init() is
+
+   var byte value
+   
+   i2c_initialize()
+   -- Wait for the device to complete its initialization.
+   repeat
+      value = _si5351a_read_register(_SI5351A_DEVICE_STATUS)
+   until (value & _SI5351A_MASK_SYS_INIT) == 0
+   
+   -- Set the PLL input source for PLL A and B to crystal input.
+   value = _si5351a_read_register(_SI5351A_PLL_INPUT_SOURCE) 
+   _si5351a_write_register(_SI5351A_PLL_INPUT_SOURCE,
+                           value & !_SI5351A_MASK_PLL_XTAL_SOURCE) 
+                           
+   -- Initialize the clocks, select fractional mode. 
+   for SI5351A_MAX_CLOCK using value loop
+      si5351a_power_down_clock_output(value) 
+      si5351a_enable_clock_output(value)
+      si5351a_power_up_clock_output(value)
+      si5351a_set_multisynth_fractional_mode(value)
+      si5351a_set_multisynth_source_pll_a(value)
+      si5351a_set_clock_output_not_inverted(value)
+      si5351a_set_clock_input_source(value, SI5351A_CLOCK_SOURCE_MULTISYNTH_X)
+      si5351a_set_clock_drive_strength(value, SI5351A_CLOCK_DRIVE_6_MA)
+      si5351a_set_clock_disable_state(value, SI5351A_CLOCK_DISABLE_STATE_NEVER)
+      si5351a_set_initial_phase_offset(value, 0)   
+      -- Initialize the set frequencies and used PLL's.
+      _si5351a_clock_output[value].frequency = 0
+      _si5351a_clock_output[value].pll = _SI5351A_NO_PLL
+   end loop
+   si5351a_set_crystal_load_capacitance(SI5351A_CRYSTAL_LOAD_8_PF) 
+   si5351a_enable_multisynth_fanout() 
+   si5351a_reset_pll_a()
+   si5351a_reset_pll_b()
+      
+end procedure
+
+
+--  Returns TRUE when PLL A is locked.
+function si5351a_pll_a_is_locked() return bit is
+
+   return (_si5351a_read_register(_SI5351A_DEVICE_STATUS) & 
+           _SI5351A_MASK_LOL_A) == 0   
+   
+end function
+
+
+--  Returns TRUE when PLL B is locked.
+function si5351a_pll_b_is_locked() return bit is
+
+   return (_si5351a_read_register(_SI5351A_DEVICE_STATUS) & 
+           _SI5351A_MASK_LOL_B) == 0   
+   
+end function
+
+
+--  Returns TRUE when a valid crystal signal is detected.
+function si5351a_crystal_signal_is_valid() return bit is
+
+   return (_si5351a_read_register(_SI5351A_DEVICE_STATUS) & 
+           _SI5351A_MASK_LOS_XTAL) == 0   
+   
+end function
+
+
+--  Returns the revision id of the device.
+function si5351a_get_revision_id() return byte is
+
+   return (_si5351a_read_register(_SI5351A_DEVICE_STATUS) & _SI5351A_MASK_REVID)   
+   
+end function
+
+
+-- Enable the given clock output. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7.
+procedure si5351a_enable_clock_output(byte in clock) is
+  
+   var byte register 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      -- Enable the clock output.
+      register = _si5351a_read_register(_SI5351A_OUTPUT_ENABLE_CONTROL)
+      _si5351a_write_register(_SI5351A_OUTPUT_ENABLE_CONTROL, 
+                              register & !(1<< clock))
+      -- Also make sure the OEB pin enables it.
+      register = _si5351a_read_register(_SI5351A_OUTPUT_ENABLE_PIN)
+      _si5351a_write_register(_SI5351A_OUTPUT_ENABLE_PIN, 
+                              register & !(1<< clock))
+   end if 
+    
+end procedure
+
+
+-- Disable the given clock output. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. The level of the output signal depends on
+-- the set clock disable state as defined by si5351a_set_clock_disable_state(). 
+procedure si5351a_disable_clock_output(byte in clock) is
+  
+   var byte register 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      -- Disable the clock output.
+      register = _si5351a_read_register(_SI5351A_OUTPUT_ENABLE_CONTROL)
+      _si5351a_write_register(_SI5351A_OUTPUT_ENABLE_CONTROL, 
+                              register | (1<< clock))
+      -- Also make sure the OEB pin disables it.
+      register = _si5351a_read_register(_SI5351A_OUTPUT_ENABLE_PIN)
+      _si5351a_write_register(_SI5351A_OUTPUT_ENABLE_PIN, 
+                              register | (1<< clock))
+   end if 
+    
+end procedure
+
+
+-- Power up given clock output. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_power_up_clock_output(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value & !_SI5351A_MASK_CLKX_PDN)
+   end if 
+    
+end procedure
+
+
+-- Power down given clock output. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_power_down_clock_output(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value | _SI5351A_MASK_CLKX_PDN)
+   end if 
+    
+end procedure
+
+
+
+-- Set multisynth in integer devision mode. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. 
+procedure si5351a_set_multisynth_integer_mode(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_5) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value | _SI5351A_MASK_MSX_INT)
+   end if 
+    
+end procedure
+
+
+-- Set multisynth in factional division mode. Parameter clock must be in range 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. 
+procedure si5351a_set_multisynth_fractional_mode(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_5) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value & !_SI5351A_MASK_MSX_INT)
+   end if 
+    
+end procedure
+
+
+-- Set force feedback A multisynth in integer division mode. 
+procedure si5351a_set_force_feedback_a_multisynth_integer_mode() is
+  
+   var byte value 
+
+   value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + 6)
+   _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + 6, 
+                           value | _SI5351A_MASK_FBA_INT)
+
+end procedure
+
+
+
+-- Set force feedback A multisynth in factional division mode. 
+procedure si5351a_set_force_feedback_a_multisynth_fractional_mode() is
+  
+   var byte value 
+
+   value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + 6)
+   _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + 6, 
+                           value & !_SI5351A_MASK_FBA_INT)
+
+end procedure
+
+
+-- Set force feedback B multisynth in integer division mode. 
+procedure si5351a_set_force_feedback_b_multisynth_integer_mode() is
+  
+   var byte value 
+
+   value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + 7)
+   _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + 7, 
+                           value | _SI5351A_MASK_FBB_INT)
+
+end procedure
+
+
+
+-- Set force feedback B multisynth in factional division mode. 
+procedure si5351a_set_force_feedback_b_multisynth_fractional_mode() is
+  
+   var byte value 
+
+   value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + 7)
+   _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + 7, 
+                           value & !_SI5351A_MASK_FBB_INT)
+
+end procedure
+
+
+-- Set multisynth source to PLL A. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_multisynth_source_pll_a(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value & !_SI5351A_MASK_MSX_SRC)
+   end if 
+    
+end procedure
+
+
+-- Set multisynth source to PLL B. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_multisynth_source_pll_b(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value | _SI5351A_MASK_MSX_SRC)
+   end if 
+    
+end procedure
+
+
+-- Set the clock output to inverted. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_clock_output_inverted(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value | _SI5351A_MASK_CLKX_INV)
+   end if 
+    
+end procedure
+
+
+-- Set the clock output to not inverted. Parameter clock must be in range
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. 
+procedure si5351a_set_clock_output_not_inverted(byte in clock) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+      _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                              value & !_SI5351A_MASK_CLKX_INV)
+   end if 
+    
+end procedure
+
+
+-- Set clock input source. Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Source must be one of the values
+-- of SI5351A_CLOCK_SOURCE_XTAL, SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4 or
+-- SI5351A_CLOCK_SOURCE_MUTLISYNTH_X. Note that SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4
+-- cannot be used for clock 0 and clock 4. 
+procedure si5351a_set_clock_input_source(byte in clock, byte in source) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      case source of
+         SI5351A_CLOCK_SOURCE_XTAL,
+         SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4,
+         SI5351A_CLOCK_SOURCE_MULTISYNTH_X:
+         block
+            -- For clock 0 and clock 4 we cannot use SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4
+            if !(((clock == SI5351A_CLOCK_0) | (clock == SI5351A_CLOCK_4)) &
+                  (source == SI5351A_CLOCK_SOURCE_MULTISYNTH_0_4)) then 
+               value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock)
+               _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, 
+                                      (value & _SI5351A_MASK_CLKX_SOURCE) | source)
+            end if
+         end block 
+      end case
+      
+   end if 
+    
+end procedure
+
+
+-- Set the multisynth as clock input source. Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Drive strength must be one of the four
+-- values of SI5351A_CLOCK_DRIVE_X_MA (X = 2,4,6 or 8)
+procedure si5351a_set_clock_drive_strength(byte in clock, byte in strength) is
+  
+   var byte value 
+
+   if (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK0_CONTROL + clock) &
+              _SI5351A_MASK_CLKX_IDRV
+      case strength of
+         SI5351A_CLOCK_DRIVE_2_MA,
+         SI5351A_CLOCK_DRIVE_4_MA,
+         SI5351A_CLOCK_DRIVE_6_MA,
+         SI5351A_CLOCK_DRIVE_8_MA:
+         block
+            value = value | strength
+            _si5351a_write_register(_SI5351A_CLOCK0_CONTROL + clock, value) 
+         end block
+      end case
+   end if 
+    
+end procedure
+
+
+-- Set the clock disable state Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_7. Disable state must be one of the four
+-- values of SI5351A_CLOCK_DISABLE_STATE
+procedure si5351a_set_clock_disable_state(byte in clock, byte in disable_state) is
+  
+   var byte value 
+
+   --  Mask off any unwanted bits.
+   disable_state = disable_state & _SI5351A_MASK_CLKX_DIS_STATE
+   if (clock <= SI5351A_CLOCK_3) then
+      value = _si5351a_read_register(_SI5351A_CLOCK3_0_DISABLE_STATE)
+      -- Remove the existing disable state settings for this clock.
+      value = value & !(_SI5351A_MASK_CLKX_DIS_STATE << (clock * 2)) 
+      -- Now add the given disable state settings for this clock.
+      value = value | (disable_state << (clock * 2))
+      _si5351a_write_register(_SI5351A_CLOCK3_0_DISABLE_STATE, value) 
+   elsif (clock >= SI5351A_CLOCK_4) & (clock <= SI5351A_CLOCK_7) then
+      value = _si5351a_read_register(_SI5351A_CLOCK7_4_DISABLE_STATE)
+      -- Remove the existing disable state settings for this clock.
+      value = value & !(_SI5351A_MASK_CLKX_DIS_STATE << ((clock - 4) * 2))
+      -- Now add the given disable state settings for this clock.
+      value = value | (disable_state << ((clock - 4) * 2))
+      _si5351a_write_register(_SI5351A_CLOCK7_4_DISABLE_STATE, value) 
+   end if
+    
+end procedure
+
+
+-- Set initial clodk phase offset Parameter clock must be between 
+-- SI5351A_CLOCK_0 .. SI5351A_CLOCK_5. 
+-- The phase_offset is a 7 bit number in units of the VCO/4 period.
+procedure si5351a_set_initial_phase_offset(byte in clock, byte in phase_offset) is
+  
+   if (clock <= SI5351A_CLOCK_5) then
+      _si5351a_write_register(_SI5351A_CLOCK0_INITIAL_PHASE_OFFSET + clock, 
+                              phase_offset & _SI5351A_MASK_CLKX_PHASE_OFFSET)
+   end if 
+    
+end procedure
+
+
+-- Reset PPL A.
+procedure si5351a_reset_pll_a() is
+
+   _si5351a_write_register(_SI5351A_PLL_RESET, _SI5351A_MASK_PLL_A_RESET)
+                            
+end procedure
+
+
+-- Reset PPL B.
+procedure si5351a_reset_pll_b() is
+
+   _si5351a_write_register(_SI5351A_PLL_RESET, _SI5351A_MASK_PLL_B_RESET)
+                            
+end procedure
+
+
+-- Set the crystal load capacitance. Load capacitance must be one of the three
+-- values SI5351A_CRYSTAL_LOAD_X_PF (X = 6, 8 or 10) 
+procedure si5351a_set_crystal_load_capacitance(byte in load_capacitance) is
+  
+   case load_capacitance of
+      SI5351A_CRYSTAL_LOAD_6_PF,
+      SI5351A_CRYSTAL_LOAD_8_PF,
+      SI5351A_CRYSTAL_LOAD_10_PF:
+      block
+         _si5351a_write_register(_SI5351A_CRYSTAL_LOAD_CAPACITANCE, load_capacitance)
+      end block
+   end case
+    
+end procedure
+
+ 
+-- Enable fanout of XO to clock output multiplexers.
+procedure si5351a_enable_xo_fanout() is
+
+   var byte value
+   
+   value = _si5351a_read_register(_SI5351A_FANOUT_ENABLE)
+   _si5351a_write_register(_SI5351A_FANOUT_ENABLE, 
+                           value | _SI5351A_MASK_XO_FANOUT_ENABLE)
+
+end procedure
+
+
+-- Disable fanout of XO to clock output multiplexers.
+procedure si5351a_disable_xo_fanout() is
+
+   var byte value
+   
+   value = _si5351a_read_register(_SI5351A_FANOUT_ENABLE)
+   _si5351a_write_register(_SI5351A_FANOUT_ENABLE, 
+                           value & !_SI5351A_MASK_XO_FANOUT_ENABLE)
+
+end procedure
+
+-- Enable fanout of Multisynth0 and Multisynth4 to all output multiplexers.
+procedure si5351a_enable_multisynth_fanout() is
+
+   var byte value
+   
+   value = _si5351a_read_register(_SI5351A_FANOUT_ENABLE)
+   _si5351a_write_register(_SI5351A_FANOUT_ENABLE, 
+                           value | _SI5351A_MASK_MS_FANOUT_ENABLE)
+
+end procedure
+
+
+-- Disable fanout of Multisynth0 and Multisynth4 to all output multiplexers.
+procedure si5351a_disable_multisynth_fanout() is
+
+   var byte value
+   
+   value = _si5351a_read_register(_SI5351A_FANOUT_ENABLE)
+   _si5351a_write_register(_SI5351A_FANOUT_ENABLE, 
+                           value & !_SI5351A_MASK_MS_FANOUT_ENABLE)
+
+end procedure
+
+
+-- Set the given frequency with the given PLL frequency on the given clock 
+-- output using the given PLL. The clock frequency and PLL frequency are given in Hz. 
+-- Clock must be in range I5351A_CLOCK_0 .. SI5351A_CLOCK_7. If 'pll' is 
+-- SI5351A_PLL_A then PLL A is used, if SI5351A_PLL_B then PLL B is used. 
+-- It is possible to set multiple outputs on different frequencies using the same
+-- pll as long as the pll frequency is the same for these outputs. 
+-- Important: For frequencies below 150 MHz pll_frequency must be a multiple
+-- of the crystal frequency. For frequencies higher than 150 MHz the pll_frequency
+-- must be exactly 4 times the frequency.
+-- The function returns TRUE when the frequency was set succesfully.        
+function si5351a_set_frequency_manual(dword in frequency, 
+                                      dword in pll_frequency, byte in clock, 
+                                      byte in pll) return bit is
+
+   var dword current_frequency
+   var byte current_pll
+   var bit all_ok
+   
+   -- First check if the frequency and the clock is in range.
+   if (frequency >= SI5351A_MIN_OUT_FREQUENCY) & 
+      (frequency <= SI5351A_MAX_OUT_FREQUENCY) & 
+      (pll_frequency >= SI5351A_MIN_PLL_FREQUENCY) & 
+      (pll_frequency <= SI5351A_MAX_PLL_FREQUENCY) & 
+      (clock <= SI5351A_CLOCK_7) &
+      (pll <= SI5351A_PLL_B) then
+    
+      -- Save the initial settings for this clock (if present).
+      current_frequency = _si5351a_clock_output[clock].frequency
+      current_pll = _si5351a_clock_output[clock].pll
+      all_ok = TRUE
+      
+      -- First check if these settings are valid.
+      if _si5351a_calculate_output_setting(frequency, pll_frequency, clock) then
+         -- Set the PLL frequency.
+         _si5351a_calculate_pll_setting(pll_frequency)
+         if pll == SI5351A_PLL_A then
+            _store_multisynth_data(_SI5351A_MULTISYNTH_NA_PARAMETERS)
+            si5351a_set_multisynth_source_pll_a(clock)
+            -- Remember assigned PLL in case of use of other set frequency function.
+            _si5351a_clock_output[clock].pll = SI5351A_PLL_A
+           _si5351a_pll_a_frequency = pll_frequency
+         else
+            _store_multisynth_data(_SI5351A_MULTISYNTH_NB_PARAMETERS)
+            si5351a_set_multisynth_source_pll_b(clock)
+            -- Remember assigned PLL in case of use of other set frequency function.
+            _si5351a_clock_output[clock].pll = SI5351A_PLL_B
+            _si5351a_pll_b_frequency = pll_frequency
+         end if
+      else
+         all_ok = FALSE
+      end if 
+
+      -- Re-calculate and set the multisynth output again and store them.
+      if all_ok & 
+         _si5351a_calculate_output_setting(frequency, pll_frequency, clock) then
+         -- Store this setting.
+         if (clock <= SI5351A_CLOCK_5) then
+            -- If the frequency is higher than 150 MHz we need to set the clock
+            -- to integer mode instead of fractional mode. Clock 6 and 7 only 
+            -- support integer mode.
+            if (frequency > _SI5351A_FRACTIONAL_FREQUENCY) then
+               si5351a_set_multisynth_integer_mode(clock)
+            else
+               si5351a_set_multisynth_fractional_mode(clock)
+            end if 
+            _store_multisynth_data(_SI5351A_MULTISYNTH_0_PARAMETERS + (clock * 8)) 
+         elsif (clock == SI5351A_CLOCK_6) then
+            _si5351a_write_register(_SI5351A_MULTISYNTH_6_PARAMETERS,_si5351a_ms_register_data[0])
+            _si5351a_write_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER,_si5351a_ms_register_data[1])
+         elsif (clock == SI5351A_CLOCK_7) then
+            _si5351a_write_register(_SI5351A_MULTISYNTH_7_PARAMETERS,_si5351a_ms_register_data[0])
+            _si5351a_write_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER,_si5351a_ms_register_data[1])
+         end if
+         -- We also have to remember this frequency in case we also use the 
+         -- other set frequency function.
+         _si5351a_clock_output[clock].frequency = frequency
+      else
+         all_ok = FALSE
+         -- If not set succesfully restore the initial settings (if any).
+         _si5351a_clock_output[clock].frequency =  current_frequency
+         _si5351a_clock_output[clock].pll = current_pll
+      end if
+ 
+   else
+     all_ok = FALSE
+   end if
+   
+   return all_ok
+
+end function
+
+ 
+-- Set the given frequency on the given clock output using the given PLL. 
+-- The frequency is given in Hz. Clock must be in range I5351A_CLOCK_0 .. 
+-- SI5351A_CLOCK_7. If 'pll' is SI5351A_PLL_A then PLL A is used, if 
+-- SI5351A_PLL_B then PLL B is used. 
+-- It is possible to set multiple outputs on different frequencies using the same
+-- pll as long as the pll frequency is the same for these outputs. 
+-- The function returns TRUE when the frequency was set succesfully.        
+function si5351a_set_frequency_on_pll(dword in frequency, byte in clock, 
+                                      byte in pll) return bit is
+
+   var dword pll_frequency
+   var bit all_ok
+   
+   -- First check if the frequency and the clock is in range.
+   if (frequency >= SI5351A_MIN_OUT_FREQUENCY) & 
+      (frequency <= SI5351A_MAX_OUT_FREQUENCY) & 
+      (clock <= SI5351A_CLOCK_7) &
+      (pll <= SI5351A_PLL_B) then
+   
+      -- For frequencies above 150 MHz the PLL Frequency is just 4 times the
+      -- clock frequency.
+      if (frequency > _SI5351A_FRACTIONAL_FREQUENCY) then
+         pll_frequency = 4 * frequency
+      else
+         -- Determine the maximum PLL frequency with an integer fraction.
+         pll_frequency = _si5351a_determine_maximum_pll_frequency()
+      end if
+
+      all_ok = si5351a_set_frequency_manual(frequency, pll_frequency, clock, pll)
+   else
+      all_ok = FALSE
+   end if 
+      
+   return all_ok
+
+end function
+
+
+-- Set the given frequency on the given clock output. The frequency is given 
+-- in Hz. Clock must be in range I5351A_CLOCK_0 .. SI5351A_CLOCK_7.
+-- This function selects the PLL automatically and tries to map the clocks as 
+-- much as possible on the same PLL as to enable multiple frequencies on 
+-- different clock outputs. The function returns TRUE when the frequency was set 
+-- succesfully on the given clock output.
+-- Note that this function requires much more ROM code for mapping more clocks
+-- on the same PLL so if you do not need the feature use the function 
+-- 'si5351a_set_frequency_manual' to limit ROM space.      
+function si5351a_set_frequency(dword in frequency, byte in clock) return bit is
+
+   var dword pll_frequency, current_frequency
+   var byte index, pll, current_pll
+   var bit all_ok, pll_on_a, pll_on_b
+   
+   -- First check if the frequency and the clock is in range.
+   if (frequency >= SI5351A_MIN_OUT_FREQUENCY) & 
+      (frequency <= SI5351A_MAX_OUT_FREQUENCY) & 
+      (clock <= SI5351A_CLOCK_7) then
+   
+      -- Save the initial settings for this clock (if present)
+      current_frequency = _si5351a_clock_output[clock].frequency
+      current_pll = _si5351a_clock_output[clock].pll
+
+      -- Check if a frequency was already set for this clock, if so we free it 
+      -- up as to improve the succes of assigning a PLL to that clock output.
+      if (_si5351a_clock_output[clock].frequency != 0) then
+         _si5351a_clock_output[clock].frequency = 0
+         _si5351a_clock_output[clock].pll = _SI5351A_NO_PLL
+      end if
+      
+      all_ok = FALSE
+      pll_on_a = FALSE
+      pll_on_b = FALSE
+      pll = _SI5351A_NO_PLL
+      -- See if PLL A is already in use on a certain clock.
+      index = _si5351a_pll_on_clock(SI5351A_PLL_A)
+      if  (index != SI5351A_MAX_CLOCK) then
+         -- PLL A was set. See if we can use this one for our new frequency.
+         pll_on_a = TRUE
+         if _si5351a_calculate_output_setting(frequency, _si5351a_pll_a_frequency, clock) then  
+            pll = SI5351A_PLL_A
+            all_ok = TRUE
+         end if
+      end if
+
+      if !all_ok then
+         -- PLL A was not found or could not be used, check for PLL B.
+         index = _si5351a_pll_on_clock(SI5351A_PLL_B)
+         if  (index != SI5351A_MAX_CLOCK) then
+            -- PLL B was set. See if we can use this one for our new frequency.
+            pll_on_b = TRUE
+            if _si5351a_calculate_output_setting(frequency, _si5351a_pll_b_frequency , clock) then 
+               pll = SI5351A_PLL_B
+               all_ok = TRUE
+            end if
+         end if
+      end if
+      
+     if !all_ok & (!pll_on_a | !pll_on_b) then
+        -- No match found but there is at least one PLL available. Find a PLL
+        -- frequency that is suitable to generate the output frequency.
+        if (frequency > _SI5351A_FRACTIONAL_FREQUENCY) then
+           -- For frequencies above 150 MHz the PLL Frequency is just 4 times the
+           -- clock frequency.
+           pll_frequency = 4 * frequency
+           -- Use one of the PLL's.
+           if !pll_on_a then
+              -- Use PLL A.
+              pll = SI5351A_PLL_A
+              -- We also need to set the frequency of PLL A.
+              _si5351a_pll_a_frequency = pll_frequency
+              all_ok = TRUE
+           elsif !pll_on_b then
+              -- Use PLL B.
+              pll = SI5351A_PLL_B
+              -- We also need to set the frequency of PLL B.
+              _si5351a_pll_b_frequency = pll_frequency
+              all_ok = TRUE
+           end if
+        else
+           -- Look for a suitable frequency, start with the highest PLL frequency.
+           pll_frequency = _si5351a_determine_maximum_pll_frequency()
+           while !all_ok & (pll_frequency >= 
+                           (SI5351A_MIN_PLL_FREQUENCY + SI5351A_CRYSTAL_FREQUENCY)) loop
+              if !pll_on_a then
+                 -- Use PLL A.
+                 if _si5351a_calculate_output_setting(frequency, pll_frequency, clock) then
+                    pll = SI5351A_PLL_A
+                    -- We also need to set the frequency of PLL A.
+                    _si5351a_pll_a_frequency = pll_frequency
+                    all_ok = TRUE
+                 end if
+              elsif !pll_on_b then
+                 -- Use PLL B.
+                 if _si5351a_calculate_output_setting(frequency, pll_frequency, clock) then
+                    pll = SI5351A_PLL_B
+                    -- We also need to set the frequency of PLL B.
+                    _si5351a_pll_b_frequency = pll_frequency
+                    all_ok = TRUE
+                 end if
+              end if
+              -- Lower the PLL value with one integer step and try again.
+              pll_frequency = pll_frequency - SI5351A_CRYSTAL_FREQUENCY
+           end loop
+        end if
+     end if 
+
+       -- If all is still OK we can set this frequency on the PLL for this clock.
+      if all_ok then
+         _si5351a_clock_output[clock].frequency = frequency
+         _si5351a_clock_output[clock].pll = pll
+      else
+         -- It was not possible to set this frequency. Check if this is because
+         -- of an existing PLL. If so then we can try to recalculate the 
+         -- current outputs with another PLL value that may fit for all. If
+         -- we still could not match it on any PLL then the freqency can not be 
+         -- set at all and we skip it.
+         if (pll == _SI5351A_NO_PLL) then
+             -- No set PLL was found that could be used. Try with a re-calculation 
+             -- using the clocks that currently use PLL A. Include this new 
+             -- request for the recalculation.
+            _si5351a_clock_output[clock].frequency = frequency
+            _si5351a_clock_output[clock].pll = SI5351A_PLL_A
+            if _si5351a_recalculate_outputs(SI5351A_PLL_A) then
+               all_ok = TRUE
+            else
+               -- Not succesful on PLL A, try a recalculation using PLL B.
+               _si5351a_clock_output[clock].pll = SI5351A_PLL_B
+               if _si5351a_recalculate_outputs(SI5351A_PLL_B) then
+                  all_ok = TRUE 
+               else
+                  -- If not set succesfully restore the initial settings (if any).
+                  _si5351a_clock_output[clock].frequency = current_frequency
+                  _si5351a_clock_output[clock].pll = current_pll
+               end if
+            end if
+         end if 
+      end if 
+
+      -- Update all outputs if all is OK.
+      if all_ok then
+         _si5351a_update_all_clocks() 
+      end  if 
+
+   else
+     all_ok = FALSE
+   end if
+
+   return all_ok
+
+end function
+
+
+-- Print the set frequencies and the assigned PLL per clock output. Can be used 
+-- for testing purposes.
+procedure si5361a_print_clock_settings() is
+   
+   var byte index
+      
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,"Clock settings:\r\n")
+   for SI5351A_MAX_CLOCK using index loop
+      print_string(serial_hw_data,"Output ")
+      print_byte_dec(serial_hw_data, index)
+      print_string(serial_hw_data,": Frequency: ")
+      print_dword_dec(serial_hw_data,_si5351a_clock_output[index].frequency)
+      if (_si5351a_clock_output[index].pll == SI5351A_PLL_A) then
+         print_string(serial_hw_data," Hz on PLL A.")
+      elsif (_si5351a_clock_output[index].pll == SI5351A_PLL_B) then
+         print_string(serial_hw_data," Hz on PLL B.")
+      else
+         print_string(serial_hw_data," No PLL assigned.")
+      end if 
+      print_crlf(serial_hw_data)
+   end loop
+   print_string(serial_hw_data,"PLL A frequency: ")
+   print_dword_dec(serial_hw_data,_si5351a_pll_a_frequency )
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data,"PLL B frequency: ")
+   print_dword_dec(serial_hw_data,_si5351a_pll_b_frequency )
+   print_crlf(serial_hw_data)
+   print_crlf(serial_hw_data)
+end procedure
+   
+
+-- ----------------- Private procedures and functions --------------------------
+
+-- Write a byte to the given Si5351a register via IIC.
+procedure _si5351a_write_register(byte in register, byte in data) is
+
+   var bit _trash
+
+   i2c_start()
+   -- Write to device.
+   _trash = i2c_transmit_byte(SI5351A_IIC_ADDRESS << 1)
+   _trash = i2c_transmit_byte(register)
+   _trash = i2c_transmit_byte(data)
+   i2c_stop()
+
+end procedure
+
+
+-- Read a byte from the given Si5351a register via IIC.
+function _si5351a_read_register(byte in register) return byte is
+
+   var byte data
+   var bit _trash
+
+   i2c_start()
+   -- Write to device.
+   _trash = i2c_transmit_byte(SI5351A_IIC_ADDRESS << 1)
+   _trash = i2c_transmit_byte(register)
+   -- Switch to read from device.
+   i2c_restart()
+   _trash = i2c_transmit_byte((SI5351A_IIC_ADDRESS << 1) | 0x01)
+   data = i2c_receive_byte(false) -- Last byte, send nack.
+   i2c_stop()
+      
+   return data 
+
+end function
+
+
+-- Store the multisynth data available in the global array '_si5351a_ms_register_data'
+-- to the multisynth registers, starting at register 'start_register'.
+procedure _store_multisynth_data(byte in start_register) is
+
+  var byte index
+  
+  for 8 using index loop
+     _si5351a_write_register(start_register, _si5351a_ms_register_data[index])
+     start_register = start_register + 1
+  end loop
+  
+end procedure
+
+
+-- Determine the maximum PLL frequency in steps of the crystal frequency. This
+-- will guarantee an integer value when setting the PLL frequency.
+function _si5351a_determine_maximum_pll_frequency() return dword is
+
+    var dword pll_frequency
+    
+    pll_frequency = SI5351A_MIN_PLL_FREQUENCY
+    while (pll_frequency <= (SI5351A_MAX_PLL_FREQUENCY - 
+                             SI5351A_CRYSTAL_FREQUENCY)) loop
+       pll_frequency = pll_frequency + SI5351A_CRYSTAL_FREQUENCY
+    end loop
+    
+    return pll_frequency
+    
+end function
+
+
+-- Check if the given PLL is in use by any of the outputs, if so return the 
+-- number of the output.
+function _si5351a_pll_on_clock(byte in which_pll) return byte is
+
+   var byte index
+   var bit found_it
+   
+   index = 0 
+   found_it = FALSE
+   while !found_it & (index <= SI5351A_CLOCK_7) loop
+      if (_si5351a_clock_output[index].pll == which_pll) then
+         found_it = TRUE
+      else
+         index = index + 1 
+      end if 
+   end loop
+      
+   return index
+
+end function
+
+
+-- Update all clocks with the current settings. This means re-calculating all 
+-- pll multisynth and output multisynth values and updating all registers. This
+-- function also assigns the clock source to the correct PLL.
+procedure _si5351a_update_all_clocks() is
+
+   var dword pll_frequency
+   var byte index
+   var bit _trash, pll_a_set, pll_b_set
+   
+   pll_a_set = FALSE
+   pll_b_set = FALSE
+   for SI5351A_MAX_CLOCK using index loop
+      if (_si5351a_clock_output[index].frequency != 0) then
+         -- A frequency was set, start with the PLL, set each PLL only once.
+         if (_si5351a_clock_output[index].pll == SI5351A_PLL_A) then
+            _si5351a_calculate_pll_setting(_si5351a_pll_a_frequency)
+            if !pll_a_set then
+               _store_multisynth_data(_SI5351A_MULTISYNTH_NA_PARAMETERS)
+            end if
+            -- Assign PLL A as source for this clock.
+            pll_frequency = _si5351a_pll_a_frequency 
+            si5351a_set_multisynth_source_pll_a(index)
+            si5351a_reset_pll_a()  
+            pll_a_set = TRUE
+         elsif (_si5351a_clock_output[index].pll == SI5351A_PLL_B) then
+            _si5351a_calculate_pll_setting(_si5351a_pll_b_frequency)
+            if !pll_b_set then
+               _store_multisynth_data(_SI5351A_MULTISYNTH_NB_PARAMETERS)
+            end if
+             -- Assign PLL B as source for this clock.
+            pll_frequency = _si5351a_pll_b_frequency 
+            si5351a_set_multisynth_source_pll_b(index)
+            si5351a_reset_pll_b()  
+            pll_b_set = TRUE
+         end if
+         -- Continue with the output. We know this calculation is OK since we
+         -- have checked it before so we ignore the result.
+         _trash = _si5351a_calculate_output_setting(_si5351a_clock_output[index].frequency,
+                                                    pll_frequency, index)
+         -- Store this setting.
+         if (index <= SI5351A_CLOCK_5) then
+            -- If the frequency is higher than 150 MHz we need to set the clock
+            -- to integer mode instead of fractional mode. Clock 6 and 7 only 
+            -- support integer mode.
+            if (_si5351a_clock_output[index].frequency > _SI5351A_FRACTIONAL_FREQUENCY) then
+               si5351a_set_multisynth_integer_mode(index)
+            else
+               si5351a_set_multisynth_fractional_mode(index)
+            end if 
+            _store_multisynth_data(_SI5351A_MULTISYNTH_0_PARAMETERS + (index * 8)) 
+         elsif (index == SI5351A_CLOCK_6) then
+            _si5351a_write_register(_SI5351A_MULTISYNTH_6_PARAMETERS,_si5351a_ms_register_data[0])
+            _si5351a_write_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER,_si5351a_ms_register_data[1])
+         elsif (index == SI5351A_CLOCK_7) then
+            _si5351a_write_register(_SI5351A_MULTISYNTH_7_PARAMETERS,_si5351a_ms_register_data[0])
+            _si5351a_write_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER,_si5351a_ms_register_data[1])
+         end if
+      end if 
+   end loop
+    
+end procedure
+
+
+-- Recalculate all outputs on the given PLL by lowering the currently set
+-- PLL value. If a new PLL frequency is found it will be stored for all clocks
+-- that use that PLL.
+function _si5351a_recalculate_outputs(byte in which_pll) return bit is
+
+   var dword pll_frequency
+   var byte index
+   var bit new_match, all_ok
+   
+   -- Start from the highest possible frequency and go down.
+   new_match = FALSE
+   pll_frequency = _si5351a_determine_maximum_pll_frequency()
+   -- Go from maximum PLL to minimum PLL frequency in steps of the crystal clock.
+   while !new_match & 
+         (pll_frequency >= (SI5351A_MIN_PLL_FREQUENCY + SI5351A_CRYSTAL_FREQUENCY)) loop
+      all_ok = TRUE
+      for SI5351A_MAX_CLOCK using index loop
+         -- Re-calculate for this clock output. The recalculation must be OK
+         -- for all clocks that use this PLL.
+         if (_si5351a_clock_output[index].pll == which_pll) then
+            -- We only have to re-calculate the outputs since we know that the
+            -- new PLL frequency can always be set.  Th
+            if !_si5351a_calculate_output_setting(_si5351a_clock_output[index].frequency,
+                                                   pll_frequency, index) then
+               -- Recalculation failed for this clock ouput.
+               all_ok = FALSE
+            end if
+         end if
+      end loop
+      -- If it was all OK then we save this new pll_frequency.
+      if all_ok then
+         if (which_pll == SI5351A_PLL_A) then
+            _si5351a_pll_a_frequency = pll_frequency
+         elsif (which_pll == SI5351A_PLL_B) then
+            _si5351a_pll_b_frequency = pll_frequency
+         end if
+         new_match = TRUE
+      end if
+      -- Lower the PLL value with one integer step and try again.
+      pll_frequency = pll_frequency - SI5351A_CRYSTAL_FREQUENCY
+    end loop
+   
+end function
+ 
+
+-- Calculate the FMD divider. Note that we only use integer values so the PLL 
+-- freqency has to be set in steps of SI5351A_CRYSTAL_FREQUENCY.
+-- The Feedback Multisynth Divider (FMD) = a + (b/c) and since we use only
+-- integers (b=0) this makes calculation straight forward.
+-- The FMD ratio can be from 15 + 0/1048575 and to 90 + 0/1048575 which is 
+-- always the case for a PLL frequency between 600 MHz and 900 MHz and with a 
+-- crystal frequency of 25 MHz or 27 MHz.  
+-- The calculated values are stord in the global array _si5351a_ms_register_data
+procedure _si5351a_calculate_pll_setting(dword in pll_frequency) is 
+
+   var dword a, b, c 
+   var dword msna_p1,msna_p2, msna_p3
+
+   a = pll_frequency / SI5351A_CRYSTAL_FREQUENCY
+   b = 0
+   c = 1_048_575   
+
+   -- Calculate the final Feedback Multisynth Divider values.
+   msna_p1 = (128 * a) + ((128 * b) / c) - 512
+   msna_p2 = (128 * b) - (c * ((128 * b) / c))
+   msna_p3 = c
+
+   -- Store the multisynth NA PLL values in the global ms settng array.
+   _si5351a_ms_register_data[0] = byte((msna_p3 >> 8) & 0xFF)
+   _si5351a_ms_register_data[1] = byte(msna_p3 & 0xFF)
+   _si5351a_ms_register_data[2] = byte((msna_p1 >> 16) & 0x03)
+   _si5351a_ms_register_data[3] = byte((msna_p1 >> 8) & 0xFF)
+   _si5351a_ms_register_data[4] = byte(msna_p1 & 0xFF)
+   _si5351a_ms_register_data[5] = byte(((msna_p3 >> 12) & 0xF0) | ((msna_p2 >> 16) & 0x0F))
+   _si5351a_ms_register_data[6] = byte((msna_p2 >> 8) & 0xFF)
+   _si5351a_ms_register_data[7] = byte(msna_p2 & 0xFF)
+  
+end procedure
+
+
+-- Calculate the Output Multisynth Divider (OMD) = a + (b/c). 
+-- Some notes on the calulation of the OMD:
+-- -) For clock 0 .. 5 the OMD ratio can be 8 + 1/1048575 and 2048.
+-- -) For clock 6 .. 7 the OMD ratio can only be even integer from 6 to 254.
+-- -) The R divider can only be 1, 2, 4, 8, 16, 32, 64 or 128.
+-- -) If the output frequency is above 150 MHz use devide by 4.
+-- -) If the output frequency is below 500 kHz R should be used.
+-- The function returns TRUE when calculation is in range and the data is stored
+-- in the global array _si5351a_ms_register_data else it returns FALSE and 
+-- the data will not be stored.
+function _si5351a_calculate_output_setting(dword in frequency, 
+                                           dword in pll_frequency,
+                                           byte in clock) return bit is
+
+   var float float_frequency, fdiv, remainder
+   var dword a, b, c
+   var dword msx_p1, msx_p2, msx_p3
+   var byte msx_divby4, rx_div, r, rd 
+   var bit all_ok
+   
+   
+   msx_divby4 = 0
+   rx_div = 0
+   rd = 0
+   all_ok = FALSE
+   -- If the frequency is higher than 150 MHz we need to switch from fractional
+   -- mode to integer mode. In this case we just set the PLL to 4 times the 
+   -- frequency and use divide by 4. See datasheet page 6.
+   if (frequency > _SI5351A_FRACTIONAL_FREQUENCY) then
+      msx_divby4 = 0x0C
+      msx_p1 = 0
+      msx_p2 = 0
+      msx_p3 = 1
+      -- This only works if the pll_frequency is exactly 4 times the frequency.
+      if (pll_frequency == (4 * frequency)) then
+          all_ok = TRUE
+      end if 
+   else
+      -- The frequency is lower the pll frequency must be a multiple of the
+      -- crystal frequency.
+     if ((pll_frequency % SI5351A_CRYSTAL_FREQUENCY) == 0) then
+        float_frequency = float(frequency)
+
+        if (frequency < 500_000) then
+           -- Calculate division R to get at least 500 kHz. 
+           r = 1
+           while (r < 128) & ((r * frequency) <  500_000) loop  
+              r = r << 1
+              rd = rd + 1
+           end loop
+           rx_div = rd << 4
+           float_frequency = float_frequency * r 
+        end if
+
+        -- Now calculate the multisynth values using a + (b/c)
+        c = 1_048_575  
+        fdiv = float(pll_frequency) / float_frequency
+        a = dword(fdiv)
+        remainder = fdiv - a -- Equals b/c.
+        b = dword(remainder) * c
+         
+        -- Calculate the final Feedback Multisynth Divider values.
+        msx_p1 = (128 * a) + ((128 * b) / c) - 512
+        msx_p2 = (128 * b) - (c * ((128 * b) / c))
+        msx_p3 = c
+
+        -- Check if the OMD is in range, for simplicity we only look at a in the 
+        -- range 9 .. 2047 for clock 0 to 5 or an even number between 6 and 254 
+        -- for clock 6 and 7.
+        if (clock <= SI5351A_CLOCK_5) & (a > 8) & (a < 2048) then
+           all_ok = TRUE
+        elsif ((a % 2) == 0) & (a >= 6) & (a <= 254) then
+           all_ok = TRUE
+        end if
+     end if
+   end if 
+
+   if defined(SI5351A_DEBUG) then
+      print_string(serial_hw_data,"Clock: ")
+      print_dword_dec(serial_hw_data, clock)
+      print_string(serial_hw_data,", Frequency = ")
+      print_dword_dec(serial_hw_data, frequency)
+      print_string(serial_hw_data,", PLL frequency = ")
+      print_dword_dec(serial_hw_data, pll_frequency)
+      print_string(serial_hw_data,". OMD values: a = ")
+      print_dword_dec(serial_hw_data, a)
+      print_string(serial_hw_data,",  b = ")
+      print_dword_dec(serial_hw_data, b)
+      print_string(serial_hw_data,",  c = ")
+      print_dword_dec(serial_hw_data, c)
+      if all_ok then   
+         print_string(serial_hw_data,". -- OK.\r\n")
+      else
+         print_string(serial_hw_data,". -- Not OK.\r\n")
+      end if
+   end if
+     
+   if all_ok then   
+
+      -- Store the Output Multisynth Divider values. 
+      if (clock <= SI5351A_CLOCK_5) then
+         _si5351a_ms_register_data[0] = byte((msx_p3 >> 8)) & 0xFF 
+         _si5351a_ms_register_data[1] = byte((msx_p3 & 0xFF)) 
+         _si5351a_ms_register_data[2] = byte(rx_div | msx_divby4 | ((msx_p1 >> 16) & 0x03))
+         _si5351a_ms_register_data[3] = byte((msx_p1 >> 8) & 0xFF)
+         _si5351a_ms_register_data[4] = byte(msx_p1 & 0xFF)
+         _si5351a_ms_register_data[5] = byte((msx_p3 >> 12) & 0xF0) + byte((msx_p2 >> 16) & 0x0F)
+         _si5351a_ms_register_data[6] = byte((msx_p2 >> 8) & 0xFF)
+         _si5351a_ms_register_data[7] = byte((msx_p2 & 0xFF))
+      elsif (clock == SI5351A_CLOCK_6) then      
+         _si5351a_ms_register_data[0] = byte(msx_p1 & 0xFF)
+         _si5351a_ms_register_data[1] = _si5351a_read_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER)
+         _si5351a_ms_register_data[1] = _si5351a_ms_register_data[1] | rd
+      elsif (clock == SI5351A_CLOCK_7) then
+         _si5351a_ms_register_data[0]= byte(msx_p1 & 0xFF)
+         _si5351a_ms_register_data[1] = _si5351a_read_register(_SI5351A_CLOCK_6_7_OUTPUT_DIVIDER)
+         _si5351a_ms_register_data[1] = _si5351a_ms_register_data[1] | rx_div
+      end if
+   end if
+   
+   return all_ok    
+                                                 
+end function
+
+
