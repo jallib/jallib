@@ -1,0 +1,196 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the Si5351a programmable any frequency clock generator.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Shows the main clock features of the Si5351a library. 
+--                 
+-- Sources:
+--
+-- Notes:       
+--
+include 16f1825                 
+
+pragma warn all no              
+pragma opt variable_reduce yes   
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all ports. 
+WPUA = 0b0011_1111       
+WPUC = 0b0011_1111       
+OPTION_REG_WPUEN = FALSE 
+
+enable_digital_io()
+_usec_delay(100_000)
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP.
+alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+include print
+serial_hw_init()
+
+-- IIC pin definitions
+alias si5351a_scl is pin_C0 -- Pin 10 for 14 pin DIP
+alias si5351a_scl_direction is pin_C0_direction
+alias si5351a_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+alias si5351a_sda_direction is pin_C1_direction 
+
+-- We do not use the software IIC but the default hardware IIC.
+-- const SI5351A_SOFTWARE_IIC = TRUE 
+-- Use the debugging info if you want more info about what has been set.
+-- const SI5351A_DEBUG = TRUE
+
+include si5351a
+si5351a_init() 
+
+const dword INIT_FREQUENCY_1 = 10_000_000
+const dword INIT_FREQUENCY_2 = 1_000_000
+const dword INIT_FREQUENCY_3 = 2_500 
+
+var dword frequency_1
+var dword frequency_2
+var dword frequency_3
+var dword pll_frequency
+ 
+-- Wait for some time. 
+procedure wait_some_time() is
+   _usec_delay(1_000_000)
+end procedure
+
+-- Print some status info of the Si5351a
+procedure print_status_info() is
+
+   print_crlf(serial_hw_data)
+   if si5351a_pll_a_is_locked() then
+      print_string(serial_hw_data,"PLL A is locked.\r\n")  
+   else
+      print_string(serial_hw_data,"PLL A is not locked.\r\n")  
+   end if 
+          
+   if si5351a_pll_b_is_locked() then
+      print_string(serial_hw_data,"PLL B is locked.\r\n")  
+   else
+      print_string(serial_hw_data,"PLL B is not locked.\r\n")  
+   end if
+      
+   if si5351a_crystal_signal_is_valid() then
+      print_string(serial_hw_data,"Cyrstal signal is valid.\r\n")  
+   else
+      print_string(serial_hw_data,"Cyrstal signal is not valid.\r\n")  
+   end if
+   
+   print_string(serial_hw_data,"Revision id is: ")  
+   print_byte_dec(serial_hw_data, si5351a_get_revision_id()) 
+
+   print_crlf(serial_hw_data)
+      
+end procedure
+
+-------------------------- Main program starts here ----------------------------
+
+frequency_1 = INIT_FREQUENCY_1 
+frequency_2 = INIT_FREQUENCY_2 
+frequency_3 = INIT_FREQUENCY_3
+pll_frequency = 900_000_000
+
+print_string(serial_hw_data,"Sample program for the Si5351 clock generator.\r\n")
+ 
+forever loop
+
+   -- We use the three available functions to set the frequencies. Note that
+   -- two of them require quite some ROM space.
+
+   -- Set the frequency manual. This function uses the least ROM space.
+   if si5351a_set_frequency_manual(frequency_1, pll_frequency, SI5351A_CLOCK_0, 
+                                   SI5351A_PLL_B) then
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_1)
+       print_string(serial_hw_data," on clock 0 set!")
+       print_crlf(serial_hw_data)
+   else
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_1)
+       print_string(serial_hw_data," on clock 0 not set!")
+       print_crlf(serial_hw_data)
+   end if
+   
+    -- This is a variant of the one above.
+    if si5351a_set_frequency_on_pll(frequency_2, SI5351A_CLOCK_1, SI5351A_PLL_B) then
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_2)
+       print_string(serial_hw_data," on clock 1 set!")
+       print_crlf(serial_hw_data)
+   else
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_2)
+       print_string(serial_hw_data," on clock 1 not set!")
+       print_crlf(serial_hw_data)
+   end if
+
+    -- This is the most advanced function but also the most expensive in ROM size.
+    if si5351a_set_frequency(frequency_3, SI5351A_CLOCK_2) then
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_3)
+       print_string(serial_hw_data," on clock 2 set!")
+       print_crlf(serial_hw_data)
+   else
+       print_string(serial_hw_data,"Frequency: ")
+       print_dword_dec(serial_hw_data, frequency_3)
+       print_string(serial_hw_data," on clock 2 not set!")
+       print_crlf(serial_hw_data)
+   end if
+
+   print_crlf(serial_hw_data)
+   
+   -- Increase the frequencies.
+   frequency_1 = frequency_1 + 100_000   
+   frequency_2 = frequency_2 + 50_000   
+   frequency_3 = frequency_3 + 1_000   
+
+   if (frequency_1 > SI5351A_MAX_OUT_FREQUENCY) then
+      frequency_1 = INIT_FREQUENCY_1 
+   end if
+ 
+   if (frequency_2 > SI5351A_MAX_OUT_FREQUENCY) then
+      frequency_2 = INIT_FREQUENCY_2 
+   end if
+   
+   if (frequency_3 > SI5351A_MAX_OUT_FREQUENCY) then
+      frequency_3 = INIT_FREQUENCY_3 
+   end if
+   
+   -- Some debug info, if enabled.
+   if defined(SI5351A_DEBUG) then
+      print_status_info()
+      si5361a_print_clock_settings() 
+   end if  
+
+   wait_some_time()
+    
+end loop
+
