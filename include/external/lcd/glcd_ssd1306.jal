@@ -13,7 +13,8 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Text and graphics library for the graphic display module using 
---              the SSD1306 display controller.
+--              the SSD1306 display controller. The library supports displays
+--              with a resolution of 128 x 32 or 128 x 64 (default).
 --
 -- Sources: Library glcd_nokia_5110.jal used as starting point.
 --          SS1306 Data Sheet Revision 1.1 (April 2008)
@@ -31,6 +32,10 @@
 --        By default the SPI hardware is used. This library also implements
 --        a software SPI interface. In order to use this define the following:
 --        -) const SSD1306_SOFTWARE_SPI = TRUE 
+--
+--        The default display pixel size is 128 x 64 but can be changed to
+--        128 x 32 using the following:
+--        -) const SSD1306_Y_32_PIXELS = TRUE 
 --
 --        The following pins must be defined by the main program before 
 --        including this library. Common pins for using IIC or SPI:
@@ -61,15 +66,24 @@
 --        program. Note that this is not needed since the default is already set
 --        to the default module IIC address of 0b0111_1000:
 --        -) const byte SSD1306_IIC_ADDRESS = <IIC Address>
+--
+--        If IIC hardware interface problems occurs this may be fixed by 
+--        swtiching to SMB level signals by defining:
+--        const bit _i2c_level = FALSE
 
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
 -- -----------------------------------------------------------------------------
 
--- Number of pixels on the screen
+-- Number of pixels on the screen. Number of Y pixels is default 64 but can be 
+-- changed to 32 pixels. 
 const byte SSD1306_MAX_X_PIXELS = 128 -- 0..127
-const byte SSD1306_MAX_Y_PIXELS = 64  -- 0..63
 
+if defined(SSD1306_Y_32_PIXELS) then
+      const byte SSD1306_MAX_Y_PIXELS = 32  -- 0..31
+   else
+      const byte SSD1306_MAX_Y_PIXELS = 64  -- 0..63
+end if
 -- -----------------------------------------------------------------------------
 -- -------------------------- Public API ---------------------------------------
 -- -----------------------------------------------------------------------------
@@ -283,7 +297,10 @@ else
       if !defined(pin_sda_direction) then
          alias pin_sda_direction is ssd1306_sdo_direction
       end if
-      const bit _i2c_level = TRUE -- i2c levels (not SMB)
+      -- I2C level setting. For SMB levels use: const bit _i2c_level = FALSE
+      if !defined(_i2c_level) then 
+         const bit _i2c_level = TRUE -- i2c levels (not SMB)
+      end if
       include i2c_hardware
    end if
 end if 
@@ -368,7 +385,11 @@ procedure ssd1306_init() is
    _ssd1306_write_byte(_SSD1306_SET_CHARGEPUMP)
    _ssd1306_write_byte(0x14) -- Enable charge pump.
    _ssd1306_write_byte(_SSD1306_SET_COMPINS)
-   _ssd1306_write_byte(0x12)
+   if SSD1306_MAX_Y_PIXELS == 32 then
+      _ssd1306_write_byte(0x02) -- Display with 32 pixels on Y axis.  
+   else      
+      _ssd1306_write_byte(0x12) -- Display with 64 pixels on Y axis.  
+   end if 
    _ssd1306_write_byte(_SSD1306_SET_CONTRAST)
    _ssd1306_write_byte(0xAF)
    _ssd1306_write_byte(_SSD1306_SET_PRECHARGE)
@@ -377,11 +398,15 @@ procedure ssd1306_init() is
    _ssd1306_write_byte(0x20)
    _ssd1306_write_byte(_SSD1306_DISPLAY_RESUME)
    _ssd1306_write_byte(_SSD1306_DISPLAY_NORMAL)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_ON)
    _ssd1306_stop_transmission()     
 
+   ; First clear screen before putting the display on again.
    ssd1306_clear_screen()
-   
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_ON)
+   _ssd1306_stop_transmission()     
+  
 end procedure
 
 
