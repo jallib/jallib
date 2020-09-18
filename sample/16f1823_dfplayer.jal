@@ -1,0 +1,84 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the DFPlayer Mini.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Demonstrates the playback feature of the DFPlayer Mini library.
+--              For a completed demo of all features see 16f19176_dfplayer.jal.
+--                 
+-- Sources:
+--
+-- Notes: The DFPlayer uses a serial interface so at least one of the JAL serial
+--        libraries must be included and initialized by the main program.       
+--
+include 16f1823                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all ports. 
+WPUA = 0b0011_1111       
+WPUC = 0b0011_1111       
+OPTION_REG_WPUEN = FALSE 
+
+enable_digital_io()
+-- Give the hardware some time to stabilize.
+_usec_delay(100_000)
+
+-- Setup the serial hardware interface for communication with the DFPlayer.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin xx of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin xx of 14 pin DIP.
+const serial_hw_baudrate = 9600
+include serial_hardware
+serial_hw_init()
+
+-- Alternative using serial software interface instead of hardware library.
+;alias serial_sw_tx_pin is pin_C4
+;pin_C4_direction = output
+;alias serial_sw_rx_pin is pin_C5
+;pin_C5_direction = input
+;const serial_sw_baudrate = 9600
+;include serial_software
+;serial_sw_init()
+
+include delay
+
+-- Now we can include the DFPlayer.
+include dfplayer
+dfplayer_init()
+
+-- Initial volume is quite loud, so lower it.
+dfplayer_set_volume(15)
+
+-- Play the first track that the DFPlayer found on the storage device.
+dfplayer_play(1)       
+
+forever loop
+
+    -- Play each track for 10 seconds the go to the next available track.
+    dfplayer_play_next()     
+    delay_1s(10)
+
+end loop
+

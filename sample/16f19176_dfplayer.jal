@@ -1,0 +1,666 @@
+-- -----------------------------------------------------------------------------
+-- Title: DFPlayer Mini sample program.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:    
+--
+-- Compiler: 2.5r4
+--
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Sources: 
+--
+-- Description: Extensive sample program that shows all features of the JAL
+--              library for the DFPlayer Mini. 
+--              For a simple demo version see 16f1823_dfplayer.jal
+--
+-- PIC connections (40 pin DIP):
+-- *) TX 1: pin 25 of the USART1 of the PIC to the RX pin of the DFPlayer.
+-- *) RX 1: pin 26 of the USART1 of the PIC to the TX pin of the DFPlayer.
+-- *) TX 2: pin 22 of the USART2 of the PIC to the pin 11 of the MAX232.
+-- *) RX 2: pin 21 of the USART2 of the PIC to the pin 12 of the MAX232. 
+--
+--
+
+-- ------------------------------- Pragmas -------------------------------------
+
+include 16f19176                  
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED     -- Low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b1111_1111       
+WPUB = 0b1111_1111       
+WPUC = 0b1101_1111       
+WPUD = 0b1111_1111       
+WPUE = 0b0000_1111  
+
+enable_digital_io()
+-- Give the hardware some time to stabilize.
+_usec_delay(100_000)
+ 
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the DFPlayer
+alias pin_RX_direction  is pin_C7_direction  -- Pin 26 for 40 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 25 for 40 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_D2_direction  -- Pin 21 for 40 pin DIP
+alias pin_TX2_direction is pin_D3_direction  -- Pin 22 for 40 pin DIP.
+
+
+-- ------------------------- Constant declarations -----------------------------
+const serial_hw_baudrate   = 9600   -- USART default speed for the DFPlayer.
+const serial_hw2_baudrate  = 115200 -- USART speed for the terminal.
+
+const byte MAX_INPUT = 20
+
+-- -------------------------- Includes go here ---------------------------------
+
+-- We need to include the serial library first followed by the include of the
+-- DFPLayer so that this USART is used for communication with the DFPlayer.
+include serial_hw_int_cts
+include dfplayer
+
+-- Terminal data goes via the second USART interface       
+include serial_hw2_int_cts  
+include print
+include strings                            
+include PPS
+
+-- ------------------------- Variable declarations -----------------------------
+var byte input_string[MAX_INPUT]
+var byte command
+var word parameter_1
+var word parameter_2
+
+-- ------------------------- Functions and Procedures --------------------------
+
+-- Show the menu.
+procedure show_menu() is
+
+   print_crlf(serial_hw2_data)
+   print_string(serial_hw2_data,"Select a command from the menu, followed by <CR><>LF>.\r\n")
+   print_string(serial_hw2_data,"Note that spaces are required between command and parameter.\r\n")
+   print_string(serial_hw2_data,"Parameters must be given as decimal numbers.\r\n")
+   print_string(serial_hw2_data,"No checks are done if tracks and folders exist.\r\n")
+   print_string(serial_hw2_data,"0: No command or just <CR><LF> shows this menu.\r\n")
+   print_string(serial_hw2_data,"1 <Track 1..3000>: Play the given track.\r\n")
+   print_string(serial_hw2_data,"2: Play the next track.\r\n")
+   print_string(serial_hw2_data,"3: Play the previous track.\r\n")
+   print_string(serial_hw2_data,"4: Play random.\r\n")
+   print_string(serial_hw2_data,"5 <Folder 1..99> <Track 1..255>: Play the track from the given folder.\r\n")
+   print_string(serial_hw2_data,"6 <Track 1..3000>: Play the given track from the MP3 folder.\r\n")
+   print_string(serial_hw2_data,"7 <Folder 1..15 > <Track 1..3000>: Play the track from the given special 3000 track folder.\r\n")
+   print_string(serial_hw2_data,"8 <Track 1..3000>: Play the given advertisement track.\r\n")
+   print_string(serial_hw2_data,"9: Stop playing the advertisement.\r\n")
+   print_string(serial_hw2_data,"10: Pause playing.\r\n")
+   print_string(serial_hw2_data,"11: Resume playing.\r\n")
+   print_string(serial_hw2_data,"12: Stop playing.\r\n")
+   print_string(serial_hw2_data,"13: Start repeat play.\r\n")
+   print_string(serial_hw2_data,"14: Stop repeat play.\r\n")
+   print_string(serial_hw2_data,"15 <Track 1..3000>: Repeat playing the given track.\r\n")
+   print_string(serial_hw2_data,"16 <Folder 1..99>: Repeat playing the given folder.\r\n")
+   print_string(serial_hw2_data,"17: Start repeat playing the current track.\r\n")
+   print_string(serial_hw2_data,"18: Stop repeat playing the current track.\r\n")
+   print_string(serial_hw2_data,"19 <Volume 0..30>: Set the output to the given volume.\r\n")
+   print_string(serial_hw2_data,"20: Increment the volume by one step.\r\n")
+   print_string(serial_hw2_data,"21: Decrement the volume by one step.\r\n")
+   print_string(serial_hw2_data,"22 <Equalizer 0..5>: Set the equalizer to the given mode.\r\n")
+   print_string(serial_hw2_data,"23 <Source 1..5>: Set playback using the given source.\r\n")
+   print_string(serial_hw2_data,"24: Activate sleep mode.\r\n")
+   print_string(serial_hw2_data,"25: Activate normal mode.\r\n")
+   print_string(serial_hw2_data,"26: Reset player.\r\n")
+   print_string(serial_hw2_data,"27: Set DAC on.\r\n")
+   print_string(serial_hw2_data,"28: Set DAC off.\r\n")
+   print_string(serial_hw2_data,"29: Check if player is playing.\r\n")
+   print_string(serial_hw2_data,"30: Check if player is paused.\r\n")
+   print_string(serial_hw2_data,"31: Check if player is stopped.\r\n")
+   print_string(serial_hw2_data,"32: Check if player is sleeping.\r\n")
+   print_string(serial_hw2_data,"33: Get the current volume.\r\n")
+   print_string(serial_hw2_data,"34: Get the current equalizer setting.\r\n")
+   print_string(serial_hw2_data,"35: Get the player mode.\r\n")
+   print_string(serial_hw2_data,"36: Get the player version.\r\n")
+   print_string(serial_hw2_data,"37: Get the number of USB tracks.\r\n")
+   print_string(serial_hw2_data,"38: Get the number of SD tracks.\r\n")
+   print_string(serial_hw2_data,"39: Get the number of FLASH tracks.\r\n")
+   print_string(serial_hw2_data,"40: Get the current USB track.\r\n")
+   print_string(serial_hw2_data,"41: Get the current SD track.\r\n")
+   print_string(serial_hw2_data,"42: Get the current FLASH track.\r\n")
+   print_string(serial_hw2_data,"43 <Folder 1..99>: Get the number of tracks in the given folder.\r\n")
+   print_string(serial_hw2_data,"44: Get the number of folders on the current storage device.\r\n")
+   print_crlf(serial_hw2_data)
+
+end procedure
+
+
+-- Get the input from the serial port and process it until CR + LF are received.
+-- Input is stored in the global variable 'input_string'
+function get_input() return bit is
+
+   var byte counter
+   var bit cr_received, lf_received
+
+   cr_received = FALSE
+   lf_received = FALSE
+   -- Clear the processed string.
+   for MAX_INPUT using counter loop
+      input_string[counter] = 0
+   end loop
+   counter = 0
+   while (counter < MAX_INPUT) & !cr_received &! lf_received loop
+      if serial_hw2_read(input_string[counter]) then
+         if (input_string[counter] == 0x0D) then
+            cr_received = TRUE
+         end if
+         if (input_string[counter] == 0x0A) then
+            lf_received = TRUE
+         end if
+         counter = counter + 1
+      end if  
+   end loop
+
+   return (counter != MAX_INPUT)
+
+end function
+
+
+-- Process the global variable 'input_string' and extract the command and if
+-- present a parameter and store these in the corresponding global variables.
+-- If data is incorrect the global parameter 'command' will be zero which will
+-- result in showing the menu later.
+procedure process_input() is
+
+   var byte processed_string[MAX_INPUT]
+   var byte counter, index
+   var bit command_processed, parameter_1_processed, parameter_2_processed
+   
+   -- Clear the processed string
+   for MAX_INPUT using index loop
+      processed_string[index] = 0
+   end loop
+   counter = 0
+   index = 0
+   command = 0
+   parameter_1 = 0
+   parameter_2 = 0
+   command_processed = FALSE
+   parameter_1_processed = FALSE
+   parameter_2_processed = FALSE
+   while (counter < count(input_string)) loop
+      -- Copy the number from the input.      
+      if (input_string[counter] >= "0" & input_string[counter] <= "9") then
+         -- This is still a part of a number.
+         processed_string[index] = input_string[counter]
+         index = index + 1
+      else
+         -- We assume that we now have either a number or reached the end.
+         if !command_processed then
+            command = byte(string_to_dword(processed_string)) 
+            -- If the data is incorrec the command will be 0 which means
+            -- that we will show the menu.
+            command_processed = TRUE
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_1_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_1 = word(string_to_dword(processed_string)) 
+            parameter_1_processed = TRUE
+            -- Clear the processed string.
+            for MAX_INPUT using index loop
+               processed_string[index] = 0
+            end loop
+            index = 0
+         elsif !parameter_2_processed then
+            -- Parameter is optional so no check if it is OK.
+            parameter_2 = word(string_to_dword(processed_string)) 
+            parameter_2_processed = TRUE
+         end if 
+      end if
+      counter = counter + 1
+   end loop 
+   
+end procedure
+
+
+-- Execute the command, stored in the global variable 'command' with optional 
+-- a paramter in the global variable 'parameter'.
+function execute_command() return bit is
+
+   var word value
+   var byte folder, track, temp
+   var bit ok = TRUE
+   
+   case command of
+   
+      0: -- No DFPLayer command, show menu.
+      block
+         show_menu()
+      end block
+      
+      1: -- Play Track with the given track number.
+      block
+         if (parameter_1 != 0) then
+            dfplayer_play(parameter_1)
+         else
+            ok = FALSE
+         end if 
+      end block
+      
+      2: -- Play the next track.
+      block
+         dfplayer_play_next()
+      end block
+
+      3: -- Play the previous track.
+      block
+         dfplayer_play_previous()
+      end block
+
+      4: -- Play random
+      block
+         dfplayer_play_random()
+      end block
+
+      5: -- Play track from folder
+      block
+         if (parameter_1 != 0) & (parameter_2 != 0) then
+            folder = byte(parameter_1)
+            track = byte(parameter_2)
+            dfplayer_play_folder(folder, track)
+         else 
+            ok = FALSE
+         end if 
+      end block
+
+      6: -- Play the track from the MP3 folder.
+      block
+         if (parameter_1 != 0) then
+            dfplayer_play_mp3_folder(parameter_1)
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      7: -- Play track from special 3000 track folder
+      block
+         if (parameter_1 != 0) & (parameter_2 != 0) then
+            folder = byte(parameter_1)
+            dfplayer_play_3000_folder(folder, parameter_2)
+         else 
+            ok = FALSE
+         end if 
+      end block
+  
+      8: -- Play the given advertisment track.
+      block
+         if (parameter_1 != 0) then
+            dfplayer_play_advertisement(parameter_1)
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      9: -- Stop playing the advertisement track.
+      block
+         dfplayer_stop_advertisement()
+      end block
+
+      10: -- Pause playing.
+      block
+         dfplayer_pause()
+      end block
+
+      11: -- Resume playing.
+      block
+         dfplayer_resume()
+      end block
+
+      12: -- Stop playing.
+      block
+         dfplayer_stop()
+      end block
+
+      13: -- Start repeat play.
+      block
+         dfplayer_start_repeat_play()
+      end block
+
+      14: -- Stop repeat play.
+      block
+         dfplayer_stop_repeat_play()
+      end block
+
+      15: -- Repeat playing the given track.
+      block
+         if (parameter_1 != 0) then
+            dfplayer_repeat_track(parameter_1)
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      16: -- Repeat playing the given folder.
+      block
+         if (parameter_1 != 0) then
+            dfplayer_repeat_folder(parameter_1)
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      17: -- Start repeat playing the current track.
+      block
+         dfplayer_start_repeat_current()
+      end block
+
+      18: -- Stop repeat playing the current track.
+      block
+         dfplayer_stop_repeat_current()
+      end block
+
+      19: -- Set the volume to the given value.
+      block
+          if (parameter_1 <= DFPLAYER_MAX_VOLUME) then
+             temp = byte(parameter_1)
+             dfplayer_set_volume(temp)
+          else
+             ok = FALSE
+          end if 
+      end block
+
+      20: -- Increment the volume.
+      block
+         dfplayer_increment_volume()
+      end block
+
+      21: -- Decrement the volume.
+      block
+         dfplayer_decrement_volume()
+      end block
+
+      22: -- Set the equalizer.
+      block
+          if (parameter_1 <= DFPLAYER_EQUALIZER_BASE ) then
+             temp = byte(parameter_1)
+             dfplayer_set_equalizer(temp)
+          else
+             ok = FALSE
+          end if 
+      end block
+
+      23: -- Set playback source
+      block
+          if (parameter_1 <= DFPLAYER_DEVICE_FLASH ) then
+             temp = byte(parameter_1)
+             dfplayer_set_playback_source(temp)
+          else
+             ok = FALSE
+          end if 
+      end block
+
+      24: -- Sleep mode.
+      block
+         dfplayer_sleep_mode()   
+      end block
+
+      25: -- Normal mode.
+      block
+         dfplayer_normal_mode()  
+      end block
+
+      26: -- Reset player.
+      block
+         dfplayer_reset()  
+      end block
+
+      27: -- DAC on.
+      block
+         dfplayer_dac_on()  
+      end block
+
+      28: -- DAC off.
+      block
+         dfplayer_dac_off()  
+      end block
+
+      29: -- Check if player is playing.
+      block
+         if dfplayer_is_playing() then
+             print_string(serial_hw2_data,"Player is playing.\r\n")
+         else
+             print_string(serial_hw2_data,"Player is not playing or could not be read.\r\n")
+         end if 
+      end block
+
+      30: -- Check if player is paused.
+      block
+         if dfplayer_is_paused() then
+             print_string(serial_hw2_data,"Player is paused.\r\n")
+         else
+             print_string(serial_hw2_data,"Player is not paused or could not be read.\r\n")
+         end if 
+      end block
+
+      31: -- Check if player is stopped.
+      block
+         if dfplayer_is_stopped() then
+             print_string(serial_hw2_data,"Player is stopped.\r\n")
+         else
+             print_string(serial_hw2_data,"Player is not stopped or could not be read.\r\n")
+         end if 
+      end block
+
+      32: -- Check if player is sleeping.
+      block
+         if dfplayer_is_sleeping() then
+             print_string(serial_hw2_data,"Player is sleeping.\r\n")
+         else
+             print_string(serial_hw2_data,"Player is not sleeping or could not be read.\r\n")
+         end if 
+      end block
+
+      33: -- Get the volume.
+      block
+         if dfplayer_get_volume(temp) then
+             print_string(serial_hw2_data,"The set volume is ")
+             print_byte_dec(serial_hw2_data,temp)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The volume could not be read.\r\n")
+         end if 
+      end block
+
+      34: -- Get the equalizer
+      block
+         if dfplayer_get_equalizer(temp) then
+             print_string(serial_hw2_data,"The equalizer is set to ")
+             print_byte_dec(serial_hw2_data,temp)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The equalizer setting could not be read.\r\n")
+         end if 
+      end block
+
+      35: -- Get the mode
+      block
+         if dfplayer_get_mode(temp) then
+             print_string(serial_hw2_data,"The current mode is ")
+             print_byte_dec(serial_hw2_data,temp)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The current mode could not be read.\r\n")
+         end if 
+      end block
+
+      36: -- Get the version
+      block
+         if dfplayer_get_version(temp) then
+             print_string(serial_hw2_data,"The version is ")
+             print_byte_dec(serial_hw2_data,temp)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The version could not be read.\r\n")
+         end if 
+      end block
+
+      37: -- Get the number of USB tracks.
+      block
+         if dfplayer_get_nr_of_usb_tracks(value) then
+             print_string(serial_hw2_data,"The number of USB tracks is is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The number of USB tracks could not be read.\r\n")
+         end if 
+      end block
+
+      38: -- Get the number of SD tracks.
+      block
+         if dfplayer_get_nr_of_sd_tracks(value) then
+             print_string(serial_hw2_data,"The number of SD tracks is is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The number of SD tracks could not be read.\r\n")
+         end if 
+      end block
+
+      39: -- Get the number of FLASH tracks.
+      block
+         if dfplayer_get_nr_of_flash_tracks(value) then
+             print_string(serial_hw2_data,"The number of FLASH tracks is is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The number of FLASH tracks could not be read.\r\n")
+         end if 
+      end block
+
+      40: -- Get the current USB track.
+      block
+         if dfplayer_get_current_usb_track(value) then
+             print_string(serial_hw2_data,"The current USB track is is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The current USB track could not be read.\r\n")
+         end if 
+      end block
+
+      41: -- Get the current SD track.
+      block
+         if dfplayer_get_current_sd_track(value) then
+             print_string(serial_hw2_data,"The current SD track is is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The current SD track could not be read.\r\n")
+         end if 
+      end block
+
+      42: -- Get the current FLASH track.
+      block
+         if dfplayer_get_current_flash_track(value) then
+             print_string(serial_hw2_data,"The current FLASH track is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The current FLASH track could not be read.\r\n")
+         end if 
+      end block
+
+      43: -- Get the number of tracks in the given folder
+      block
+         if (parameter_1 != 0) then
+             if dfplayer_get_nr_of_tracks_in_folder(parameter_1, value) then
+                print_string(serial_hw2_data,"The number of tracks in the given folder is ")
+                print_word_dec(serial_hw2_data,value)
+                print_string(serial_hw2_data,".\r\n")
+            else
+                print_string(serial_hw2_data,"The number of tracks could not be read from this folder.\r\n")
+            end if 
+         else
+            ok = FALSE
+         end if 
+      end block
+
+      44: -- Get the number of folders on the current storage device.
+      block
+         if dfplayer_get_nr_of_folders(value) then
+             print_string(serial_hw2_data,"The number of folders on the current storage device is ")
+             print_word_dec(serial_hw2_data,value)
+             print_string(serial_hw2_data,".\r\n")
+         else
+             print_string(serial_hw2_data,"The number of folders on the current storage device could not be read.\r\n")
+         end if 
+      end block
+
+
+      -- Invalid command.
+      otherwise ok = FALSE
+   
+   end case
+   
+   return ok
+   
+end function
+
+-- -----------------------  Main program starts here ---------------------------
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX1       -- TX1 re-assigned to C6  (default)             
+RX1PPS = PPS_RC7       -- C7 re-assigned to RX1  (default)            
+RD3PPS = PPS_TX2       -- TX2 re-assigned to D3       
+RX2PPS = PPS_RD2       -- D2  re-assigned to RX2              
+pps_control_lock(TRUE)                 
+
+-- Initialize all libraries.
+serial_hw_init()
+serial_hw2_init()
+dfplayer_init()
+
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample program for the DFPlayer.\r\n\r\n")
+
+-- We generate a menu from which actions can be started.
+show_menu()
+
+forever loop
+
+   if get_input() then
+      process_input()
+      if execute_command() then
+         print_string(serial_hw2_data,"Command executed!\r\n\r\n") 
+      else
+         print_string(serial_hw2_data,"Invalid command!\r\n\r\n")
+      end if
+   else
+      print_string(serial_hw2_data,"Input too long!\r\n\r\n")
+   end if
+
+end loop
+
+
+

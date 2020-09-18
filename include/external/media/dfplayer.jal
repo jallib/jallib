@@ -1,0 +1,1119 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for the DFPlayer Mini.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: JAL library for use of the DFPlayer Mini. 
+--
+-- Sources: Inspired by: https://github.com/PowerBroker2/DFPlayerMini_Fast
+--
+-- Notes: The default serial interface of the DFPlayer Mini is 9600 baud,
+--        1 stopbit, no parity and no flowcontrol. 
+--        At least one of the JAL serial libraries must be included and
+--        initialized by the main program with these settings. 
+--
+--        A read timeout is used for the DFPlayer to respond. This timeout is
+--        can be set in steps of 100 us can be overruled by defining:
+--        const word DFPLAYER_READ_TIMEOUT = 5_000 -- 0,5 seconds (default). 
+--
+--        Some info on DFPlayer folders and audio files:
+--        -) Audio files can be mp3 or wav format
+--        -) Folders used must be named 01 to 99, ADVERT or MP3
+--        -) Files are numbered 001 to 255 or 0001 to 3000 with extension .mp3 or .wav
+--        -) Folders 01 to 15 can contain files named 001 to 255 and 0001 to 3000
+--           these are the so caled special 3000 track folders.
+--        -) Folders 16 to 99 can contain files 001 to 255
+--        -) Folder ADVERT can contain advertisement files named 0001 to 3000
+--        -) Folder MP3 can contain mp3 only files named 0001 to 3000
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Maximum wait time to receive data from the DFPlayer. The read timeout can 
+-- be overruled by the main program. Timeout is in steps of 100 us.
+if !defined(DFPLAYER_READ_TIMEOUT) then
+  const word DFPLAYER_READ_TIMEOUT = 5_000 -- 0,5 seconds (default). 
+end if
+
+-- Volume values. Min is 0.
+const byte DFPLAYER_MAX_VOLUME = 30
+
+-- Equalizer values.
+const byte DFPLAYER_EQUALIZER_NORMAL  = 0
+const byte DFPLAYER_EQUALIZER_POP     = 1
+const byte DFPLAYER_EQUALIZER_ROCK    = 2
+const byte DFPLAYER_EQUALIZER_JAZZ    = 3
+const byte DFPLAYER_EQUALIZER_CLASSIC = 4
+const byte DFPLAYER_EQUALIZER_BASE    = 5
+
+-- Mode values.
+const byte DFPLAYER_MODE_REPEAT        = 0
+const byte DFPLAYER_MODE_FOLDER_REPEAT = 1
+const byte DFPLAYER_MODE_SINGLE_REPEAT = 2
+const byte DFPLAYER_MODE_RANDOM        = 3
+const byte DFPLAYER_MODE_PLAY          = 4
+
+-- Playback source values.
+const byte DFPLAYER_DEVICE_USB   = 1
+const byte DFPLAYER_DEVICE_SD    = 2
+const byte DFPLAYER_DEVICE_AUX   = 3
+const byte DFPLAYER_DEVICE_SLEEP = 4
+const byte DFPLAYER_DEVICE_FLASH = 5
+ 
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Reset the DFPlayer and give the DFPlayer sufficient time to initialize.
+-- Note that dfplayer_reset() and dfplayer_init() are the same.
+procedure dfplayer_reset()
+alias dfplayer_init is dfplayer_reset
+
+-- Play the given track. The track number must be in range 1 to the number
+-- returned by the function dfplayer_get_nr_of_..._tracks().
+procedure dfplayer_play(word in track_number)
+
+-- Play the given track in the given folder. Folder number in range 1 to 99,
+-- track number in range 1 to 255. 
+procedure dfplayer_play_folder(byte in folder_number, byte in track_number)
+
+-- Play the given track from the MP3 folder. Track number in range 1 to 3000.
+procedure dfplayer_play_mp3_folder(word in track_number)
+
+-- Play Advertisement.
+procedure dfplayer_play_advertisement(word in track_number)
+
+-- Stop playing Advertisement.
+procedure dfplayer_stop_advertisement() 
+
+-- Play the given track in the special 3000 track given folder. Folder must
+-- be in range 1 to 15 and track in range 1 to 3000.         
+procedure dfplayer_play_3000_folder(byte in folder_number, word in track_number)
+
+-- Play the next track.
+procedure dfplayer_play_next()
+ 
+-- Play the previous track.
+procedure dfplayer_play_previous()
+
+-- Play random.
+procedure dfplayer_play_random()
+
+-- Pause the DFPlayer.
+procedure dfplayer_pause()
+
+-- Resume playback of the DFPlayer.
+procedure dfplayer_resume()
+
+-- Stop playing a track.
+procedure dfplayer_stop()
+
+-- Start the repeat playback of all tracks.
+procedure dfplayer_start_repeat_play() 
+
+-- Stop the repeat playback of all tracks.
+procedure dfplayer_stop_repeat_play()
+  
+-- Set repeat of the given track.
+procedure dfplayer_repeat_track(word in track_number)
+
+-- Set repeat of the given folder.
+procedure dfplayer_repeat_folder(word in folder_number)
+
+-- Start the repeat of the current track.
+procedure dfplayer_start_repeat_current()
+
+-- Stop the repeat of the current track.
+procedure dfplayer_stop_repeat_current()
+
+-- Set the volume of the DFPlayer. Must be in range 0 .. DFPLAYER_MAX_VOLUME.
+procedure dfplayer_set_volume(byte in volume)
+
+-- Increment the volume of the DFPlayer.
+procedure dfplayer_increment_volume()
+
+-- Decrement the volume of the DFPlayer.
+procedure dfplayer_decrement_volume()
+
+-- Set the equalizer of the DFPlayer. Parameter must be one of the equalizer modes.
+procedure dfplayer_set_equalizer(byte in equalizer)
+
+-- Set the playback source.
+procedure dfplayer_set_playback_source(byte in source) 
+
+-- Put the DFPlayer in sleep mode. Note the DFPlayer can only be re-activated
+-- again by switching the power off and on again.
+procedure dfplayer_sleep_mode()
+
+-- Put the DFPlayer in normal operation mode. This feature is not specified in
+-- all data sheets and its operation is not defined.
+procedure dfplayer_normal_mode()
+
+-- Switch the DAC on (is on by default).
+procedure dfplayer_dac_on()
+
+-- Switch the DAC off (is on by default).
+procedure dfplayer_dac_off()
+
+-- Check if the DFPlayer is playing and return TRUE if so.
+function dfplayer_is_playing() return bit
+
+-- Check if the DFPlayer is paused and return TRUE if so.
+function dfplayer_is_paused() return bit
+
+-- Check if the DFPlayer is stopped and return TRUE if so.
+function dfplayer_is_stopped() return bit
+                                               
+-- Check if the DFPlayer is sleeping and return TRUE if so.
+function dfplayer_is_sleeping() return bit
+
+-- Return the current volume of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_volume(byte out volume) return bit
+
+-- Return the current equalizer setting of the DFPlayer. Function returns TRUE 
+-- if succesful.
+function dfplayer_get_equalizer(byte out equalizer) return bit
+ 
+-- Return the current mode setting of the DFPlayer.  Function returns TRUE if 
+-- succesful.
+function dfplayer_get_mode(byte out mode) return bit
+
+-- Return the current version of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_version(byte out version) return bit
+
+-- Return the numner of tracks on the USB device of the DFPlayer. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_usb_tracks(word out tracks) return bit
+
+-- Return the numner of tracks on the SD device of the DFPlayer. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_sd_tracks(word out tracks) return bit
+
+-- Return the numner of tracks on the Flash device of the DFPlayer.
+-- Function returns TRUE if succesful.
+function dfplayer_get_nr_of_flash_tracks(word out tracks) return bit
+
+-- Return the current track from the USB device of the DFPlayer.  Note that the 
+-- track number returned is a count starting from the first folder.   
+-- Function returns TRUE if succesful.
+function dfplayer_get_current_usb_track(word out track) return bit 
+
+-- Return the current track on the SD device of the DFPlayer. Note that the 
+-- track number returned is a count starting from the first folder.
+-- Function returns TRUE if succesful.
+function dfplayer_get_current_sd_track(word out track) return bit 
+
+-- Return the current track on the Flash device of the DFPlayer. Note that the 
+-- track number returned is a count starting from the first folder.   
+-- Function returns TRUE if succesful.
+function dfplayer_get_current_flash_track(word out track) return bit
+
+-- Return the number of tracks in the given folder of the DFPlayer.
+-- Function returns TRUE if succesful.
+function dfplayer_get_nr_of_tracks_in_folder(word in folder, 
+                                             word out nr_of_tracks) return bit
+
+-- Return the number of folders of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_nr_of_folders(word out nr_of_folders) return bit
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Private stuff ------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Constants for the serial communication.
+const byte _DFPLAYER_MESSAGE_SIZE = 10   
+const byte _DFPLAYER_START        = 0x7E 
+const byte _DFPLAYER_VERSION      = 0xFF 
+const byte _DFPLAYER_LENGTH       = 0x06  
+const byte _DFPLAYER_FEEDBACK     = 1   
+const byte _DFPLAYER_NO_FEEDBACK  = 0    
+const byte _DFPLAYER_END          = 0xEF 
+
+-- Control commands.
+const byte _DFPLAYER_NEXT            = 0x01
+const byte _DFPLAYER_PREVIOUS        = 0x02
+const byte _DFPLAYER_PLAY            = 0x03
+const byte _DFPLAYER_INC_VOLUME      = 0x04
+const byte _DFPLAYER_DEC_VOLUME      = 0x05
+const byte _DFPLAYER_SET_VOLUME      = 0x06
+const byte _DFPLAYER_EQUALIZER       = 0x07
+const byte _DFPLAYER_REPEAT_TRACK    = 0x08
+const byte _DFPLAYER_PLAYBACK_DEVICE = 0x09
+const byte _DFPLAYER_SLEEP           = 0x0A
+const byte _DFPLAYER_NORMAL          = 0x0B -- Not specified in all datasheets.
+const byte _DFPLAYER_RESET           = 0x0C
+const byte _DFPLAYER_PLAYBACK        = 0x0D
+const byte _DFPLAYER_PAUSE           = 0x0E
+const byte _DFPLAYER_SPEC_FOLDER     = 0x0F
+const byte _DFPLAYER_VOLUME_ADJUST   = 0x10 -- Not specified in all datasheets.
+const byte _DFPLAYER_REPEAT_PLAY     = 0x11
+const byte _DFPLAYER_USE_MP3_FOLDER  = 0x12
+const byte _DFPLAYER_INSERT_ADVERT   = 0x13
+const byte _DFPLAYER_SPEC_TRACK_3000 = 0x14
+const byte _DFPLAYER_STOP_ADVERT     = 0x15
+const byte _DFPLAYER_STOP            = 0x16 
+const byte _DFPLAYER_REPEAT_FOLDER   = 0x17
+const byte _DFPLAYER_RANDOM_ALL      = 0x18
+const byte _DFPLAYER_REPEAT_CURRENT  = 0x19
+const byte _DFPLAYER_SET_DAC         = 0x1A
+
+-- Query commands.
+const byte _DFPLAYER_SEND_INIT        = 0x3F
+const byte _DFPLAYER_RETRANSMIT       = 0x40
+const byte _DFPLAYER_REPLY            = 0x41
+const byte _DFPLAYER_GET_STATUS       = 0x42
+const byte _DFPLAYER_GET_VOLUME       = 0x43
+const byte _DFPLAYER_GET_EQUALIZER    = 0x44
+const byte _DFPLAYER_GET_MODE         = 0x45
+const byte _DFPLAYER_GET_VERSION      = 0x46
+const byte _DFPLAYER_GET_USB_FILES    = 0x47                                   
+const byte _DFPLAYER_GET_SD_FILES     = 0x48
+const byte _DFPLAYER_GET_FLASH_FILES  = 0x49
+const byte _DFPLAYER_KEEP_ON          = 0x4A
+const byte _DFPLAYER_GET_USB_TRACK    = 0x4B
+const byte _DFPLAYER_GET_SD_TRACK     = 0x4C
+const byte _DFPLAYER_GET_FLASH_TRACK  = 0x4D
+const byte _DFPLAYER_GET_FOLDER_FILES = 0x4E
+const byte _DFPLAYER_GET_FOLDERS      = 0x4F
+
+-- Repeat play values.
+const byte _DFPLAYER_STOP_REPEAT  = 0;
+const byte _DFPLAYER_START_REPEAT = 1;
+
+-- -----------------------------------------------------------------------------
+-- ------------------------- Private API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Calculate and return the checksum. It is two's complement.
+function _dfplayer_calculate_checksum() return word
+
+-- Send the data to the DFPlayer.
+procedure _dfplayer_send_data()
+
+-- Flush any data from the serial port.
+procedure _dfplayer_flush_serial()
+
+-- Get one byte from the DFPlayer and return TRUE when received. If no data is
+-- available FALSE is returned.
+function _dfplayer_get_byte(byte out data) return bit
+
+-- Get one message from the DFPLayer and return TRUE when received.
+function _dfplayer_get_message() return bit
+
+-- Get and check one message from the DFPlayer and return TRUE when 
+-- a valid message is received on the given command.
+function _dfplayer_message_received(byte in command) return bit
+
+-- Query requested data from the DFPlayer and return the result. If valid data
+-- is queried then TRUE is returned.
+function _dfplayer_query(byte in command, word in parameter_in, 
+                         word out parameter_out) return bit
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Record defining the structure of the serial communication format.
+record _dfplayer_serial is
+   byte startbyte
+   byte version
+   byte length
+   byte command
+   byte feedback
+   byte parameter_msb
+   byte parameter_lsb
+   word checksum
+   byte endbyte
+end record
+
+-- Variable used to send and receive data.
+var _dfplayer_serial _dfplayer_buffer
+
+-- The main program can use different versions of the JAL serial hardware
+-- libraries so we use aliases to make this generic.
+if defined(serial_hw_write) then
+   alias _dfplayer_serial_write is serial_hw_write
+   alias _dfplayer_serial_read  is serial_hw_read
+elsif defined(serial_hw2_write) then
+   alias _dfplayer_serial_write is serial_hw2_write
+   alias _dfplayer_serial_read  is serial_hw2_read
+elsif defined(serial_sw_write) then
+   alias _dfplayer_serial_write is serial_sw_write
+   alias _dfplayer_serial_read  is serial_sw_read
+else
+   _error "no serial port defined"     
+end if
+
+
+-- Reset the DFPlayer and give the DFPlayer sufficient time to initialize.
+-- Note that dfplayer_reset() and dfplayer_init() are the same.
+procedure dfplayer_reset() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_RESET
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+
+   -- Wait the maximum initialization time after a reset for reading tracks.
+   _usec_delay(1_500_000)
+       
+end procedure
+
+
+-- Play the given track. The track number must be in range 1 to the number
+-- returned by the function dfplayer_get_nr_of_..._tracks().
+procedure dfplayer_play(word in track_number) is
+
+   var byte track[2] at track_number
+   
+   _dfplayer_buffer.command = _DFPLAYER_PLAY
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = track[1]
+   _dfplayer_buffer.parameter_lsb = track[0]
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play the given track in the given folder. Folder number in range 1 to 99,
+-- track number in range 1 to 255. 
+procedure dfplayer_play_folder(byte in folder_number, byte in track_number) is
+   
+   _dfplayer_buffer.command = _DFPLAYER_SPEC_FOLDER
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = folder_number
+   _dfplayer_buffer.parameter_lsb = track_number
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play the given track from the MP3 folder. Track number in range 1 to 3000.
+procedure dfplayer_play_mp3_folder(word in track_number) is
+
+   var byte track[2] at track_number
+   
+   _dfplayer_buffer.command  = _DFPLAYER_USE_MP3_FOLDER
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = track[1]
+   _dfplayer_buffer.parameter_lsb = track[0]
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play Advertisement.
+procedure dfplayer_play_advertisement(word in track_number) is
+
+   var byte track[2] at track_number
+   
+   _dfplayer_buffer.command  = _DFPLAYER_INSERT_ADVERT
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = track[1]
+   _dfplayer_buffer.parameter_lsb = track[0]
+   _dfplayer_send_data()
+   
+end procedure
+
+
+ -- Stop playing Advertisement.
+procedure dfplayer_stop_advertisement() is
+  
+   _dfplayer_buffer.command  = _DFPLAYER_STOP_ADVERT
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play the given track in the special 3000 track given folder. Folder must
+-- be in range 1 to 15 and track in range 0001 to 3000.
+procedure dfplayer_play_3000_folder(byte in folder_number, word in track_number) is
+
+   var byte track[2] at track_number
+   
+   _dfplayer_buffer.command = _DFPLAYER_SPEC_TRACK_3000
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = (folder_number <<4) | (track[1] & 0x0F)
+   _dfplayer_buffer.parameter_lsb = track[0]
+   _dfplayer_send_data()
+   
+end procedure
+ 
+ 
+-- Play the next track.
+procedure dfplayer_play_next() is
+
+   _dfplayer_buffer.command = _DFPLAYER_NEXT
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play the previous track.
+procedure dfplayer_play_previous() is
+
+   _dfplayer_buffer.command = _DFPLAYER_PREVIOUS
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Play random.
+procedure dfplayer_play_random() is
+
+   _dfplayer_buffer.command = _DFPLAYER_RANDOM_ALL
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Pause the DFPlayer.
+procedure dfplayer_pause() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_PAUSE
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+
+-- Resume playback of the DFPlayer.
+procedure dfplayer_resume() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_PLAYBACK
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+
+-- Stop playing a track.
+procedure dfplayer_stop() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_STOP
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Start the repeat playback of all tracks
+procedure dfplayer_start_repeat_play() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_PLAY
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = _DFPLAYER_START_REPEAT
+   _dfplayer_send_data()
+       
+end procedure
+
+
+-- Stop the repeat playback of all tracks
+procedure dfplayer_stop_repeat_play() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_PLAY
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = _DFPLAYER_STOP_REPEAT
+   _dfplayer_send_data()
+       
+end procedure
+
+
+-- Set repeat of the given track.
+procedure dfplayer_repeat_track(word in track_number) is
+
+   var byte track[2] at track_number
+    
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_TRACK
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = track[1]
+   _dfplayer_buffer.parameter_lsb = track[0]
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Set repeat of the given folder.
+procedure dfplayer_repeat_folder(word in folder_number) is
+
+   var byte folder[2] at folder_number
+    
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_FOLDER
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = folder[1]
+   _dfplayer_buffer.parameter_lsb = folder[0]
+   _dfplayer_send_data()
+       
+end procedure
+ 
+ 
+-- Start the repeat of the current track.
+procedure dfplayer_start_repeat_current() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_CURRENT
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+
+-- Stop the repeat of the current track.
+procedure dfplayer_stop_repeat_current() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_REPEAT_CURRENT
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 1
+   _dfplayer_send_data()
+        
+end procedure
+
+
+-- Set the volume of the DFPlayer. Must be in range 0 .. DFPLAYER_MAX_VOLUME
+procedure dfplayer_set_volume(byte in volume) is
+   
+   if (volume <= DFPLAYER_MAX_VOLUME) then
+      _dfplayer_buffer.command  = _DFPLAYER_SET_VOLUME
+      _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+      _dfplayer_buffer.parameter_msb = 0
+      _dfplayer_buffer.parameter_lsb = volume
+      _dfplayer_send_data()      
+   end if 
+   
+end procedure
+
+
+-- Increment the volume of the DFPlayer.
+procedure dfplayer_increment_volume() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_INC_VOLUME
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+-- Decrement the volume of the DFPlayer.
+procedure dfplayer_decrement_volume() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_DEC_VOLUME
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+   
+end procedure
+
+
+
+-- Set the equalizer of the DFPlayer. Parameter must be one of the equalizer modes.
+procedure dfplayer_set_equalizer(byte in equalizer) is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_EQUALIZER
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = equalizer
+   _dfplayer_send_data()
+       
+end procedure
+ 
+ 
+-- Set the playback source.
+procedure dfplayer_set_playback_source(byte in source) is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_PLAYBACK_DEVICE
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = source
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Put the DFPlayer in sleep mode. Note the DFPlayer can only be re-activated
+-- again by switching the power off and on again.
+procedure dfplayer_sleep_mode() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_SLEEP
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Put the DFPlayer in normal operation mode. This feature is not specified in
+-- all data sheets and its operation is not defined.
+procedure dfplayer_normal_mode() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_NORMAL
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Switch the DAC on (is on by default).
+procedure dfplayer_dac_on() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_SET_DAC
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 0
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Switch the DAC off (is on by default).
+procedure dfplayer_dac_off() is
+   
+   _dfplayer_buffer.command  = _DFPLAYER_SET_DAC
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK
+   _dfplayer_buffer.parameter_msb = 0
+   _dfplayer_buffer.parameter_lsb = 1
+   _dfplayer_send_data()
+       
+end procedure
+
+ 
+-- Check if the DFPlayer is playing and return TRUE if so.
+function dfplayer_is_playing() return bit is
+
+   var word status
+   var bit ok
+
+    if _dfplayer_query(_DFPLAYER_GET_STATUS, 0, status) then
+       ok = (status == 0x0001)
+    else
+       ok = FALSE
+    end if 
+
+    return ok
+ 
+end function
+
+
+-- Check if the DFPlayer is paused and return TRUE if so.
+function dfplayer_is_paused() return bit is
+
+   var word status
+   var bit ok
+
+    if _dfplayer_query(_DFPLAYER_GET_STATUS, 0, status) then
+       ok = (status == 0x0002)
+    else
+       ok = FALSE
+    end if 
+
+    return ok
+ 
+end function
+
+
+-- Check if the DFPlayer is stopped and return TRUE if so.
+function dfplayer_is_stopped() return bit is
+
+   var word status
+   var bit ok
+
+    if _dfplayer_query(_DFPLAYER_GET_STATUS, 0, status) then
+       ok = (status == 0x0000)
+    else
+       ok = FALSE
+    end if 
+
+    return ok
+ 
+end function
+
+
+-- Check if the DFPlayer is sleepting and return TRUE if so.
+function dfplayer_is_sleeping() return bit is
+
+   var word status
+   var bit ok
+
+    if _dfplayer_query(_DFPLAYER_GET_STATUS, 0, status) then
+       ok = (status == 0x1000)
+    else
+       ok = FALSE
+    end if 
+
+    return ok
+ 
+end function
+
+
+-- Return the current volume of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_volume(byte out volume) return bit is
+
+   var word value
+   
+   if _dfplayer_query(_DFPLAYER_GET_VOLUME, 0, value) then 
+      volume = byte(value)
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+
+-- Return the current equalizer setting of the DFPlayer. Function returns TRUE 
+-- if succesful.
+function dfplayer_get_equalizer(byte out equalizer) return bit is
+
+   var word value
+   
+   if _dfplayer_query(_DFPLAYER_GET_EQUALIZER, 0, value) then 
+      equalizer = byte(value)
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+
+
+-- Return the current mode setting of the DFPlayer. Function returns TRUE if 
+-- succesful.
+function dfplayer_get_mode(byte out mode) return bit is
+
+   var word value
+   
+   if _dfplayer_query(_DFPLAYER_GET_MODE, 0, value) then 
+      mode = byte(value)
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+
+
+-- Return the current version of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_version(byte out version) return bit is
+
+   var word value
+   
+   if _dfplayer_query(_DFPLAYER_GET_VERSION, 0, value) then 
+      version = byte(value)
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+
+-- Return the numner of tracks on the USB device of the DFPlayer.Note that the 
+-- track number returned is a count starting from the first folder. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_usb_tracks(word out tracks) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_USB_FILES, 0, tracks) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+
+  
+-- Return the numner of tracks on the SD device of the DFPlayer. Note that the 
+-- track number returned is a count starting from the first folder. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_sd_tracks(word out tracks) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_SD_FILES, 0, tracks) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+  
+-- Return the numner of tracks on the Flash device of the DFPlayer. Note that the 
+-- track number returned is a count starting from the first folder. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_flash_tracks(word out tracks) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_FLASH_FILES, 0, tracks) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+
+-- Return the current track from the USB device of the DFPlayer. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_current_usb_track(word out track) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_USB_TRACK, 0, track) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+
+  
+-- Return the current track on the SD device of the DFPlayer. Function returns 
+-- TRUE if succesful.
+function dfplayer_get_current_sd_track(word out track) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_SD_TRACK, 0, track) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+  
+-- Return the current track on the Flash device of the DFPlayer. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_current_flash_track(word out track) return bit is
+   
+   if _dfplayer_query(_DFPLAYER_GET_FLASH_TRACK, 0, track) then 
+      return TRUE
+   else
+      return FALSE
+   end if
+ 
+end function
+  
+  
+-- Return the number of tracks in the given folder of the DFPlayer. Function 
+-- returns TRUE if succesful.
+function dfplayer_get_nr_of_tracks_in_folder(word in folder, 
+                                             word out nr_of_tracks) return bit is
+
+    return _dfplayer_query(_DFPLAYER_GET_FOLDER_FILES, folder, nr_of_tracks) 
+
+end function
+
+  
+-- Return the number of folders of the DFPlayer. Function returns TRUE if succesful.
+function dfplayer_get_nr_of_folders(word out nr_of_folders) return bit is
+
+    return _dfplayer_query(_DFPLAYER_GET_FOLDERS, 0, nr_of_folders) 
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- ----------------- PRIVATE PROCEDURES AND FUNCTIONS --------------------------
+-- -----------------------------------------------------------------------------
+
+-- Calculate and return the checksum. It is two's complement.
+function _dfplayer_calculate_checksum() return word is
+
+   return (0xFFFF -(word(_dfplayer_buffer.version) +  
+                    word(_dfplayer_buffer.length) +
+                    word(_dfplayer_buffer.command) +
+                    word(_dfplayer_buffer.feedback) + 
+                    word(_dfplayer_buffer.parameter_msb) +
+                    word(_dfplayer_buffer.parameter_lsb)) + 1)
+end function
+
+
+-- Prepare the data to send and send the data to the DFPlayer.
+procedure _dfplayer_send_data() is
+
+   var word checksum 
+   var byte check[2] at checksum   
+
+   -- Preset the fixed values for transmission.
+   _dfplayer_buffer.startbyte = _DFPLAYER_START
+   _dfplayer_buffer.version   = _DFPLAYER_VERSION 
+   _dfplayer_buffer.length    = _DFPLAYER_LENGTH
+   _dfplayer_buffer.endbyte   = _DFPLAYER_END
+ 
+   checksum = _dfplayer_calculate_checksum()
+   
+   _dfplayer_serial_write(_dfplayer_buffer.startbyte)
+   _dfplayer_serial_write(_dfplayer_buffer.version)
+   _dfplayer_serial_write(_dfplayer_buffer.length)
+   _dfplayer_serial_write(_dfplayer_buffer.command)
+   _dfplayer_serial_write(_dfplayer_buffer.feedback)
+   _dfplayer_serial_write(_dfplayer_buffer.parameter_msb)
+   _dfplayer_serial_write(_dfplayer_buffer.parameter_lsb)
+   _dfplayer_serial_write(check[1])
+   _dfplayer_serial_write(check[0])
+   _dfplayer_serial_write(_dfplayer_buffer.endbyte)
+   
+end procedure
+
+
+-- Flush any data from the serial port.
+procedure _dfplayer_flush_serial() is
+
+   var byte dummy
+   
+   while _dfplayer_serial_read(dummy) loop
+      -- Do nothing, just disguard the data.
+   end loop
+   
+end procedure
+
+
+-- Get one byte from the DFPlayer and return TRUE when received. If no data is
+-- available FALSE is returned.
+function _dfplayer_get_byte(byte out data) return bit is
+
+   var word timeout
+   var bit done
+   
+   timeout = 0
+   done = FALSE
+   while !done & (timeout < DFPLAYER_READ_TIMEOUT) loop
+      if _dfplayer_serial_read(data) then 
+         done = TRUE
+      else
+         timeout = timeout + 1
+         _usec_delay(100)
+      end if
+   end loop
+   
+   return done
+   
+end function
+
+
+-- Get one message from the DFPLayer and return TRUE when received.
+function _dfplayer_get_message() return bit is
+
+   var byte checksum[2] at _dfplayer_buffer.checksum
+   var byte message[_DFPLAYER_MESSAGE_SIZE]
+   var byte counter
+   var bit ok
+
+   counter = 0
+   ok = TRUE
+   -- Read one message.
+   while ok & (counter < _DFPLAYER_MESSAGE_SIZE) loop
+      ok = _dfplayer_get_byte(message[counter]) 
+      counter = counter + 1
+   end loop
+
+   if ok then
+      _dfplayer_buffer.startbyte = message[0]   
+      _dfplayer_buffer.version = message[1]       
+      _dfplayer_buffer.length  = message[2]       
+      _dfplayer_buffer.command = message[3]       
+      _dfplayer_buffer.feedback = message[4]       
+      _dfplayer_buffer.parameter_msb = message[5]        
+      _dfplayer_buffer.parameter_lsb = message[6]        
+      checksum[1] = message[7] 
+      checksum[0] = message[8] 
+      _dfplayer_buffer.endbyte = message[9]       
+   end if
+   
+   return ok
+   
+end function
+
+
+-- Get and check one message from the DFPlayer and return TRUE when 
+-- a valid message is received on the given command
+function _dfplayer_message_received(byte in command) return bit is
+
+   var word checksum_verify
+   var bit ok
+   
+   ok = FALSE
+   -- Copy and check the received data.
+   if _dfplayer_get_message() then
+      -- Do some checks to verify that this message is OK
+      ok = (_dfplayer_buffer.startbyte == _DFPLAYER_START) 
+      ok = ok & (_dfplayer_buffer.version == _DFPLAYER_VERSION) 
+      ok = ok & (_dfplayer_buffer.length == _DFPLAYER_LENGTH)
+      ok = ok & (_dfplayer_buffer.command == command)
+      ok = ok  & (_dfplayer_buffer.endbyte == _DFPLAYER_END) 
+      -- Last but not least, verify the checksum.
+      checksum_verify = _dfplayer_calculate_checksum()
+      ok = ok & (checksum_verify == _dfplayer_buffer.checksum)
+          
+   end if
+   
+   return ok
+    
+end function
+
+
+-- Query requested data from the DFPlayer and return the result. If valid data
+-- is queried then TRUE is returned.
+function _dfplayer_query(byte in command, word in parameter_in, 
+                         word out parameter_out) return bit is
+
+   var byte para[2] at parameter_in
+   var bit ok
+   
+   _dfplayer_flush_serial()
+
+   _dfplayer_buffer.command  = command
+   _dfplayer_buffer.feedback = _DFPLAYER_NO_FEEDBACK 
+   _dfplayer_buffer.parameter_msb = para[1]
+   _dfplayer_buffer.parameter_lsb = para[0]
+   _dfplayer_send_data()
+   
+   if _dfplayer_message_received(command) then
+      parameter_out = word(_dfplayer_buffer.parameter_msb << 8) | 
+                      word(_dfplayer_buffer.parameter_lsb)
+      ok = TRUE
+   else
+      ok = FALSE
+   end if
+
+   return ok
+   
+end function
+
+  
+   
+  
+
+
