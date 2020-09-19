@@ -30,7 +30,7 @@
 --        -) Folders used must be named 01 to 99, ADVERT or MP3
 --        -) Files are numbered 001 to 255 or 0001 to 3000 with extension .mp3 or .wav
 --        -) Folders 01 to 15 can contain files named 001 to 255 and 0001 to 3000
---           these are the so caled special 3000 track folders.
+--           these are the so called special 3000 track folders.
 --        -) Folders 16 to 99 can contain files 001 to 255
 --        -) Folder ADVERT can contain advertisement files named 0001 to 3000
 --        -) Folder MP3 can contain mp3 only files named 0001 to 3000
@@ -966,15 +966,13 @@ procedure _dfplayer_send_data() is
    var word checksum 
    var byte check[2] at checksum   
 
-   -- Preset the fixed values for transmission.
-   _dfplayer_buffer.startbyte = _DFPLAYER_START
-   _dfplayer_buffer.version   = _DFPLAYER_VERSION 
-   _dfplayer_buffer.length    = _DFPLAYER_LENGTH
-   _dfplayer_buffer.endbyte   = _DFPLAYER_END
+   -- Preset the fixed values for transmission and for checksum calculation.
+   _dfplayer_buffer.version = _DFPLAYER_VERSION 
+   _dfplayer_buffer.length  = _DFPLAYER_LENGTH
  
    checksum = _dfplayer_calculate_checksum()
    
-   _dfplayer_serial_write(_dfplayer_buffer.startbyte)
+   _dfplayer_serial_write(_DFPLAYER_START)
    _dfplayer_serial_write(_dfplayer_buffer.version)
    _dfplayer_serial_write(_dfplayer_buffer.length)
    _dfplayer_serial_write(_dfplayer_buffer.command)
@@ -983,7 +981,7 @@ procedure _dfplayer_send_data() is
    _dfplayer_serial_write(_dfplayer_buffer.parameter_lsb)
    _dfplayer_serial_write(check[1])
    _dfplayer_serial_write(check[0])
-   _dfplayer_serial_write(_dfplayer_buffer.endbyte)
+   _dfplayer_serial_write(_DFPLAYER_END)
    
 end procedure
 
@@ -1061,7 +1059,6 @@ end function
 -- a valid message is received on the given command
 function _dfplayer_message_received(byte in command) return bit is
 
-   var word checksum_verify
    var bit ok
    
    ok = FALSE
@@ -1074,8 +1071,7 @@ function _dfplayer_message_received(byte in command) return bit is
       ok = ok & (_dfplayer_buffer.command == command)
       ok = ok  & (_dfplayer_buffer.endbyte == _DFPLAYER_END) 
       -- Last but not least, verify the checksum.
-      checksum_verify = _dfplayer_calculate_checksum()
-      ok = ok & (checksum_verify == _dfplayer_buffer.checksum)
+      ok = ok & (_dfplayer_buffer.checksum == _dfplayer_calculate_checksum())
           
    end if
    
