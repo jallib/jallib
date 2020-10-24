@@ -1,17 +1,17 @@
 #!/usr/bin/python3
 """ Create and compile blink-a-led samples.
 
-  Author: Rob Hamerling, Copyright (c) 2008..2020, all rights reserved.
+  Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by: Rob Jansen
+  Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
 
   Revision: $Revision$
 
   Compiler: N/A
 
   This file is part of jallib  https://github.com/jallib/jallib
-  Released under the BSD license
-                 http://www.opensource.org/licenses/bsd-license.php
+  Released under the ZLIB license
+                 http://www.opensource.org/licenses/zlib-license.html
 
   Description: Python script to create blink-a-led samples
                for every available device file.
@@ -254,6 +254,8 @@ def scan_devfile(devfile):
                var["osccon_spllen"] = True
             elif (ln.find(" OSCFRQ_HFFRQ ") >= 0):
                var["oscfrq_hffrq"] = True
+            elif (ln.find(" OSCFRQ_FRQ ") >= 0):
+               var["oscfrq_frq"] = True
             elif (ln.find(" OSCTUNE_PLLEN ") >= 0):
                var["osctune_pllen"] = True
       ln = fp.readline()
@@ -404,8 +406,8 @@ def build_sample(pic, pin, osctype, oscword):
    fp.write("-- Compiler:" + CompilerVersion + "\n")
    fp.write("--\n")
    fp.write("-- This file is part of jallib (https://github.com/jallib/jallib)\n")
-   fp.write("-- Released under the BSD license " +
-                      "(http://www.opensource.org/licenses/bsd-license.php)\n")
+   fp.write("-- Released under the ZLIB license " +
+                      "(http://www.opensource.org/licenses/zlib-license.html)\n")
    fp.write("--\n")
    fp.write("-- Description:\n")
    fp.write("--    Simple blink-a-led program for Microchip pic" + pic + "\n")
@@ -449,7 +451,10 @@ def build_sample(pic, pin, osctype, oscword):
          fp.write("pragma target OSC      %-25s " % (oscword) + "-- internal oscillator\n")
       fusedef_insert("fosc2", "OFF", "Internal Oscillator")
       fusedef_insert("ioscfs", "F4MHZ", "select 4 MHz")
-      fusedef_insert("rstosc", "HFINT32", "select 32 MHz")
+      if ("oscfrq_hffrq" in var):
+         fusedef_insert("rstosc", "HFINT32", "select 32 MHz")
+      if ("oscfrq_frq" in var):
+         fusedef_insert("rstosc", "HFINTOSC_32MHZ", "select 32 MHz")
    elif (osctype == "HS_USB"):                    # HS oscillator and USB
       fp.write("-- This program assumes that a 20 MHz resonator or crystal\n")
       fp.write("-- is connected to pins OSC1 and OSC2, and USB active.\n")
@@ -530,6 +535,8 @@ def build_sample(pic, pin, osctype, oscword):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
       if ("oscfrq_hffrq" in var):
          fp.write("OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz\n")
+      if ("oscfrq_frq" in var):
+         fp.write("OSCFRQ_FRQ = 0b010                  -- Fosc 32 -> 4 MHz\n")
       if ("ircfwidth" in var):
          if (var["ircfwidth"] > 0) & ("OSCCON_IRCF" in picdata):
             fp.write("OSCCON_IRCF = 0b%-5s" % picdata["OSCCON_IRCF"] + "               -- 4 MHz\n")

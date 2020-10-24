@@ -11,7 +11,7 @@ Revision: $Revision$
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
   Python script to create device files for JALV2,
@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.4.0"     # script version
+scriptversion = "1.4.1"     # script version
 compilerversion = "2.5r4"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -2160,6 +2160,7 @@ def list_pps_out_consts(fp, root, picname):
             vpins = pin.getElementsByTagName("edc:VirtualPin")
             for vpin in vpins:
                 pinfunc = vpin.getAttribute("edc:name")
+                pinfunc = pinfunc.upper()
                 pinpatt = vpin.getAttribute("edc:ppsval")
                 if (len(pinpatt) == 0):  # no pattern found
                     ppsoutdict[nopatt] = pinfunc  # assign dummy
