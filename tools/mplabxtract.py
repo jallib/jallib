@@ -20,7 +20,8 @@ Sources: N/A
 
 Notes:
    - May need to be run with root or administrator privileges
-   - MPLABX-IDE needs be installed.
+   - MPLABX-IDE needs be installed
+   - Change the path to your local MPLABX installation
    - Modified for MPLABX 4.20 (changed directory structure using version numbering)
 
 """
@@ -43,9 +44,9 @@ if (platform_name == "Linux"):
    xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Windows"):
    # When using the Windows MPLABX installation from the original location use this:
-   #  xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
-   # Currnently using a local copy from another location.
-   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "mplabx_v" + mplabxversion)
+   # xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
+   # Currently using a local copy from another Windows location as given below:
+   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Darwin"):
    xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
 else:
@@ -89,14 +90,13 @@ if (__name__ == "__main__"):
    for picdir in pic_select.keys():             # all directories with PIC files 
       picvers = os.path.join(xml_prefix, picdir) # path to version directories
       picpath = os.path.join(picvers, "__version__", "edc")  # default path (< 4.20)
-      # If a version number is listed as directory we assume that the highest version is listed as the last one and
-      # if present we will use that latest (last) version as base for the PICs to extract.
-      # For the next version of MPLABX it needs to be checked.
-      for file in os.listdir(picvers):
-         if os.path.isdir(os.path.join(picvers, file)):      # must be a directory
-            if "edc" in os.listdir(os.path.join(picvers, file)):  # contains edc directory
-               picpath = os.path.join(picvers, file, "edc")  # modified path
-               break
+      # There may be more versions in the directory and we need to pick the highest version.
+      files = list(os.listdir(picvers))
+      files.sort()
+      file = files[-1] # Last item from the list is the highest version.
+      if os.path.isdir(os.path.join(picvers, file)):      # must be a directory
+         if "edc" in os.listdir(os.path.join(picvers, file)):  # contains edc directory
+            picpath = os.path.join(picvers, file, "edc")  # modified path
       print("Processing", picpath)               # progress signal
       os.chdir(picpath)                         # make it current working directory
       filelist = glob.glob("PIC1*.PIC")         # make list of selected .PIC files
