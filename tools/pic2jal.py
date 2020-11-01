@@ -61,7 +61,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.4.1"     # script version
+scriptversion = "1.4.2"     # script version
 compilerversion = "2.5r4"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -86,21 +86,40 @@ names = []  # list of names of declared variables
 # translation/normalisation of fusedef keywords
 # Key = MPLABX cname, value = Jallib keyword
 # All keywords are included also if the keywords in MPLABX and Jallib are the same.
+# The PIC mentioned is where the first (initial) value came from.
 fusedef_kwd = {"ABW": "ABW",
-               "ADCSEL": "ADCSEL",
+               "ADCSEL": "ADCSEL",               # PIC18F27/47/57Q84
                "ADDRBW": "ABW",
+               "APPSCEN": "APPSCEN",             # PIC18F27/47/57Q84
                "BACKBUG": "DEBUG",
                "BBEN": "BBEN",
                "BBSIZ": "BBSIZ",
                "BBSIZE": "BBSIZ",
+               "BCRCERESH": "BCRCERESH",         # PIC18F27/47/57Q84
+               "BCRCERESL": "BCRCERESL",         # PIC18F27/47/57Q84
+               "BCRCEREST": "BCRCEREST",         # PIC18F27/47/57Q84
+               "BCRCERESU": "BCRCERESU",         # PIC18F27/47/57Q84
+               "BCRCPOLH": "BCRCPOLH",           # PIC18F27/47/57Q84
+               "BCRCPOLL": "BCRCPOLL",           # PIC18F27/47/57Q84
+               "BCRCPOLT": "BCRCPOLT",           # PIC18F27/47/57Q84
+               "BCRCPOLU": "BCRCPOLU",           # PIC18F27/47/57Q84
+               "BCRCSEEDH": "BCRCSEEDH",         # PIC18F27/47/57Q84
+               "BCRCSEEDL": "BCRCSEEDL",         # PIC18F27/47/57Q84
+               "BCRCSEEDT": "BCRCSEEDT",         # PIC18F27/47/57Q84
+               "BCRCSEEDU": "BCRCSEEDU",         # PIC18F27/47/57Q84
                "BOD": "BROWNOUT",
                "BODENV": "VOLTAGE",
+               "BOOTCOE": "BOOTCOE",             # PIC18F27/47/57Q84
+               "BOOTPINSEL": "BOOTPINSEL",       # PIC18F27/47/57Q84
+               "BOOTPOR": "BOOTPOR",             # PIC18F27/47/57Q84
+               "BOOTSCEN": "BOOTSCEN",           # PIC18F27/47/57Q84
                "BOR": "BROWNOUT",
                "BOR4V": "VOLTAGE",
                "BOREN": "BROWNOUT",
                "BORPWR": "BORPWR",
                "BORSEN": "BORSEN",
-               "BORV": "VOLTAGE",
+               "BORV": "VOLTAGE",                # PIC18F27/47/57Q84
+               "BPEN": "BPEN",                   # PIC18F27/47/57Q84
                "BW": "DBW",
                "CANMX": "CANMUX",
                "CCP2MUX": "CCP2MUX",
@@ -108,10 +127,12 @@ fusedef_kwd = {"ABW": "ABW",
                "CCP3MX": "CCP3MUX",
                "CCPMX": "CCP1MUX",
                "CFGPLLEN": "PLLEN",
+               "CFGSCEN": "CFGSCEN",             # PIC18F27/47/57Q84
                "CINASEL": "CINASEL",
                "CLKOEC": "CLKOEC",
                "CLKOEN": "CLKOUTEN",
                "CLKOUTEN": "CLKOUTEN",
+               "COE": "COE",                     # PIC18F27/47/57Q84
                "CP": "CP",
                "CP0": "CP0",
                "CP1": "CP1",
@@ -125,8 +146,21 @@ fusedef_kwd = {"ABW": "ABW",
                "CPD": "CPD",
                "CPDF": "CPD",
                "CPUDIV": "CPUDIV",
+               "CRCERESH": "CRCERESH",            # PIC18F27/47/57Q84
+               "CRCERESL": "CRCERESL",            # PIC18F27/47/57Q84
+               "CRCEREST": "CRCEREST",            # PIC18F27/47/57Q84
+               "CRCERESU": "CRCERESU",            # PIC18F27/47/57Q84
+               "CRCPOLH": "CRCPOLH",              # PIC18F27/47/57Q84
+               "CRCPOLL": "CRCPOLL",              # PIC18F27/47/57Q84
+               "CRCPOLT": "CRCPOLT",              # PIC18F27/47/57Q84
+               "CRCPOLU": "CRCPOLU",              # PIC18F27/47/57Q84
+               "CRCSEEDH": "CRCSEEDH",            # PIC18F27/47/57Q84
+               "CRCSEEDL": "CRCSEEDL",            # PIC18F27/47/57Q84
+               "CRCSEEDT": "CRCSEEDT",            # PIC18F27/47/57Q84
+               "CRCSEEDU": "CRCSEEDU",            # PIC18F27/47/57Q84
                "CSWEN": "CSWEN",
                "DATABW": "DBW",
+               "DATASCEN": "DATASCEN",           # PIC18F27/47/57Q84
                "DEBUG": "DEBUG",
                "DSBITEN": "DSBITEN",
                "DSBOREN": "BROWNOUT",
@@ -148,6 +182,8 @@ fusedef_kwd = {"ABW": "ABW",
                "ETHLED": "ETHLED",
                "EXCLKMX": "EXCLKMUX",
                "FCMEN": "FCMEN",
+               "FCMENP": "FCMENP",
+               "FCMENS": "FCMENS",
                "FEXTOSC": "OSC",
                "FLTAMX": "FLTAMUX",
                "FOSC": "OSC",
@@ -162,6 +198,7 @@ fusedef_kwd = {"ABW": "ABW",
                "IOL1WAY": "IOL1WAY",
                "IOSCFS": "IOSCFS",
                "IVT1WAY": "IVT1WAY",
+               "JTAGEN": "JTAGEN",               # PIC18F27/47/57Q84
                "LCDPEN": "LCDPEN",
                "LPBOR": "LPBOR",
                "LPBOREN": "LPBOREN",
@@ -179,6 +216,7 @@ fusedef_kwd = {"ABW": "ABW",
                "MVECEN": "MVECEN",
                "NLPBOR": "LPBOR",
                "NPWRTEN": "PWRTE",
+               "ODCON": "ODCON",                 # PIC18F27/47/57Q84
                "OSC": "OSC",
                "OSCS": "OSCS",
                "P2BMX": "P2BMUX",
@@ -208,6 +246,7 @@ fusedef_kwd = {"ABW": "ABW",
                "RTCOSC": "RTCOSC",
                "RTCSOSC": "RTCOSC",
                "SAFEN": "SAFEN",
+               "SAFSCEN": "SAFSCEN",             # PIC18F27/47/57Q84
                "SCANE": "SCANE",
                "SDOMX": "SDOMUX",
                "SOSCSEL": "SOSCSEL",
@@ -225,6 +264,7 @@ fusedef_kwd = {"ABW": "ABW",
                "VBATEN": "VBATEN",
                "VBTBOR": "VBTBOR",
                "VCAPEN": "VCAPEN",
+               "VDDAR" : "VDDAR",                # PIC16F15213/14/23/24/43/44
                "VREGEN": "VREGEN",
                "WAIT": "WAIT",
                "WDPS": "WDTPS",
@@ -634,7 +674,6 @@ def list_config_memory(fp):
         fp.write("const word   _FUSE_BASE            = 0x%X" % cfgvar["fuseaddr"] + "\n")
         fp.write("const word   _FUSES                = 0x%X" % cfgvar["fusedefault"][0] + "\n")
     else:
-        # RJ 2020-06-20: Added correction to fix the fuse size.
         if cfgvar["core"] != "16":
             fp.write("const word   _FUSE_BASE[_FUSES_CT] = {\n")
         else:
@@ -742,7 +781,6 @@ def list_sfrdata_child(fp, child):
         if (child.nodeName == "edc:SFRDef"):
             list_sfr(fp, child)
         elif (child.nodeName == "edc:JoinedSFRDef"):
-            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
             reg = child.getAttribute("edc:cname").upper()
             width = max(2, (eval(child.getAttribute("edc:nzwidth")) + 7) // 8)  # round to # bytes
             if (width < 3):  # maybe not correct: check
@@ -789,7 +827,6 @@ def list_sfr(fp, sfr):
    """
     picname = cfgvar["picname"]
     list_separator(fp)
-    # RJ: 2020-01-05. Added 'upper' to deal with inconsistencies in MPLABX XML file.
     sfrname = sfr.getAttribute("edc:cname").upper()
     sfraddr = eval(sfr.getAttribute("edc:_addr"))
     if (sfrname.startswith("TMR") & sfrname.endswith("L")):
@@ -1121,8 +1158,9 @@ def list_sfr_subfield(fp, child, sfrname, offset):
     return offset
 
 
+
 def list_muxed_sfr(fp, selectsfr):
-    """ Generate declaration of multiplexed registers
+    """ Generate declaration of multiplexed registers. These are registers that use the same address.
 
    Input:   - output file
             - SelectSFR node
@@ -1141,7 +1179,6 @@ def list_muxed_sfr(fp, selectsfr):
         if (cond == None):  # default sfr
             list_sfr(fp, sfr)
         else:  # alternate sfr on this address
-            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
             sfrname = sfr.getAttribute("edc:cname").upper()
             sfraddr = eval(sfr.getAttribute("edc:_addr"))
             core = cfgvar["core"]
@@ -1158,17 +1195,21 @@ def list_muxed_sfr(fp, selectsfr):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                     if (sfrname == "SSP1MSK"):
                         list_alias(fp, "SSPMSK", sfrname)
-                elif ((sfrname in ("CVRCON", "MEMCON", "PADCFG1", "REFOCON")) |
+                # RJ 2020-10-31: Note for 18F04Q40 CRCDATA is missing from MPLABX V5.45, expect it will be fixed later by Microchip.
+                elif ((sfrname in ("CVRCON", "MEMCON", "PADCFG1", "REFOCON", "CRCOUTL", "CRCOUTH",
+                                   "CRCOUTU", "CRCOUTT","CRCSHFTL","CRCSHFTH", "CRCSHFTU",
+                                   "CRCSHFTU", "CRCSHFTT", "CRCXORL", "CRCXORH", "CRCXORU",
+                                   "CRCXORT", "TU16ATMRL", "TU16ATMRH", "TU16ACRL", "TU16ACRH",
+                                   "TU16BTMRL", "TU16BTMRH", "TU16BCRL", "TU16BCRH")) |
                       sfrname.startswith(("ODCON", "ANCON"))):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
-                    if (sfrname == "SSP1MSK"):
-                        list_alias(fp, "SSPMSK", sfrname)
                     list_muxed_sfr_subfields(fp, sfr)  # controlled by WDTCON_ADSHR
                 else:
                     print("Unexpected multiplexed SFR", sfrname, "for core", core)
 
             else:
                 print("Unexpected core", core, "with multiplexed SFR", sfrname)
+
 
 
 def list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond):
@@ -1221,7 +1262,6 @@ def list_muxed_sfr_subfields(fp, sfr):
            - Only valid for SFRs which use WDTCON_ADSHR bit
              to switch to the alternate content
    """
-    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
     sfrname = sfr.getAttribute("edc:cname").upper()
     modelist = sfr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
@@ -1249,7 +1289,6 @@ def list_muxed_sfr_bitfield(fp, child, sfrname, offset):
         elif (child.nodeName == "edc:SFRFieldDef"):
             width = eval(child.getAttribute("edc:nzwidth"))
             if subfields_wanted(sfrname):
-                # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
                 field = sfrname + "_" + child.getAttribute("edc:cname").upper()
                 if (field not in names):  # new variable
                     names.append(field)
@@ -1335,7 +1374,6 @@ def list_nmmrdata_child(fp, nmmr):
     global names
     if (nmmr.nodeType == Node.ELEMENT_NODE):
         if (nmmr.nodeName == "edc:SFRDef"):
-            #RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
             sfrname = nmmr.getAttribute("edc:cname").upper()
             picname = cfgvar["picname"]
             if (sfrname == "OPTION_REG"):
@@ -1420,7 +1458,6 @@ def list_nmmr_option_subfields(fp, nmmr):
            - NMMR node
    Notes:  - Expected to be used with 12Fs only
    """
-    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
     sfrname = nmmr.getAttribute("edc:cname").upper()
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
@@ -1439,7 +1476,6 @@ def list_nmmr_tris_subfields(fp, nmmr):
            - NMMR node
    Notes:  - Expected to be used with 12Fs only
    """
-    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
     sfrname = nmmr.getAttribute("edc:cname").upper()
     modelist = nmmr.getElementsByTagName("edc:SFRMode")
     for mode in modelist:
@@ -1818,7 +1854,6 @@ def list_multi_module_register_alias(fp, sfr):
            - add (modified) alias for modules 2..9
            - bitfields are expanded as for 'real' registers
    """
-    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
     sfrname = sfr.getAttribute("edc:cname").upper()
     if (len(sfrname) < 5):  # can skip short names
         return
@@ -2022,8 +2057,6 @@ def list_digital_io(fp, picname):
             fp.write("   ADCON  = 0b0000_0000\n")
         if ("ADCON1" in names):
             if ("ADCON1" not in picdata):
-                #RJ 2020-01-05: Leave out. Is default when not defined.
-                # print("   Provisional value for ADCON1 specified")
                 fp.write("   ADCON1 = 0b0000_0000\n")
             else:
                 fp.write("   ADCON1 = " + picdata["ADCON1"] + "\n")
@@ -2272,7 +2305,6 @@ def list_dcrdef(fp, dcrdef, addr):
     if (dcrdef.nodeName == "edc:AdjustPoint"):
         addr = addr + eval(dcrdef.getAttribute("edc:offset"))
     elif (dcrdef.nodeName == "edc:DCRDef"):
-        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
         dcrname = dcrdef.getAttribute("edc:cname").upper()
         fp.write("--\n")
         fp.write("-- %s (0x%X)\n" % (dcrname, addr))
@@ -2453,11 +2485,61 @@ def normalize_fusedef_value(key, val, desc):
         else:
             return descu
 
+    def bcrceresh(val): # CRC Boot Expected Value
+        return val
+
+    def bcrceresl(val): # CRC Boot Expected Value
+        return val
+
+    def bcrceresu(val): # CRC Boot Expected Value
+        return val
+
+    def bcrcerest(val): # CRC Boot Expected Value
+        return val
+
+    def bcrcpoll(val): # CRC Boot Polynomial
+        return val
+
+    def bcrcpolh(val): # CRC Boot Polynomial
+        return val
+
+    def bcrcpolt(val): # CRC Boot Polynomial
+        return val
+
+    def bcrcpolu(val): # CRC Boot Polynomial
+        return val
+
+    def bcrcseedh(val): # CRC Boot Seed
+        return val
+
+    def bcrcseedl(val): # CRC Boot Seed
+        return val
+
+    def bcrcseedt(val): # CRC Boot Seed
+        return val
+
+    def bcrcseedu(val): # CRC Boot Seed
+        return val
+
     def bg(val):  # band gap
         if (val == '0'):
             return "HIGHEST"
         elif (val == "3"):
             return "LOWEST"
+        else:
+            return descu
+
+    def bootpinsel(val): # CRC-on-Boot Pin Select
+        if val in ("RA2", "RA4", "RC4", "RC5"):
+            return val
+        else:
+            return descu
+
+    def bootcoe(val): # Continue on Error for Boot Block Areas Enable
+        if (val == "HALT"):
+            return "DISABLED"
+        elif (val == "CONTINUE"):
+            return "ENABLED"
         else:
             return descu
 
@@ -2520,6 +2602,14 @@ def normalize_fusedef_value(key, val, desc):
         else:
             return "MAPPED"
 
+    def coe(val): # Continue on Error for Non-Boot Block Areas Enable
+        if (val == "HALT"):
+            return "DISABLED"
+        elif (val == "CONTINUE"):
+            return "ENABLED"
+        else:
+            return descu
+
     def cpudiv(val):
         if (val in ("NOCLKDIV", "OSC1", "OSC1_PLL2")):
             return "P1"  # no PLL
@@ -2536,6 +2626,42 @@ def normalize_fusedef_value(key, val, desc):
             return "P6"
         else:
             return descu
+
+    def crceresh(val): # CRC Expected Value
+        return val
+
+    def crceresl(val): # CRC Expected Value
+        return val
+
+    def crcerest(val): # CRC Expected Value
+        return val
+
+    def crceresu(val): # CRC Expected Value
+        return val
+
+    def crcpolh(val): # CRC Polynomial
+        return val
+
+    def crcpoll(val): # CRC Polynomial
+        return val
+
+    def crcpolt(val): # CRC Polynomial
+        return val
+
+    def crcpolu(val): # CRC Polynomial
+        return val
+
+    def crcseedh(val): # CRC Seed
+        return val
+
+    def crcseedl(val): # CRC Seed
+        return val
+
+    def crcseedu(val): # CRC Seed
+        return val
+
+    def crcseedt(val): # CRC Seed
+        return val
 
     def dbw(val):  # data bus width
         if (val.isdigit()):
@@ -2904,6 +3030,14 @@ def normalize_fusedef_value(key, val, desc):
         else:
             return "ENABLED"
 
+    def vddar(val): # VDD Analog Range Calibration Selection.
+        if (val == "LO"):
+            return "LOW"
+        elif (val == "HI"):
+            return "HIGH"
+        else:
+            return descu
+
     def voltage(val):
         kwdvalue = ""  # no keyword yet
         if len(desc) > 0:  # description present
@@ -3055,8 +3189,24 @@ def normalize_fusedef_value(key, val, desc):
         else:
             return "RESET"
 
-    def zcd(val):
-        return val  # ON means disabled!
+    def zcd(val): # Inconsistent use of ON and OFF for enable and disable for some older PICs.
+        if picname in ("16f1703", "16f1704", "16f1705", "16f1707", "16f1708", "16f1709",
+                       "16f1713", "16f1716", "16f1717", "16f1718", "16f1719",
+                       "16lf1703", "16lf1704", "16lf1705", "16lf1707", "16lf1708", "16lf1709",
+                       "16lf1713", "16lf1716", "16lf1717", "16lf1718", "16lf1719"):
+            if (val == "ON"):
+                return "DISABLED"
+            elif (val == "OFF"):
+                return "ENABLED"
+            else:
+                return descu
+        else:
+            if (val == "ON"):
+                return "ENABLED"
+            elif (val == "OFF"):
+                return "DISABLED"
+            else:
+                return descu
 
     def other(val):  # generic
         if (val in ("OFF", "DISABLED")):
@@ -3313,11 +3463,9 @@ def collect_config_info(root, picname):
 
         if "FUSESDEFAULT" in picdata:
             cfgvar["fusedefault"] = [eval("0x" + picdata["FUSESDEFAULT"])]
-            #RJ 2020-06-20: Only one register, so defined.
             cfgvar["fusename"] = ["CONFIG"] # Any value other than 'RESERVED' is OK.
         else:
             cfgvar["fusedefault"] = [255] * cfgvar["fusesize"]
-            #RJ 2020-06-20: Fix for error in config name. Now obtain config name from XML.
             cfgvar["fusename"] = ["RESERVED"] * cfgvar["fusesize"]
             load_fuse_defaults(root)
 
@@ -3327,7 +3475,6 @@ def collect_config_info(root, picname):
         cfgvar["fusesize"] = eval(wormholesectors[0].getAttribute("edc:endaddr")) - \
                              eval(wormholesectors[0].getAttribute("edc:beginaddr"))
         cfgvar["fusedefault"] = [255] * cfgvar["fusesize"]
-        # RJ 2020-06-20: Fix for error in config name. Now obtain config name from XML and address.
         cfgvar["fusename"] = ["RESERVED"] * cfgvar["fusesize"]
         load_fuse_defaults(root)
 
@@ -3346,7 +3493,6 @@ def collect_config_info(root, picname):
                 if child.nodeType == Node.ELEMENT_NODE:
                     if (child.hasAttribute("edc:cname")):
                         sfraddr = eval(child.getAttribute("edc:_addr"))
-                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
                         childname = child.getAttribute("edc:cname").upper()
                         if childname == "CM1CON0":
                             mask = child.getAttribute("edc:por")
@@ -3364,7 +3510,6 @@ def collect_config_info(root, picname):
                                 while bitfield.nextSibling:
                                     bitfield = bitfield.nextSibling
                                     if (bitfield.nodeName == "edc:SFRFieldDef"):
-                                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
                                         bname = bitfield.getAttribute("edc:cname").upper()
                                         if (bname.startswith("IRCF")):
                                             bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
@@ -3380,7 +3525,6 @@ def collect_config_info(root, picname):
                             if (childname in ("LATA", "LATE")):
                                 fields = child.getElementsByTagName("edc:SFRFieldDef")
                                 for field in fields:
-                                    # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
                                     fieldname = field.getAttribute("edc:cname").upper()
                                     if ((fieldname == "LATA3") & (access[4] != "r")):
                                         cfgvar["lata3_out"] = True
@@ -3398,7 +3542,6 @@ def collect_config_info(root, picname):
                                     if (bitfield.nodeName == "edc:AdjustPoint"):
                                         offset = offset + eval(bitfield.getAttribute("edc:offset"))
                                     elif (bitfield.nodeName == "edc:SFRFieldDef"):
-                                        # RJ: 2020-01-05 Added upper to deal with MPLABX inconsistencies.
                                         bname = bitfield.getAttribute("edc:cname").upper()
                                         bwidth = eval(bitfield.getAttribute("edc:nzwidth"))
                                         if (bname == "ADSHR"):
@@ -3495,7 +3638,6 @@ def load_dcrdef_default(dcrdef, addr):
     elif (dcrdef.nodeName == "edc:DCRDef"):
         index = addr - cfgvar["fuseaddr"]  # position in array
         cfgvar["fusedefault"][index] = eval(dcrdef.getAttribute("edc:default"))
-        # RJ 2020-06-22: Fix for error in config name. Now obtain config name from XML.
         cfgvar["fusename"][index] = dcrdef.getAttribute("edc:cname")
         addr = addr + 1
     return addr

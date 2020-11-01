@@ -4,7 +4,7 @@ Title: Collect .PIC files of JALV2 supported PICs
 
 Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
 
 Revision: $Revision$
 
@@ -44,7 +44,7 @@ if (platform_name == "Linux"):
    xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Windows"):
    # When using the Windows MPLABX installation from the original location use this:
-   # xml_pfx = os.path.join("C:\\", "Program Files (x86)", "microchip", "mplabx", "v" + mplabxversion)
+   # xml_pfx = os.path.join("C:\\", "Program Files", "microchip", "mplabx", "v" + mplabxversion)
    # Currently using a local copy from another Windows location as given below:
    xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Darwin"):
