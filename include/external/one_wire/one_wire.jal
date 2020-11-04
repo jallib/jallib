@@ -1,11 +1,11 @@
 -- ------------------------------------------------------
 -- Title: one wire JAL library
 --
--- Author: Vasile Surducan, Copyright (c) 2009..2010, all rights reserved.
+-- Author: Vasile Surducan, Copyright (c) 2009..2020, all rights reserved.
 --
--- Adapted-by: Jean Marchaudon, Joep Suijs
+-- Adapted-by: Jean Marchaudon, Joep Suijs, Oliver "Kiste" Seitz
 --
--- Compiler: >=2.4m
+-- Compiler: >=2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (https://github.com/jallib/jallib)
@@ -15,14 +15,43 @@
 -- -- 
 -- Pin used for the 1-wire bus must be define these in your program 
 -- before including the library. E.g.:
--- alias d1w_bus   is pin_c1
--- alias d1w_bus_out  is pin_c1_direction
+-- alias d1w_bus		is pin_c1
+-- alias d1w_bus_direction	is pin_c1_direction
+--
+-- Optional:
+--
+-- const d1w_bus_interrupt_safety_level= 0|1|2
+--
+-- Interrupt safety level 0 allows interrupts at any time, possibly corrupting 
+-- data transmission occasionally.
+-- Level 1 prevents interrupts to occur while transmitting a bit, highly 
+-- reducing probability of transmission failure while only postponing interrupts
+-- by less than 100us.
+-- Level 2 prevents interrupts to occur while transmitting a byte and powering  
+-- up the bus. This prevents any interrupt interference but can postpone 
+-- interrupts by up to 1000us.
+-- 
 --
 -- Sources:
 --
 -- Notes: 
 --
 -- ------------------------------------------------------
+
+if ! defined(d1w_bus_interrupt_safety_level) then
+  const d1w_bus_interrupt_safety_level=0
+end if
+
+if (d1w_bus_interrupt_safety_level<0) | (d1w_bus_interrupt_safety_level>2) then
+  _warn "d1w_bus_interrupt_safety_level out of range (0..2), defaults to 0"
+end if
+
+-- Aliases to make it suitable for different PICs
+if defined(INTCON0_GIE) then
+   alias d1w_bus_interrupt_enable is INTCON0_GIE
+else
+   alias d1w_bus_interrupt_enable is INTCON_GIE  
+end if 
 
 procedure d1w_init() is
    -- Prepare the bus
@@ -32,9 +61,20 @@ end procedure
 
 procedure _d1w_write_bit( bit in x ) is
    d1w_bus = low
+
+   if d1w_bus_interrupt_safety_level==1 then
+      var bit gie_save = d1w_bus_interrupt_enable
+      d1w_bus_interrupt_enable = FALSE
+   end if
+
    d1w_bus_direction = output
    delay_10us( 1 )
    if x == high then d1w_bus_direction = input end if
+
+   if d1w_bus_interrupt_safety_level==1 then
+      d1w_bus_interrupt_enable = gie_save
+   end if
+
    delay_10us( 8 )
    d1w_bus_direction = input
    delay_10us( 1 )
@@ -43,16 +83,33 @@ end procedure
 procedure _d1w_read_bit( bit out x ) is
    x = high
    d1w_bus = low
+
+   if d1w_bus_interrupt_safety_level==1 then
+      var bit gie_save = d1w_bus_interrupt_enable
+      d1w_bus_interrupt_enable = FALSE
+   end if
+
    d1w_bus_direction = output
    delay_10us( 1 )
    d1w_bus_direction = input
    delay_10us( 1 )
    if d1w_bus == low then x = low end if
+
+   if d1w_bus_interrupt_safety_level==1 then
+      d1w_bus_interrupt_enable = gie_save
+   end if
+
    delay_10us( 7 )
 end procedure
 
 procedure d1w_write_byte( byte in e ) is
    var bit x at e : 0
+
+   if d1w_bus_interrupt_safety_level==2 then
+      var bit gie_save = d1w_bus_interrupt_enable
+      d1w_bus_interrupt_enable = FALSE
+   end if
+
    for 8 loop
       _d1w_write_bit( x )
       e = e >> 1
@@ -61,11 +118,21 @@ procedure d1w_write_byte( byte in e ) is
    -- power bus after byte is written
    d1w_bus = high
    d1w_bus_direction = output
+
+   if d1w_bus_interrupt_safety_level==2 then
+      d1w_bus_interrupt_enable = gie_save
+   end if
    
 end procedure
 
 procedure d1w_read_byte( byte out c ) is
    var bit x at c : 7
+
+   if d1w_bus_interrupt_safety_level==2 then
+      var bit gie_save = d1w_bus_interrupt_enable
+      d1w_bus_interrupt_enable = FALSE
+   end if
+
    for 8 loop
       c = c >> 1
       _d1w_read_bit( x )
@@ -74,6 +141,10 @@ procedure d1w_read_byte( byte out c ) is
    -- power bus after byte is read
    d1w_bus = high
    d1w_bus_direction = output
+
+   if d1w_bus_interrupt_safety_level==2 then
+      d1w_bus_interrupt_enable = gie_save
+   end if
 
 end procedure
 
@@ -90,6 +161,12 @@ function d1w_present() return bit is
    d1w_bus = low
    d1w_bus_direction = output
    delay_10us( 70 )
+
+   if d1w_bus_interrupt_safety_level==2 then
+      var bit gie_save = d1w_bus_interrupt_enable
+      d1w_bus_interrupt_enable = FALSE
+   end if
+
    d1w_bus_direction = input
    delay_10us( 3 )
    if d1w_bus == low then 
@@ -99,6 +176,11 @@ function d1w_present() return bit is
    if d1w_bus == low then 
       x = true 
    end if
+
+   if d1w_bus_interrupt_safety_level==2 then
+      d1w_bus_interrupt_enable = gie_save
+   end if
+
    delay_10us( 70 )
    return x
 end function
