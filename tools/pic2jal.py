@@ -3,8 +3,9 @@
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
+        Rob Jansen,    Copyright (c) 2018..2020, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
+Adapted-by:
 
 Revision: $Revision$
 
@@ -61,7 +62,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.4.2"     # script version
+scriptversion = "1.5.0"     # script version
 compilerversion = "2.5r4"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -443,6 +444,17 @@ fusedef_plldiv = {"RESERVED": "   ",
                   "PLL6X": "X6",
                   "PLL8X": "X8"}
 
+# Translation/normalisation of instruction set keywords
+# Key = MPLABX cname, number = Jallib compiler instruction set number. Only a limited number of instruction
+# set are used by the compiler to perform specific tasks, all other are just reserved when needed.
+instruction_set_def = { "cpu_p16f1_v1"  : 1,
+                        "cpu_pic18f_v6" : 2,
+                        "pic12c5xx"     : 3,
+                        "pic16f77"      : 4,
+                        "cpu_mid_v10"   : 5,
+                        "pic18"         : 6,
+                        "egg"           : 7}
+
 
 def list_copyright(fp):
     """ Add copyright, etc to header in device files and chipdef_jallib
@@ -567,33 +579,39 @@ def list_devicefile_header(fp, picfile):
              "const  byte  PICTYPE[]   = \"" + picname.upper() + "\"\n")
     picdata = dict(list(devspec[picname.upper()].items()))
     fp.write("--\n" +
-             "include chipdef_jallib                  -- common constants\n" +
+             "include chipdef_jallib                -- common constants\n" +
              "--\n" +
-             "pragma  target  cpu        PIC_" + cfgvar["core"] + "        -- (banks=%d)\n" % cfgvar["numbanks"] +
-             "pragma  target  chip       " + picname.upper() + "\n" +
-             "pragma  target  bank       0x%04X\n" % cfgvar["banksize"])
+             "pragma  target  cpu      PIC_" + cfgvar["core"] + "       -- (banks=%d)\n" % cfgvar["numbanks"])
+    # RJ: New: instruction set. Only write the ones currently used by the compiler.
+    if (cfgvar["instructionset"] == 1) | (cfgvar["instructionset"] == 2):
+        fp.write("pragma  target  inst     %d" % cfgvar["instructionset"] + "            -- instruction set : " +
+                 cfgvar["instructionset_name"] + "\n")
+    fp.write("pragma  target  chip     " + picname.upper() + "\n" +
+             "pragma  target  bank     0x%04X\n" % cfgvar["banksize"])
     # Pragma for number of banks is only needed for the compiler when more than 32 banks for PIC with core 14H.
-    if (cfgvar["core"] == '14H') & (cfgvar["numbanks"] > 32):
-        fp.write("pragma  target  numbanks   %d\n" % cfgvar["numbanks"])
+    # RJ: Removed due to adding instruction set
+    # if (cfgvar["core"] == '14H') & (cfgvar["numbanks"] > 32):
+    #    fp.write("pragma  target  numbanks   %d\n" % cfgvar["numbanks"])
+
     if cfgvar["pagesize"] > 0:
-        fp.write("pragma  target  page       0x%04X\n" % cfgvar["pagesize"])
-    fp.write("pragma  stack              %d\n" % cfgvar["hwstack"])
+        fp.write("pragma  target  page     0x%04X\n" % cfgvar["pagesize"])
+    fp.write("pragma  stack            %d\n" % cfgvar["hwstack"])
     if cfgvar["osccal"] > 0:
-        fp.write("pragma  code               %d" % (cfgvar["codesize"] - 1) + " " * 15 + "-- (excl high mem word)\n")
+        fp.write("pragma  code             %d" % (cfgvar["codesize"] - 1) + " " * 15 + "-- (excl high mem word)\n")
     else:
-        fp.write("pragma  code               %d\n" % cfgvar["codesize"])
+        fp.write("pragma  code             %d\n" % cfgvar["codesize"])
     if "eeaddr" in cfgvar:
-        fp.write("pragma  eeprom             0x%X,%d\n" % (cfgvar["eeaddr"], cfgvar["eesize"]))
+        fp.write("pragma  eeprom           0x%X,%d\n" % (cfgvar["eeaddr"], cfgvar["eesize"]))
     if "idaddr" in cfgvar:
-        fp.write("pragma  ID                 0x%X,%d\n" % (cfgvar["idaddr"], cfgvar["idsize"]))
+        fp.write("pragma  ID               0x%X,%d\n" % (cfgvar["idaddr"], cfgvar["idsize"]))
     if "DATA" in picdata:
-        fp.write("pragma  data               " + picdata["DATA"] + "\n")
+        fp.write("pragma  data             " + picdata["DATA"] + "\n")
         print("   pragma data overruled by specification in devicespecific")
     else:
         for i in range(0, len(cfgvar["datarange"]), 5):  # max 5 ranges per line
             y = cfgvar["datarange"][i: i + 5]
-            fp.write("pragma  data               " + ",".join(("0x%X-0x%X" % (r[0], r[1] - 1)) for r in y) + "\n")
-    fp.write("pragma  shared             ")
+            fp.write("pragma  data             " + ",".join(("0x%X-0x%X" % (r[0], r[1] - 1)) for r in y) + "\n")
+    fp.write("pragma  shared           ")
     global sharedmem
     sharedmem = []  # clear
     if "SHARED" in picdata:
@@ -3385,6 +3403,8 @@ def collect_config_info(root, picname):
     cfgvar["lata5_out"] = False  # LATA_RA5  "    "       "
     cfgvar["late3_out"] = False  # LATE_RE3  "    "       "
     cfgvar["numbanks"] = 1  # RAM banks
+    cfgvar["instructionset"] = 0  # Not yet defined
+    cfgvar["instructionset_name"] = "-"  # Not yet defined
     cfgvar["osccal"] = 0  # no OSCCAL
     cfgvar["wdtcon_adshr"] = (0, 0)  # no WDTCON_ADSHR (address,offset)
 
@@ -3428,6 +3448,18 @@ def collect_config_info(root, picname):
     if memtraits[0].hasAttribute("bankcount"):
         cfgvar["numbanks"] = eval(memtraits[0].getAttribute("edc:bankcount"))
     cfgvar["hwstack"] = eval(memtraits[0].getAttribute("edc:hwstackdepth"))
+
+    #RJ: New. Instruction set
+    instrsetnodes = root.getElementsByTagName("edc:InstructionSet")
+    instrsetname = "-"
+    for node in instrsetnodes:
+        instrsetname = node.getAttribute("edc:instructionsetid")
+    # Translate instruction set name to  number.
+    if instrsetname in instruction_set_def:
+        cfgvar["instructionset"] = instruction_set_def[instrsetname]
+        cfgvar["instructionset_name"] =instrsetname
+    else:
+        print("   undetermined instruction set.")
 
     pgmspace = root.getElementsByTagName("edc:ProgramSpace")
     codesectors = pgmspace[0].getElementsByTagName("edc:CodeSector")
