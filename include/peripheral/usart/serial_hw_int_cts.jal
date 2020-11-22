@@ -1,8 +1,8 @@
 -- ----------------------------------------------------------------------
 -- Title: serial_hw_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2020, all rights reserved.
 -- Adapted-by: Joep Suijs, Rob Jansen
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (https://github.com/jallib/jallib)
@@ -129,15 +129,15 @@
 -- Setup defaults when no value is specified before:
 --
 if (defined(SERIAL_XMTBUFSIZE) == FALSE) then
-   const   SERIAL_XMTBUFSIZE  = 32                 -- default size of transmit buffer
+   const   SERIAL_XMTBUFSIZE  = 32  -- default size of transmit buffer
 end if
 
 if (defined(SERIAL_RCVBUFSIZE) == FALSE) then
-   const   SERIAL_RCVBUFSIZE  = 64                 -- default size of receive buffer
+   const   SERIAL_RCVBUFSIZE  = 64  -- default size of receive buffer
 end if
 
 if (defined(SERIAL_DELTA) == FALSE) then
-   const   SERIAL_DELTA   = 17                     -- default spare space receive buffer
+   const   SERIAL_DELTA   = 17     -- default spare space receive buffer
 end if
 
 if (defined(serial_hw_baudrate) == FALSE) then
@@ -153,59 +153,71 @@ if (defined(serial_overflow_discard) == FALSE) then
    const bit serial_overflow_discard = FALSE       -- no transmit overflow
 end if
 
+-- Aliases to get things working for PIC with different type of usarts.
 if (defined(U1CON0) == TRUE) then
-   -- New USART Type. Some aliases to get things working for this new type
-   -- of uart, also for usart_common to set the correct baudrate.
-   alias SPBRGL       is U1BRGL       -- Baud rate generator low byte.
-   alias SPBRGH       is U1BRGH       -- Baud rate generator high byte.
-   alias TXSTA_BRGH   is U1CON0_BRGS  -- Baud rate speed select.
-   alias SERIAL_TXIF  is PIR3_U1TXIF  -- Tranmit interrupt flag.
-   alias SERIAL_TXIE  is PIE3_U1TXIE  -- Transmit interrrupt enable.
-   alias TXREG        is U1TXB        -- Transmit buffer.
-   alias SERIAL_RCIF  is PIR3_U1RXIF  -- Receive interrupt flag.
-   alias SERIAL_RCIE  is PIE3_U1RXIE  -- Receive interrupt flag.
-   alias RCREG        is U1RXB        -- Receive buffer.
+   alias SPBRGL       is U1BRGL          -- Baud rate generator low byte.
+   alias SPBRGH       is U1BRGH          -- Baud rate generator high byte.
+   alias TXSTA_BRGH   is U1CON0_BRGS     -- Baud rate speed select.
+   if (defined(PIR4_U1TXIF) == TRUE) then
+      alias SERIAL_TXIF  is PIR4_U1TXIF  -- Tranmit interrupt flag.
+      alias SERIAL_TXIE  is PIE4_U1TXIE  -- Transmit interrrupt enable.
+      alias SERIAL_RCIF  is PIR4_U1RXIF  -- Receive interrupt flag.
+      alias SERIAL_RCIE  is PIE4_U1RXIE  -- Receive interrupt enable.
+   elsif (defined(PIR3_U1TXIF) == TRUE) then
+      alias SERIAL_TXIF  is PIR3_U1TXIF  -- Tranmit interrupt flag.
+      alias SERIAL_TXIE  is PIE3_U1TXIE  -- Transmit interrrupt enable.
+      alias SERIAL_RCIF  is PIR3_U1RXIF  -- Receive interrupt flag.
+      alias SERIAL_RCIE  is PIE3_U1RXIE  -- Receive interrupt enable.  
+   end if
+   alias TXREG is U1TXB                  -- Transmit buffer.
+   alias RCREG is U1RXB                  -- Receive buffer.
    -- Force usart_common to use 16 bit baudrate generator.
    if (defined(BAUDCON_BRG16) == FALSE) then
       var bit BAUDCON_BRG16 = TRUE
    end if
 elsif (defined(PIE1_RCIE) == TRUE) then
    -- Aliases to make driver more generic, PIE1/PIR1
-   alias SERIAL_RCIE is PIE1_RCIE
-   alias SERIAL_RCIF is PIR1_RCIF
    alias SERIAL_TXIE is PIE1_TXIE
    alias SERIAL_TXIF is PIR1_TXIF
+   alias SERIAL_RCIE is PIE1_RCIE
+   alias SERIAL_RCIF is PIR1_RCIF
+elsif (defined(PIE4_RCIE) == TRUE) then
+   -- Aliases to make driver more generic, PIE4/PIR4
+   alias SERIAL_TXIE is PIE4_TXIE
+   alias SERIAL_TXIF is PIR4_TXIF
+   alias SERIAL_RCIE is PIE4_RCIE
+   alias SERIAL_RCIF is PIR4_RCIF
 elsif (defined(PIE3_RCIE) == TRUE) then
    -- Aliases to make driver more generic, PIE3/PIR3
-   alias SERIAL_RCIE is PIE3_RCIE
-   alias SERIAL_RCIF is PIR3_RCIF
    alias SERIAL_TXIE is PIE3_TXIE
    alias SERIAL_TXIF is PIR3_TXIF
+   alias SERIAL_RCIE is PIE3_RCIE
+   alias SERIAL_RCIF is PIR3_RCIF
 else
    _error "This library does not support this PIC, please report"
 end if
 
-include usart_common                               -- common serial functions/procedures
+include usart_common                        -- common serial functions/procedures
 
 -- Local circular transmit buffer
-var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE]        -- circular output buffer
+var byte  _serial_xmtbuf[SERIAL_XMTBUFSIZE] -- circular output buffer
 
 -- Local circular receive buffer
-var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE]        -- circular input buffer
+var byte  _serial_rcvbuf[SERIAL_RCVBUFSIZE] -- circular input buffer
 
 -- Declaration of local offsets in circular buffers:
 
 -- variable keeping track of next free position in transmit buffer
-var volatile byte  _serial_offsetxmthead           -- offset next byte from appl
+var volatile byte  _serial_offsetxmthead    -- offset next byte from appl
 
 -- variable keeping track of next byte to be transmitted by interrupt handler
-var volatile byte  _serial_offsetxmttail           -- offset next byte to port
+var volatile byte  _serial_offsetxmttail    -- offset next byte to port
 
 -- variable keeping track of next free byte in receive buffer
-var volatile byte  _serial_offsetrcvhead           -- offset next byte from port
+var volatile byte  _serial_offsetrcvhead    -- offset next byte from port
 
 -- variable keeping track of next byte available to application program
-var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
+var volatile byte  _serial_offsetrcvtail    -- offset next byte to appl
 
 
 -- ----------------------------------------------------------------------
@@ -214,9 +226,9 @@ var volatile byte  _serial_offsetrcvtail           -- offset next byte to appl
 -- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure  _serial_transmit_interrupt_handler() is
-   
+
    pragma interrupt
-   
+
    var  byte  x
    if ((SERIAL_TXIF == TRUE) & (SERIAL_TXIE == ENABLED)) then   -- UART xmit interrupt
 
@@ -242,9 +254,9 @@ end procedure
 --            <SERIAL_DELTA> bytes free space.
 -- ----------------------------------------------------------------------
 procedure  _serial_receive_interrupt_handler() is
-   
+
    pragma interrupt
-   
+
    var  byte  x
    var  bit   usart_error
 
@@ -252,7 +264,7 @@ procedure  _serial_receive_interrupt_handler() is
       usart_error = FALSE
 
       if (defined(U1CON0)== TRUE) then
-         -- New USART type
+         -- Newer USART type
          if U1ERRIR_FERIF | U1ERRIR_RXFOIF | U1ERRIR_RXBKIF | U1ERRIR_PERIF then
             -- reset framing and/or overflow errors
             U1ERRIR_FERIF  = FALSE
@@ -284,7 +296,7 @@ procedure  _serial_receive_interrupt_handler() is
          end if
       else                                      -- data without errors
          _serial_rcvbuf[_serial_offsetrcvhead] = RCREG      -- move byte to rcv buffer
-         
+
          if (defined(serial_receive_wedge) == TRUE) then
             -- receive wedge - a user program can define this procedure.
             --
@@ -302,7 +314,7 @@ procedure  _serial_receive_interrupt_handler() is
             -- If you are not sure you need this, you probably don't!
             serial_receive_wedge(_serial_rcvbuf[_serial_offsetrcvhead])
          end if
-         
+
          x = _serial_offsetrcvhead + 1          -- update offset
          if x >= SERIAL_RCVBUFSIZE then         -- end of buffer reached
             x = 0                               -- wrap
@@ -325,7 +337,7 @@ procedure  _serial_receive_interrupt_handler() is
          end if
       end if
    end if
-   
+
 end procedure
 
 
@@ -338,13 +350,13 @@ end procedure
 --            bytes free space after delivering byte to caller.
 -- ----------------------------------------------------------------------
 function serial_hw_read(byte out data) return bit is
-   
+
    var  byte  x                                 -- for buffer management
-   
+
    if (_serial_offsetrcvtail == _serial_offsetrcvhead) then  -- receive buffer empty
       return FALSE                              -- no data available
    end if
-   
+
    data = _serial_rcvbuf[_serial_offsetrcvtail] -- first available byte
    _serial_offsetrcvtail = _serial_offsetrcvtail + 1
    if (_serial_offsetrcvtail >= SERIAL_RCVBUFSIZE) then  -- end of buffer reached
@@ -362,9 +374,9 @@ function serial_hw_read(byte out data) return bit is
          end if
       end if
    end if
-   
+
    return TRUE                                  -- byte available
-   
+
 end function
 
 -- Deprecated function -------------------
@@ -386,9 +398,9 @@ end function
 --                       (returns only after data has been stored in buffer)
 -- ----------------------------------------------------------------------
 function  serial_send_byte(byte in data) return byte is
-   
+
    var  byte  newxmthead                        -- offset in circular buffer
-   
+
    if ((_serial_offsetxmthead == _serial_offsetxmttail) & -- nothing buffered
    (SERIAL_TXIF == TRUE)) then                            -- and UART not busy
       SERIAL_TXIE = DISABLED                    -- disable xmt interrupt
@@ -413,9 +425,9 @@ function  serial_send_byte(byte in data) return byte is
       end if
       SERIAL_TXIE = ENABLED                     -- (re-)enable xmit interrupts
    end if
-   
+
    return data                                  -- transmitted byte!
-   
+
 end function
 
 
@@ -428,18 +440,18 @@ end function
 --            - Never returns zero. If "1" is returned, regard buffer as full.
 -- ----------------------------------------------------------------------
 function  serial_hw_tx_buffer_free() return byte is
-   
+
    var  byte  buffer_free
-   
+
    buffer_free = _serial_offsetxmttail - _serial_offsetxmthead  -- difference
    -- between head and tail pointers
    if (_serial_offsetxmttail <= _serial_offsetxmthead) then     -- adjust when
       -- free space crosses end-of-buffer boundary
       buffer_free = buffer_free + SERIAL_XMTBUFSIZE             -- or buffer is empty
    end if
-   
+
    return buffer_free
-   
+
 end function
 
 
@@ -464,14 +476,14 @@ end procedure
 -- Returns:   (nothing)
 -- ----------------------------------------------------------------------
 procedure serial_hw_init() is
-   
+
    _serial_offsetxmthead  = 0        -- offset next byte from appl
    _serial_offsetxmttail  = 0        -- offset next byte to port
    _serial_offsetrcvhead  = 0        -- offset next byte from port
    _serial_offsetrcvtail  = 0        -- offset next byte to appl
 
    if (defined(U1CON0)== TRUE) then
-      -- New USART type
+      -- Newer USART type
       U1CON0 = 0b0000_0000           -- reset, 8 databits, async
       U1CON1 = 0b0000_0000           -- disable, normal operation
       U1CON2 = 0b0000_0000           -- one stop bit, flow control is off
@@ -479,7 +491,7 @@ procedure serial_hw_init() is
       U1ERRIE = 0b0000_0000          -- disable all USART error interrupts
       U1UIR   = 0b0000_0000
 
-     _calculate_and_set_baudrate()     -- transmit and receive speed
+     _calculate_and_set_baudrate()   -- transmit and receive speed
 
       pin_RX_direction = INPUT       -- make receive pin input
       pin_TX_direction = OUTPUT      -- make transmit pin output
@@ -495,15 +507,15 @@ procedure serial_hw_init() is
 
       TXSTA = 0b0000_0000            -- reset (8 databits, asyn)
       RCSTA = 0b0000_0000            -- reset (8 databits, asyn)
-   
+
      _calculate_and_set_baudrate()     -- transmit and receive speed
 
       pin_RX_direction = INPUT       -- make receive pin input
       pin_TX_direction = INPUT       -- make transmit pin input!
       -- (required by some older PICs like 16f628)
-   
+
       TXSTA_TXEN = ENABLED           -- enable transmit (makes TX pin output)
-   
+
       RCSTA_SPEN = ENABLED           -- activate serial port
       RCSTA_CREN = ENABLED           -- continuous receive enable
 
@@ -517,7 +529,7 @@ procedure serial_hw_init() is
    if defined(serial_ctsinv) then
       serial_ctsinv = FALSE          -- CTS true: accept PC data
    end if
-   
+
 end procedure
 
 
@@ -558,5 +570,3 @@ end function
 function serial_hw_data_ready() return bit is
    return _serial_offsetxmthead == _serial_offsetxmttail
 end function
-
-

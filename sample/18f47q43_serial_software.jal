@@ -1,0 +1,69 @@
+-- -----------------------------------------------------------------------------
+-- Title: Serial software test program for newer type of USART 1.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: USART test program for the Microchip PIC18F47Q43. The program
+--              will echo any character that is received on the serial port.  
+--
+-- Sources: Based on the original serial hardware sample program by Joep Suijs.
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+--
+include 18f47q43                -- target PICmicro
+--
+pragma target clock 20_000_000  -- oscillator frequency
+--
+pragma target OSC      HS       -- crystal or resonator
+pragma target CLKOUTEN DISABLED -- no clock output
+pragma target WDT      DISABLED -- watchdog
+pragma target XINST    DISABLED -- do not use extended instructionset
+pragma target BROWNOUT DISABLED -- no brownout reset
+pragma target FCMEN    DISABLED -- no clock monitoring
+pragma target CSWEN    ENABLED  -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED  -- low voltage programming
+pragma target MCLR     EXTERNAL -- external reset
+pragma target MVECEN   DISABLED -- Important! Do no use multi vectored interrupts
+
+enable_digital_io()             -- make all pins digital I/O
+
+const serial_sw_baudrate = 9600
+alias serial_sw_tx_pin is pin_d2
+alias serial_sw_rx_pin is pin_d3
+pin_d2_direction = output
+pin_d3_direction = input
+const serial_sw_stopbits = 1
+
+include serial_software
+serial_sw_init()
+
+include print
+print_string(serial_sw_data, "Hello serial software world")  
+
+-- inform user PIC is ready !
+serial_sw_write("!")
+
+var byte char	-- will store received char
+
+forever loop
+
+   -- If there is a char, echo it back. This call is blocking.
+   if (serial_sw_read(char)) then
+      serial_sw_write(char) -- that's the echo...
+   else
+      serial_sw_write("?")  -- if serial_sw_read returns false, something went wrong...
+   end if
+
+end loop
+

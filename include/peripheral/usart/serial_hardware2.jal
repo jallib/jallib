@@ -1,7 +1,7 @@
 -- Title: USART2 hardware control
--- Author: Stef Mientki, Copyright (c) 2002..2019, all rights reserved.
+-- Author: Stef Mientki, Copyright (c) 2002..2020, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -22,34 +22,39 @@
 --              alias  pin_RX2_direction  is  pin_RX2_RC1_direction
 --
 
+-- Aliases to get things working for PIC with different type of usarts.
 if (defined(U2CON0) == TRUE) then
-   -- New USART Type. Some aliases to get things working for this new type
-   -- of uart, also for usart_common to set the correct baudrate.
-   alias SPBRGL2       is U2BRGL       -- Baud rate generator low byte.
-   alias SPBRGH2       is U2BRGH       -- Baud rate generator high byte.
-   alias TXSTA2_BRGH   is U2CON0_BRGS  -- Baud rate speed select.
-   alias TXSTA2_TRMT   is U2FIFO_TXBE  -- Transmit buffer empty flag.
-   alias RCSTA2_SPEN   is U2CON1_ON    -- Serial port enable.
-   alias SERIAL2_TXIF2 is U2FIFO_TXBE  -- Transmit buffer empty
-   alias SERIAL2_RCIF2 is U2FIFO_RXBE  -- Receive buffer empty.
-   alias TXREG2        is U2TXB        -- Transmit buffer.
-   alias RCREG2        is U2RXB        -- Receive buffer.
+   alias SPBRGL2       is U2BRGL         -- Baud rate generator low byte.
+   alias SPBRGH2       is U2BRGH         -- Baud rate generator high byte.
+   alias TXSTA2_BRGH   is U2CON0_BRGS    -- Baud rate speed select.
+   if (defined(PIE8_U2TXIE) == TRUE) then
+      alias SERIAL2_TXIE2 is PIE8_U2TXIE -- Transmit interrrupt enable.
+      alias SERIAL2_RCIE2 is PIE8_U2RXIE -- Receive interrupt flag.
+   elsif (defined(PIE6_U2TXIE) == TRUE) then
+     alias SERIAL2_TXIE2  is PIE6_U2TXIE -- Transmit interrrupt enable.
+     alias SERIAL2_RCIE2  is PIE6_U2RXIE -- Receive interrupt flag.
+   end if   
+   alias SERIAL2_TXIF2 is U2FIFO_TXBE    -- Transmit buffer empty  
+   alias SERIAL2_RCIF2 is U2FIFO_RXBE    -- Receive buffer empty.
+   alias RCSTA2_SPEN   is U2CON1_ON      -- Serial port enable.
+   alias TXREG2        is U2TXB          -- Transmit buffer.
+   alias RCREG2        is U2RXB          -- Receive buffer.
    if (defined(BAUDCON2_BRG16) == FALSE) then
       -- Force usart_common to use 16 bit baudrate generator.
       var bit BAUDCON2_BRG16 = TRUE
    end if
 elsif (defined(PIE3_RCIE2) == TRUE) then
    -- Aliases to support other PICs with classic USART, PIE3/PIR3
-   alias SERIAL2_RCIE2 is PIE3_RCIE2
-   alias SERIAL2_RCIF2 is PIR3_RCIF2
-   alias SERIAL2_TXIE2 is PIE3_TXIE2
-   alias SERIAL2_TXIF2 is PIR3_TXIF2
+   alias SERIAL2_TXIE2 is PIE3_TXIE2      -- Transmit interrrupt enable
+   alias SERIAL2_TXIF2 is TXSTA2_TRMT     -- Transmit buffer empty flag. 
+   alias SERIAL2_RCIE2 is PIE3_RCIE2      -- Receive interrupt enable.  
+   alias SERIAL2_RCIF2 is PIR3_RCIF2      -- Receive buffer empty flag.  
 elsif (defined(PIE4_RCIE2) == TRUE) then
    -- Aliases to support other PICs with classic USART, PIE4/PIR4
-   alias SERIAL2_RCIE2 is PIE4_RCIE2
-   alias SERIAL2_RCIF2 is PIR4_RCIF2
-   alias SERIAL2_TXIE2 is PIE4_TXIE2
-   alias SERIAL2_TXIF2 is PIR4_TXIF2
+   alias SERIAL2_TXIE2 is PIE4_TXIE2     -- Transmit interrrupt enable.   
+   alias SERIAL2_TXIF2 is PIR4_TXIF2     -- Transmit buffer empty flag. 
+   alias SERIAL2_RCIE2 is PIE4_RCIE2     -- Receive interrupt enable.  
+   alias SERIAL2_RCIF2 is PIR4_RCIF2     -- Receive buffer empty flag.  
 else
    _error "This library does not support this PIC, please report)"
 end if
@@ -71,8 +76,8 @@ procedure serial_hw2_init() is
 
       _calculate_and_set_baudrate2()         -- transmit and receive speed
 
-      PIE6_U2TXIE = DISABLED                -- Disable all USART interrupts,
-      PIE6_U2RXIE = DISABLED                -- including error interrupts.
+      SERIAL2_TXIE2 = DISABLED                -- Disable all USART interrupts,
+      SERIAL2_RCIE2 = DISABLED                -- including error interrupts.
       U2ERRIE = 0b0000_0000
       U2UIR   = 0b0000_0000
 
@@ -115,8 +120,8 @@ end procedure
 --            USART can be enabled again by calling serial_hw2_enable()
 -- -----------------------------------------------------------------------
 procedure serial_hw2_disable() is
-   while !TXSTA2_TRMT loop end loop     -- wait while transmission pending
-   RCSTA2_SPEN = FALSE                  -- disable serial port
+   while !SERIAL2_TXIF2 loop end loop     -- wait while transmission pending
+   RCSTA2_SPEN = FALSE                    -- disable serial port
 end procedure
 
 

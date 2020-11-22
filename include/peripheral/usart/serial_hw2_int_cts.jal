@@ -1,8 +1,8 @@
 -- --------------------------------------------------------------------------
 -- Title: serial_hw2_int_cts.jal. Interrupt driven buffered serial interface with flow control.
--- Author: Rob Hamerling, Copyright (c) 2008..2019, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2008..2020, all rights reserved.
 -- Adapted-by: Karl "Kiste" Seitz, Rob Jansen
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib  (https://github.com/jallib/jallib)
@@ -123,18 +123,24 @@ if (defined(serial2_overflow_discard) == FALSE) then
    const bit serial2_overflow_discard = FALSE      -- no transmit overflow
 end if
 
+-- Aliases to get things working for PIC with different type of usarts.
 if (defined(U2CON0) == TRUE) then
-   -- New USART Type. Some aliases to get things working for this new type
-   -- of uart, also for usart_common to set the correct baudrate.
-   alias SPBRGL2        is U2BRGL       -- Baud rate generator low byte.
-   alias SPBRGH2        is U2BRGH       -- Baud rate generator high byte.
-   alias TXSTA2_BRGH    is U2CON0_BRGS  -- Baud rate speed select.
-   alias SERIAL2_TXIF2  is PIR6_U2TXIF  -- Tranmit interrupt flag.
-   alias SERIAL2_TXIE2  is PIE6_U2TXIE  -- Transmit interrrupt enable.
-   alias TXREG2         is U2TXB        -- Transmit buffer.
-   alias SERIAL2_RCIF2  is PIR6_U2RXIF  -- Receive interrupt flag.
-   alias SERIAL2_RCIE2  is PIE6_U2RXIE  -- Receive interrupt flag.
-   alias RCREG2         is U2RXB        -- Receive buffer.
+   alias SPBRGL2        is U2BRGL        -- Baud rate generator low byte.
+   alias SPBRGH2        is U2BRGH        -- Baud rate generator high byte.
+   alias TXSTA2_BRGH    is U2CON0_BRGS   -- Baud rate speed select.
+   if (defined(PIR8_U2TXIF) == TRUE) then
+      alias SERIAL2_TXIF2 is PIR8_U2TXIF -- Tranmit interrupt flag.
+      alias SERIAL2_TXIE2 is PIE8_U2TXIE -- Transmit interrrupt enable.
+      alias SERIAL2_RCIF2 is PIR8_U2RXIF -- Receive interrupt flag.
+      alias SERIAL2_RCIE2 is PIE8_U2RXIE -- Receive interrupt enable. 
+   elsif (defined(PIR6_U2TXIF) == TRUE) then
+     alias SERIAL2_TXIF2  is PIR6_U2TXIF -- Tranmit interrupt flag.
+     alias SERIAL2_TXIE2  is PIE6_U2TXIE -- Transmit interrrupt enable.
+     alias SERIAL2_RCIF2  is PIR6_U2RXIF -- Receive interrupt flag.
+     alias SERIAL2_RCIE2  is PIE6_U2RXIE -- Receive interrupt enable. 
+   end if
+   alias TXREG2 is U2TXB                 -- Transmit buffer.
+   alias RCREG2 is U2RXB                 -- Receive buffer.
    -- Force usart_common to use 16 bit baudrate generator.
    if (defined(BAUDCON2_BRG16) == FALSE) then
       var bit BAUDCON2_BRG16 = TRUE
@@ -188,7 +194,7 @@ procedure  _serial2_transmit_interrupt_handler() is
 
    var  byte  x
 
-   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == ENABLED)) then  -- UART2 xmit interrupt
+   if ((SERIAL2_TXIF2 == TRUE) & (SERIAL2_TXIE2 == ENABLED)) then -- UART2 xmit interrupt
       if (_serial2_offsetxmttail != _serial2_offsetxmthead) then  -- data in xmit buffer
          x = _serial2_xmtbuf[_serial2_offsetxmttail]              -- next byte to xmit
          _serial2_offsetxmttail = _serial2_offsetxmttail + 1      -- next position
@@ -443,7 +449,7 @@ procedure serial_hw2_init() is
       U2ERRIE = 0b0000_0000             -- disable all USART error interrupts
       U2UIR   = 0b0000_0000
 
-     _calculate_and_set_baudrate2()       -- transmit and receive speed
+     _calculate_and_set_baudrate2()     -- transmit and receive speed
 
       pin_RX2_direction = INPUT         -- make receive pin input
       pin_TX2_direction = OUTPUT        -- make transmit pin output
@@ -451,7 +457,7 @@ procedure serial_hw2_init() is
       U2CON0_TXEN = ENABLED             -- Enable transmitter
       U2CON0_RXEN = ENABLED             -- Enable receive
 
-      INTCON0_GIE  = ENABLED             -- general interrupts
+      INTCON0_GIE  = ENABLED            -- general interrupts
 
       U2CON1_ON   = TRUE                -- Enable serial port
    else
@@ -459,7 +465,7 @@ procedure serial_hw2_init() is
       TXSTA2 = 0b0000_0000              -- reset (8 databits, asyn)
       RCSTA2 = 0b0000_0000              -- reset (8 databits, asyn)
 
-     _calculate_and_set_baudrate2()       -- transmit and receive speed
+     _calculate_and_set_baudrate2()     -- transmit and receive speed
 
       pin_RX2_direction = INPUT         -- make receive pin input
       pin_TX2_direction = INPUT         -- make transmit pin input!

@@ -1,0 +1,83 @@
+-- -----------------------------------------------------------------------------
+-- Title: Serial hardware test program for newer type of USART 2.
+--
+-- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: USART test program for the Microchip PIC18F47Q43. The program
+--              will write a sequence of '.' to the serial port and will echo 
+--              any character that is received on the serial port.  
+--
+-- Sources: Based on the original serial hardware sample program by Joep Suijs.
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+--
+include 18f47q43                -- target PICmicro
+--
+pragma target clock 20_000_000  -- oscillator frequency
+--
+pragma target OSC      HS       -- crystal or resonator
+pragma target CLKOUTEN DISABLED -- no clock output
+pragma target WDT      DISABLED -- watchdog
+pragma target XINST    DISABLED -- do not use extended instructionset
+pragma target BROWNOUT DISABLED -- no brownout reset
+pragma target FCMEN    DISABLED -- no clock monitoring
+pragma target CSWEN    ENABLED  -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED  -- low voltage programming
+pragma target MCLR     EXTERNAL -- external reset
+pragma target MVECEN   DISABLED -- Important! Do no use multi vectored interrupts
+
+enable_digital_io()             -- make all pins digital I/O
+
+
+-- PPS is needed to set the USART pins correctly. 
+include pps
+pps_control_lock(FALSE)
+-- Change following lines to match your pcb layout. 
+RB0PPS  = PPS_TX2   -- TX2 assigned to B0 
+U2RXPPS = PPS_RB1   -- B1 assigned to RX2
+pps_control_lock(TRUE)
+
+const serial_hw2_baudrate = 115200
+alias pin_tx2_direction	is pin_B0_direction
+alias pin_rx2_direction	is pin_B1_direction
+include serial_hardware2
+serial_hw2_init()
+
+include print
+print_string(serial_hw2_data, "Hello serial hardware 2 world")  
+
+-- inform user PIC is ready !
+serial_hw2_write("!")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+
+forever loop
+
+   -- if there is a char, echo it back.
+   if (serial_hw2_read(char)) then
+      serial_hw2_write(char)  -- that's the echo...
+   end if
+
+   -- code block below prints a dot, every now and then, to signal
+   -- the pic is alive, waiting to receiver character from the host
+   counter = counter - 1     -- count down
+   if (counter == 0) then    -- until zero
+      counter = 50000        -- then start over counting from 50000
+      serial_hw2_data = "."  -- and output a dot to the serial port
+   end if
+   
+end loop
+

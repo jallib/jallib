@@ -1,7 +1,7 @@
 -- Title: USART hardware control
--- Author: Stef Mientki, Copyright (c) 2002..2019, all rights reserved.
+-- Author: Stef Mientki, Copyright (c) 2002..2020, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -34,34 +34,39 @@
 --              alias  pin_RX_direction  is  pin_RX_RB1_direction
 --
 
+-- Aliases to get things working for PIC with different type of usarts.
 if (defined(U1CON0) == TRUE) then
-   -- New USART Type. Some aliases to get things working for this new type
-   -- of uart, also for usart_common to set the correct baudrate.
-   alias SPBRGL      is U1BRGL       -- Baud rate generator low byte.
-   alias SPBRGH      is U1BRGH       -- Baud rate generator high byte.
-   alias TXSTA_BRGH  is U1CON0_BRGS  -- Baud rate speed select.
-   alias TXSTA_TRMT  is U1FIFO_TXBE  -- Transmit buffer empty flag.
-   alias RCSTA_SPEN  is U1CON1_ON    -- Serial port enable.
-   alias SERIAL_TXIF is U1FIFO_TXBE  -- Transmit buffer empty.
-   alias SERIAL_RCIF is U1FIFO_RXBE  -- Receive buffer empty.
-   alias TXREG       is U1TXB        -- Transmit buffer.
-   alias RCREG       is U1RXB        -- Receive buffer.
+   alias SPBRGL      is U1BRGL           -- Baud rate generator low byte.
+   alias SPBRGH      is U1BRGH           -- Baud rate generator high byte.
+   alias TXSTA_BRGH  is U1CON0_BRGS      -- Baud rate speed select.
+    if (defined(PIE4_U1TXIE) == TRUE) then
+      alias SERIAL_TXIE  is PIE4_U1TXIE  -- Transmit interrrupt enable.
+      alias SERIAL_RCIE  is PIE4_U1RXIE  -- Receive interrupt enable.  
+   elsif (defined(PIE3_U1TXIE) == TRUE) then
+      alias SERIAL_TXIE  is PIE3_U1TXIE  -- Transmit interrrupt enable.
+      alias SERIAL_RCIE  is PIE3_U1RXIE  -- Receive interrupt enable.  
+   end if
+   alias SERIAL_TXIF is U1FIFO_TXBE      -- Transmit buffer empty flag. 
+   alias SERIAL_RCIF is U1FIFO_RXBE      -- Receive buffer empty flag. 
+   alias RCSTA_SPEN  is U1CON1_ON        -- Serial port enable.
+   alias TXREG       is U1TXB            -- Transmit buffer.
+   alias RCREG       is U1RXB            -- Receive buffer.
    if (defined(BAUDCON_BRG16) == FALSE) then
       -- Force usart_common to use 16 bit baudrate generator.
       var bit BAUDCON_BRG16 = TRUE
    end if
 elsif (defined(PIE1_RCIE) == TRUE) then
    -- Aliases to make driver more generic, PIE1/PIR1
-   alias SERIAL_RCIE is PIE1_RCIE
-   alias SERIAL_RCIF is PIR1_RCIF
    alias SERIAL_TXIE is PIE1_TXIE
    alias SERIAL_TXIF is PIR1_TXIF
+   alias SERIAL_RCIE is PIE1_RCIE
+   alias SERIAL_RCIF is PIR1_RCIF
 elsif (defined(PIE3_RCIE) == TRUE) then
    -- Aliases to make driver more generic, PIE3/PIR3
-   alias SERIAL_RCIE is PIE3_RCIE
-   alias SERIAL_RCIF is PIR3_RCIF
-   alias SERIAL_TXIE is PIE3_TXIE
-   alias SERIAL_TXIF is PIR3_TXIF
+   alias SERIAL_TXIE is PIE3_TXIE       -- Transmit interrrupt enable.
+   alias SERIAL_TXIF is TXSTA_TRMT       -- Transmit buffer empty flag.  
+   alias SERIAL_RCIE is PIE3_RCIE       -- Receive interrupt enable.
+   alias SERIAL_RCIF is PIR3_RCIF       -- Receive buffer empty flag. 
 else
    _error "This library does not support this PIC, please report"
 end if
@@ -84,8 +89,8 @@ procedure serial_hw_init() is
 
       _calculate_and_set_baudrate()         -- transmit and receive speed
 
-      PIE3_U1TXIE = DISABLED                -- Disable all USART interrupts,
-      PIE3_U1RXIE = DISABLED                -- including error interrupts.
+      SERIAL_TXIE = DISABLED                -- Disable all USART interrupts,
+      SERIAL_RCIE = DISABLED                -- including error interrupts.
       U1ERRIE = 0b0000_0000
       U1UIR   = 0b0000_0000
 
@@ -102,8 +107,8 @@ procedure serial_hw_init() is
 
       _calculate_and_set_baudrate()         -- transmit and receive speed
 
-      SERIAL_RCIE = FALSE                     -- disable receive interrupts
-      SERIAL_TXIE = FALSE                     -- disable transmit interrupts
+      SERIAL_RCIE = FALSE                   -- disable receive interrupts
+      SERIAL_TXIE = FALSE                   -- disable transmit interrupts
    
       pin_RX_direction = INPUT              -- make receive pin input
       pin_TX_direction = INPUT              -- make transmit pin input!
@@ -127,7 +132,7 @@ end procedure
 --            USART can be enabled again by calling serial_hw_enable()
 -- -----------------------------------------------------------------------
 procedure serial_hw_disable() is
-   while !TXSTA_TRMT loop  end loop     -- wait while transmission pending
+   while !SERIAL_TXIF loop  end loop    -- wait while transmission pending
    RCSTA_SPEN = FALSE                   -- disable serial port
 end procedure
 
