@@ -1,19 +1,17 @@
-JalV2 readme
+JalV2 README
 ============
-
 Included in this archive:
 
-README.txt    : this file
+README.txt       : this file
 
-jalv2.txt       & jalv2.pdf        : JALv2 language documentation
-jalv2opt.txt    & jalv2opt.pdf     : JALv2 compiler options
-jalv2pragma.txt & jalv2pragmal.pdf : JALv2 pragmas
+jalv2.pdf        : JALv2 language documentation
+jalv2opt.pdf     : JALv2 compiler options
+jalv2pragmal.pdf : JALv2 pragmas
 
-jalv2.exe     : Windows 32-bit binary 
-jalv2_64.exe  : Windows 64-bit binary 
-jalv2-i686    : Linux 32-bit binary
-jalv2-x86-64  : Linux 64-bit binary
-
+jalv2.exe        : Windows 32-bit binary 
+jalv2_64.exe     : Windows 64-bit binary 
+jalv2-i686       : Linux 32-bit binary
+jalv2-x86-64     : Linux 64-bit binary
 
 Compiler issues can be registered and found at: https://github.com/jallib/jalv2compiler/issues
 
@@ -21,13 +19,17 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
-2.5r4 -- 3 Decemner 2020 (not yet released)
-		 * Fixed #10: JAL Compiler does not process hexadecimal ASCII constant escaping correctly
-		 * Fixed #14: Compiler does not handle access to data area correct for some PICs
-		 * Fixed #15: Segmenation fault (with help of Kyle, thanks!)
+2.5r4 -- 26 December 2020 
+		 * Fixed Issue#10: JAL Compiler does not process hexadecimal ASCII constant escaping correctly
+		 * Fixed Issue#14: Compiler does not handle access to data area correct for some PICs
+		                  (compiler pragma 'numbanks' replaced by pragma 'inst') 
+		 * Fixed Issue#15: Segmenation fault (fixed with help of Kyle, thanks!)
+		 * Fixed all -Werror compiler build warnings for Windows 32-bit compiler plus 32-bit & 64-bit Linux compilers. 
+		   Still some -Werror compiler build warnings left for Windows 64-bit compiler.
+		 * Fixed Issue#16: Curious warnings (fixed again with help of Kyle, thanks!)
 		 
 2.5r3 -- 15 september 2019 
-         * fixed #8: Compiler generated unexplainable skip-error problem
+         * fixed Issue#8: Compiler generated unexplainable skip-error problem
 		 * Created the JAL Windows compilers using a different compiler. This because the 32-bit version of the
 		   JAL Windows Compiler created via Visual Studio showed a random - but still correct - behavior in 
 		   allocation variables to data space. The newly created JAL Windows compilers (both 32-bit and 64-bit) 
@@ -36,19 +38,19 @@ History
 		   compilers now create the exact same output.
 
 2.5r2 -- 12 January 2019
-         * fixed #6: Compiler handles index in constant array of records incorrectly 
+         * fixed Issue#6: Compiler handles index in constant array of records incorrectly 
 
 2.5r1 -- 18 December 2018 
-         * fixed #1:Compiler generates incorrect error when using 'whereis()' 
-		            if variable optimization is set to 'yes'
-					Note: This may introduce a slight increase in usage of data space
-         * fixed #2: Compiler passes incorrect parameter when adding a constant 
-		             to a variable in combination with inline (thanks Kyle!)
+         * fixed Issue#1: Compiler generates incorrect error when using 'whereis()' 
+		                  if variable optimization is set to 'yes'
+					      Note: This may introduce a slight increase in usage of data space
+         * fixed Issue#2: Compiler passes incorrect parameter when adding a constant 
+		                  to a variable in combination with inline (thanks Kyle!)
 		 * fixed an uninitialized variable problem in the compiler code (effect unknown)
 		 
 2.5   -- 18 September 2018
-         * fixed #4: JAL Compiler jalv2.4q6 does not support new PICs with 64 banks
-		   (new compiler pragma 'numbanks' added) 
+         * fixed Issue#4: JAL Compiler jalv2.4q6 does not support new PICs with 64 banks
+		                  (new compiler pragma 'numbanks' added) 
 
 -------- 12 September 2018: Kyle York retiring after a job well done,  
                             compiler maintenance taken over by Rob Jansen
