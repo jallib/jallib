@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
+  Adapted-by: Rob Jansen, Copyright (c) 2018..2021, all rights reserved.
 
   Revision: $Revision$
 
@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.3
+  Version: 0.4
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -61,7 +61,7 @@ platform_name = platform.system()
 # --- general constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5r2"
+CompilerVersion = "2.5r4"
 
 
 # specification of system dependent compiler executable
@@ -252,6 +252,8 @@ def scan_devfile(devfile):
                var["osccon_scs"] = True
             elif (ln.find(" OSCCON_SPLLEN ") >= 0):
                var["osccon_spllen"] = True
+            elif (ln.find(" OSCFRQ_FRQ3 ") >= 0): # For PICs running at 64 MHzm we need to check for bit 4 since ...
+               var["oscfrq_frq3"] = True          # ... OSCFRQ_HFFRQ also exists but should not be used.
             elif (ln.find(" OSCFRQ_HFFRQ ") >= 0):
                var["oscfrq_hffrq"] = True
             elif (ln.find(" OSCFRQ_FRQ ") >= 0):
@@ -451,6 +453,8 @@ def build_sample(pic, pin, osctype, oscword):
          fp.write("pragma target OSC      %-25s " % (oscword) + "-- internal oscillator\n")
       fusedef_insert("fosc2", "OFF", "Internal Oscillator")
       fusedef_insert("ioscfs", "F4MHZ", "select 4 MHz")
+      if ("oscfrq_frq3" in var):
+         fusedef_insert("rstosc", "HFINTOSC_64MHZ", "select 64 MHz")
       if ("oscfrq_hffrq" in var):
          fusedef_insert("rstosc", "HFINT32", "select 32 MHz")
       if ("oscfrq_frq" in var):
@@ -533,9 +537,13 @@ def build_sample(pic, pin, osctype, oscword):
    elif (osctype == "INTOSC"):                       # internal oscillator
       if ("osccon_scs" in var):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
-      if ("oscfrq_hffrq" in var):
+      # We must only check for one oscfrq since it is not exclusive. Note that for PICs with a clock of 64 MHz we need
+      #  to set 4 bits. Also the use of OSCFRQ_HFFRQ is inconsistent in the device file see for example 18f27q43.
+      if ("oscfrq_frq3" in var):
+         fp.write("OSCFRQ_HFFRQ = 0b0010               -- Fosc 64 -> 4 MHz\n")
+      elif ("oscfrq_hffrq" in var):
          fp.write("OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz\n")
-      if ("oscfrq_frq" in var):
+      elif ("oscfrq_frq" in var):
          fp.write("OSCFRQ_FRQ = 0b010                  -- Fosc 32 -> 4 MHz\n")
       if ("ircfwidth" in var):
          if (var["ircfwidth"] > 0) & ("OSCCON_IRCF" in picdata):
@@ -616,6 +624,9 @@ def main(runtype, devs):
       if ("osc" not in fusedef):                      # no fusedef osc at all
          osctype = "INTOSC"                           # must be internal oscillator
          oscword = ""                                 # without fuse_def OSC
+      elif ("OFF" in fusedef["osc"]):                 # 16f19155, etc. Check moved upward to have internal oscillator ...
+         osctype = "INTOSC"                           # .. as preference before HS.
+         oscword = "OFF"
       elif ("HSH" in fusedef["osc"]):
          osctype = "HS"
          oscword = "HSH"
@@ -628,9 +639,6 @@ def main(runtype, devs):
       elif ("INTOSC_NOCLKOUT" in fusedef["osc"]):
          osctype = "INTOSC"
          oscword = "INTOSC_NOCLKOUT"
-      elif ("OFF" in fusedef["osc"]):                 # 16f19155, etc
-         osctype = "INTOSC"
-         oscword = "OFF"
       else:
          print("   Could not detect a suitable OSC keyword in", fusedef["osc"])
          continue                                     # skip this PIC
