@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.4
+  Version: 0.5
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -236,6 +236,10 @@ def scan_devfile(devfile):
                fusedef["wdt"] = collect_fusedef(fp)
             elif (fuse.startswith("XINST")):
                fusedef["xinst"] = collect_fusedef(fp)
+            elif (fuse.startswith("JTAGEN")):               # Find JTAGEN since it must be disabled.
+               fusedef["jtagen"] = collect_fusedef(fp)
+            elif (fuse.startswith("MVECEN")):               # Find Multi Vectored Interrupt since it must be disabled.
+               fusedef["mvecen"] = collect_fusedef(fp)
          else:
             if (ln.find(" WDTCON_SWDTEN ") >= 0):
                var["wdtcon_swdten"] = True                           # has field
@@ -519,6 +523,8 @@ def build_sample(pic, pin, osctype, oscword):
    fusedef_insert("vregen", "ENABLED", "voltage regulator used")
    fusedef_insert("lvp", "ENABLED", "low voltage programming")
    fusedef_insert("mclr", "EXTERNAL", "external reset")
+   fusedef_insert("mvecen", "DISABLED", "Do not use multi vectored interrupts")
+   fusedef_insert("jtagen", "DISABLED", "no JTAG to enable all I/O pins")
    fp.write("--\n")
    fp.write("-- The configuration bit settings above are only a selection, sufficient\n")
    fp.write("-- for this program. Other programs may need more or different settings.\n")
