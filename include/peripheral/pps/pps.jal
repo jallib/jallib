@@ -1,12 +1,11 @@
--- ------------------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Title: Peripheral Pin Select (PPS) library
 --
--- Author: Sebastion Lelong, Copyright (c) 2011, All rights reserved.
---         Rob Hamerling, Copyright (c) 2015..2019, All rights reserved.
+-- Author: Sebastion Lelong, Copyright (c) 2011..2021, All rights reserved.
+--         
+-- Adapted-by: Rob Hamerling, Rob Jansen, Oliver "Kiste" Seitz
 --
--- Adapted-by: Rob Jansen
---
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 --
 -- Revision: $Revision$
 --
@@ -79,21 +78,22 @@
 --
 
 -- Some newer PICs have INTCON registers named differently.
-if (defined(INTCON_GIE) == FALSE) then
-   if (defined(INTCON0_GIE) == TRUE) then
-      alias INTCON_GIE is INTCON0_GIE
-   end if
+if defined(INTCON_GIE) then
+   alias PPS_INTCON_GIE is INTCON_GIE
+elsif defined(INTCON0_GIE) then
+   alias PPS_INTCON_GIE is INTCON0_GIE
 end if
 
--- ------------------------------------------------------------------------
+
+-- -----------------------------------------------------------------------------
 var bit pps_gie_state = 0                 -- interrupt state at unlock
--- ---------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Title:  Unlock/Lock the PPS module.
 -- Input:  Desired PPS lock state (bit: TRUE == locked, FALSE == unlocked)
 -- Returns: (nothing)
 -- Notes:  - Applies to all PPS-groups, differences are taken care of.
 --         - Interrupts are disabled during the unlocked state.
--- ---------------------------------------------------------------
+-- -----------------------------------------------------------------------------
 procedure pps_control_lock(bit in state) is
 
    if ((PPS_GROUP == PPS_1) | (PPS_GROUP == PPS_2) | (PPS_GROUP == PPS_3)) then
@@ -101,10 +101,10 @@ procedure pps_control_lock(bit in state) is
          EECON2 = 0x55
          EECON2 = 0xAA
          PPSCON_IOLOCK = TRUE
-         INTCON_GIE = pps_gie_state       -- restore interrupt state
+         PPS_INTCON_GIE = pps_gie_state       -- restore interrupt state
       else                                -- (state == FALSE) unlock PPS module
-         pps_gie_state = INTCON_GIE       -- save current interrupt state
-         INTCON_GIE = FALSE               -- disable interrupts
+         pps_gie_state = PPS_INTCON_GIE       -- save current interrupt state
+         PPS_INTCON_GIE = FALSE               -- disable interrupts
          EECON2 = 0x55
          EECON2 = 0xAA
          PPSCON_IOLOCK = FALSE
@@ -115,10 +115,10 @@ procedure pps_control_lock(bit in state) is
          PPSLOCK = 0x55
          PPSLOCK = 0xAA
          PPSLOCK_PPSLOCKED = TRUE
-         INTCON_GIE = pps_gie_state       -- restore interrupt state
+         PPS_INTCON_GIE = pps_gie_state       -- restore interrupt state
       else                                -- (state == FALSE) unlock PPS module
-         pps_gie_state = INTCON_GIE       -- save current interrupt state
-         INTCON_GIE = FALSE               -- disable interrupts
+         pps_gie_state = PPS_INTCON_GIE       -- save current interrupt state
+         PPS_INTCON_GIE = FALSE               -- disable interrupts
          PPSLOCK = 0x55
          PPSLOCK = 0xAA
          PPSLOCK_PPSLOCKED = FALSE
@@ -133,9 +133,9 @@ end procedure
 
 
 
--- =================================================================
+-- =============================================================================
 -- Symbolic definitions for peripheral functions and pin selections
--- =================================================================
+-- =============================================================================
 
 -- ----------------------------
 -- OUTPUT FUNCTION CONSTANTS
