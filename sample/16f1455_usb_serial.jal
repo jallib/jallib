@@ -1,8 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Demo of usb_serial library for the PIC16F1455.
--- Author: Rob Jansen, Copyright (c) 2017..2018, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2017..2021, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.4q6
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -17,9 +17,8 @@
 --
 -- Sources: http://www.usb.org for USB specifications.
 -- 
--- Notes: compiled with following flags:
--- add -no-variable-reuse when debugging flags are set due to a compiler issue
--- -
+-- Notes: 
+-- 
 -- Some instructions for use:
 -- -
 -- 1. Make sure you logon as administrator, or with administrator privileges,
@@ -47,11 +46,8 @@
 -- present in these PICs.
 --
 
-;@jallib section chipdef
--- chip setup
 include 16f1455                  -- Target processor.
 
-;@jallib section board_description
 -- For hardware a 14 pin DIL PIC16F1455 was used. The circuit can be powered by
 -- the USB connection and connected as follows:
 -- *) USB data- wire to pin 12 (D-)
@@ -66,18 +62,15 @@ include 16f1455                  -- Target processor.
 -- for the 12 MHz crystal which saves you a crystal and 2 pins on the chip.
 -- The configuration runs at an internal clock of 48 MHz.
 -- For debugging purposes the USART is used to send information (pin 5)
-
--- Some info on timing. With an 48 MHz clock the main loop takes about
--- 9.5 us of which 3 us is used by 'usb_serial_flush' which is about 30%
--- slower than a PIC that has the POSTINC1 feature but still sufficiently fast.
+--
+-- Some info on timing. With an 48 MHz clock the 'usb_serial_flush' takes about
+-- between 3 us and 10 us which is about 15% slower than a PIC that has the 
+-- POSTINC feature. This POSTINC feature is used by the memory_pointer library 
+-- but this library has been adapted to support PICs without the POSTINC feature.
+--
 
 pragma target clock       48_000_000
 
--- Compiler options.
-pragma warn all no              -- We do not want to know all compiler warnings
-pragma opt variable_reduce yes
-
--- fuses
 -- Settings for external 12 MHz crystal and system clock 48 MHz.
 pragma target OSC           HS       -- External crystal
 pragma target CLKOUTEN      ENABLED  -- CLKOUT function is enabled
@@ -100,7 +93,7 @@ pragma target IESO          DISABLED -- Internal/External Switchover Mode is dis
 pragma target PWRTE         DISABLED -- power up timer
 pragma target BROWNOUT      DISABLED -- no brownout detection
 pragma target WDT           DISABLED -- Watchdog disabled
-pragma target MCLR          internal -- Internal reset
+pragma target MCLR          INTERNAL -- Internal reset
 pragma target LVP           ENABLED  -- allow low-voltage programming
 pragma target VOLTAGE       MAXIMUM  -- brown out voltage
 pragma target CP            DISABLED -- Program memory code protection is disabled
@@ -114,8 +107,8 @@ WPUA          = 0b0011_1000          -- Weak-pull up for relevant port a bits.
 TRISC         = 0b0000_0000          -- Port c output.
 
 alias configured_led is pin_c3       -- Pin 7.
-pin_c3_direction =  output
-
+pin_c3_direction = output
+                                     
 -- For debugging purposes only: Set debug mode and set variables for debug. See
 -- usb_serial.jal to see which options exist. Note that enabling all debugging
 -- will prevent the driver from correct operation.
@@ -145,26 +138,26 @@ var byte ch
 
 -- main loop
 forever loop
-	-- poll the usb ISR function on a regular base, in order to
-	-- serve the USB requests
-	usb_serial_flush()
-
-    -- check if USB device has been configured by the HOST
-	if ( usb_cdc_line_status() !=  0x00 )  then
-		if !has_shown_welcome_msg then
-			has_shown_welcome_msg = true
-			print_string( usb_serial_data, str_welcome )
-		end if	
-    configured_led = TRUE	
-	else
-		has_shown_welcome_msg = false
-    configured_led = FALSE	
-	end if
-
-	-- check for input character
-	if usb_serial_read( ch ) then
-		-- echo input character
-		usb_serial_data = ch
-	end if
-	
+   -- poll the usb ISR function on a regular base, in order to
+   -- serve the USB requests
+   usb_serial_flush()
+   
+   -- check if USB device has been configured by the HOST
+   if ( usb_cdc_line_status() !=  0x00 )  then
+      if !has_shown_welcome_msg then
+         has_shown_welcome_msg = true
+         print_string( usb_serial_data, str_welcome )
+      end if   
+      configured_led = TRUE   
+   else
+      has_shown_welcome_msg = false
+      configured_led = FALSE   
+   end if
+   
+   -- check for input character
+   if usb_serial_read( ch ) then
+      -- echo input character
+      usb_serial_data = ch
+   end if
+   
 end loop
