@@ -1,23 +1,30 @@
+-- -----------------------------------------------------------------------------
 -- Title: USB driver library
--- Author: Albert Faber, Copyright (c) 2008..2019, all rights reserved.
+-- Author: Albert Faber, Copyright (c) 2008..2021, all rights reserved.
 -- Adapted-by: Rob Jansen
--- Compiler: 2.5r2
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
--- --
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
 -- Description: This file contains the lowl level USB driver routines. It constrols
 -- the USB serial interface engine, by managing the input and output transfers,
--- and calling the defined callback function when required
+-- and calling the defined callback function when required.
 --
 -- Sources: http://www.usb.org ; for USB specifications
 --          http://www.lvr.com/usbc.htm ; a lot of information about USB
 --          http://www.beyondlogic.org/ ; also a nice with with useful information
 --
--- Notes: 
+-- Notes: There are two options to use the USB driver:
+--        1) Without interrupts by frequently calling 'usb_serial_flush()' 
+--           frequently in the main loop.
+--        2) Using interrupts to make timing less critical. In that case no 
+--           calls to 'usb_serial_flush()' are needed. 
+--           This can be activated by defining: const USB_INTERRUPT_DRIVEN = TRUE    
 --
-
+--           Do not use the interrupt driven feature when debugging the driver.
+--
 
 -- USB_PING_PONG_MODE, defines the USB pint pong buffer configuration
 -- set value to USB_PING_PONG__NO_PING_PONG, other modes not supported yet
@@ -49,6 +56,7 @@ if defined( USB_SPEED_OPTION ) == false then
    const byte USB_SPEED_OPTION = USB_FULL_SPEED
 end if
 
+
 -- --------------------------------------------------------------------------------------
 -- Internal procedure to handle standard USB requests
 -- it will take care of the overall state of the device
@@ -61,6 +69,8 @@ procedure _usb_handle_standard_request() is
    var volatile byte wbt_value[2] at usb_sdp_value
    var volatile byte wbt_length[2] at usb_sdp_length
    var byte index
+   var bit own_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN
+   var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
    
    case request of
       
@@ -149,6 +159,7 @@ procedure _usb_handle_standard_request() is
             -- USB_DT_DEVICE_QUALIFIER:
             -- block	
             -- end block
+
             USB_DT_HID_REPORT:
             block
                
@@ -162,7 +173,6 @@ procedure _usb_handle_standard_request() is
                end if
             end block
             
-            
             otherwise
             block	
                if USB_DEBUG > 0 then					
@@ -170,11 +180,10 @@ procedure _usb_handle_standard_request() is
                   print_string( serial_hw_data,str1)
                end if
             end block
-            
-            
+                        
          end case -- descriptor_type
          
-         
+         -- Maybe data is prepared, if so send it. 
          if ( usb_delivery_bytes_to_send > 0 ) then
             
             -- we've got something
@@ -189,13 +198,13 @@ procedure _usb_handle_standard_request() is
             -- usb_delivery_bytes_to_send
             usb_control_mode = USB_CM_CTRL_READ_DATA_STAGE
             usb_delivery_bytes_sent = 0
-            var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
             dts_bit = low				
             
             -- AF ISO OF PRIME
             usb_send_data_chunk()
             
          else
+            -- Stall it sent when the request is not supported.
             if USB_DEBUG > 0 then
                const byte str[] = " <stall> "
                print_string( serial_hw_data, str )
@@ -204,6 +213,21 @@ procedure _usb_handle_standard_request() is
          end if						
       end block
       
+      -- This request is part of URB_FUNCTION_SYNC_RESET_PIPE_AND_CLEAR_STALL
+      -- or URB_FUNCTION_SYNC_CLEAR_STALL or URB_FUNCTION_SYNC_RESET_PIPE.
+      -- The USB device should reset the data toggle and clear the STALL.       
+      USB_REQUEST_CLEAR_FEATURE:
+      block
+         usb_delivery_buffer_size = USB_EP0_IN_SIZE
+         usb_delivery_bytes_sent = 0
+         usb_delivery_bytes_to_send = 0
+         usb_delivery_bytes_max_send = 0
+         -- Clear UOWN and DTS.
+         own_bit = FALSE
+         dts_bit = FALSE
+         usb_send_data_chunk()
+      end block
+     
       USB_REQUEST_SET_ADDRESS:
       block
          usb_address = wbt_value[0]
@@ -253,8 +277,7 @@ procedure _usb_handle_standard_request() is
       
       USB_REQUEST_GET_STATUS:
       block
-         
-         
+                  
          -- send two bytes
          if USB_DEBUG > 0 then	
             const byte str[] = " GS "
@@ -279,18 +302,16 @@ procedure _usb_handle_standard_request() is
             usb_delivery_bytes_max_send = 0
             
             -- clear DTS in order to toggle it
-            var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
             dts_bit = low
-            
             usb_send_data_chunk()
             
          end if
          
       end block
-      
-      
+            
       otherwise
       block
+         -- Unknown or unsupported request. 
          if USB_DEBUG > 0 then
             const byte str[] = " ??SR "
             print_string( serial_hw_data,str)
@@ -351,8 +372,7 @@ procedure _usb_handle_transaction() is
          
       end if
    end if
-   
-   
+      
    if ( end_point == 0 ) then
       
       if USB_DEBUG_HIGH > 0 then
@@ -360,8 +380,7 @@ procedure _usb_handle_transaction() is
          --	print_string( serial_hw_data,str)
          --	print_byte_hex(serial_hw_data, usb_bd0out_cnt)
       end if
-      
-      
+            
       case pid of
          USB_PID_SETUP:
          block
@@ -384,6 +403,9 @@ procedure _usb_handle_transaction() is
             UCON_PKTDIS = low		
             
             usb_prime_ep0_out()
+
+            -- When a setup is received we need to clear the Stall and UOWN for 
+            -- endpoint 0. This is not done by the hardware.
             
             if USB_DEBUG > 0 then
                
@@ -397,10 +419,10 @@ procedure _usb_handle_transaction() is
                   -- print_string( serial_hw_data,str)
                end if
             end if
-            
-            
+                        
             -- obtain request
             case ( usb_sdp_request_type  & 0b_0110_0000 ) of
+
                (0b00 << USB_REQUEST_TYPE0_BIT ):
                block
                   -- serial_hw_write( "S" )					
@@ -421,6 +443,7 @@ procedure _usb_handle_transaction() is
                   _usb_handle_standard_request()
                   
                end block
+
                (0b01 << USB_REQUEST_TYPE0_BIT ):
                block					
                   -- class request
@@ -432,6 +455,7 @@ procedure _usb_handle_transaction() is
                      usb_handle_class_request_callback()
                   end if	
                end block
+
                (0b10 << USB_REQUEST_TYPE0_BIT ):
                block					
                   -- class request
@@ -443,6 +467,7 @@ procedure _usb_handle_transaction() is
                      usb_handle_vendor_request_callback()
                   end if	
                end block
+
                otherwise
                block
                   
@@ -458,8 +483,7 @@ procedure _usb_handle_transaction() is
                end block
             end case
          end block
-         
-         
+                  
          USB_PID_IN:
          block
             if USB_DEBUG > 0 then
@@ -532,8 +556,7 @@ procedure _usb_handle_transaction() is
                end block
             end case
          end block
-         
-         
+                  
          USB_PID_ACK:
          block
             if USB_DEBUG > 0 then
@@ -568,8 +591,7 @@ procedure _usb_handle_transaction() is
                end block
             end case
          end block
-         
-         
+                  
          USB_PID_OUT:
          block
             -- We've done an out
@@ -650,7 +672,7 @@ procedure _usb_handle_transaction() is
             idx = idx + 4 -- need to access the in structures
             bcnt = usb_bd_array[ idx + 1 ]				
             
-            --			print_byte_hex( serial_hw_data,idx)
+            --	print_byte_hex( serial_hw_data,idx)
             
             var word addr
             var byte bt_addr[2] at addr
@@ -682,10 +704,10 @@ procedure _usb_handle_transaction() is
             end if -- own_bit
          else
             usb_prime_epx_out( end_point, 0x08 )
-         end if -- defined(usb_ep_data_out_callback
+         end if -- defined(usb_ep_data_out_callback)
          
       end if -- USTAT_DIR
-   end if	-- end_point
+   end if -- end_point
    
 end procedure
 
@@ -694,8 +716,9 @@ end procedure
 -- --------------------------------------------------------------------------------------
 procedure _usb_handle_reset() is
    pragma inline
+
    UEIR = 0 -- No error interrupts
-   UIR = 0  -- Clear all interrupt flags
+   UIR  = 0 -- Clear all interrupt flags
    
    if USB_DEBUG > 0 then
       print_crlf(serial_hw_data)
@@ -770,7 +793,7 @@ procedure _usb_handle_reset() is
    -- the other bits are set so something like this (but not used).
    -- usb_bd0out_stat = 0x0C  -- set without UOWN
    -- usb_bd0out_stat = 0x8C  -- set with UOWN
-   
+ 
    if USB_DEBUG > 0 then
       print_crlf(serial_hw_data)
       serial_hw_write( "R" )
@@ -783,8 +806,7 @@ procedure _usb_handle_reset() is
       serial_hw_write( "U" )
       print_byte_hex(serial_hw_data,  UEP0 )
    end if
-   
-   
+      
    if defined (usb_reset_callback) then
       usb_reset_callback()
    end if
@@ -802,24 +824,28 @@ procedure usb_handle_stall() is
    end if
 end procedure
 
+
 -- --------------------------------------------------------------------------------------
 -- This is the heart of the USB library, all pending IO transfers are handled by
--- this main (interrupt) service routine. For the PIC USB device it does not make much 
--- sense to use real interrupts since all real time aspects are handle by the SIE. 
--- Therefore this usb_handle_isr() must be polled on a regular base, in order to 
--- to keep the input and output transfers flowing
+-- this main (interrupt) service routine. The routine can be used interrupt based
+-- or by polling. 
 -- --------------------------------------------------------------------------------------
-procedure usb_handle_isr() is
-   -- pragma inline
-   
-   if ( PIR2_USBIF ) then
-      
-      -- print_byte_hex(serial_hw_data,  UIR )
-      -- print_byte_hex(serial_hw_data,  UIE )
-      -- serial_data = " "
-      
-      
-      PIR2_USBIF = low
+procedure usb_handle_isr() is  
+
+   var bit do_interrupt 
+
+   if defined(USB_INTERRUPT_DRIVEN) then
+      pragma interrupt  
+      -- When using interrupt we must also check the interrupt USB enable bit.
+      do_interrupt = _USB_INTERRUPT_FLAG & _USB_INTERRUPT_ENABLE
+   else
+      -- When polling we do not care about the USB enable bit.
+      do_interrupt = _USB_INTERRUPT_FLAG
+   end if
+
+   if do_interrupt then
+
+      _USB_INTERRUPT_FLAG = LOW
       
       for 4 loop
          if ( UIR_TRNIF ) then				
@@ -830,15 +856,14 @@ procedure usb_handle_isr() is
       
       if ( UIR_URSTIF ) then
          if USB_DEBUG > 0 then		
-            -- const byte str1[] = " !RESET "
-            -- print_string( serial_hw_data,str1 )
+            const byte str1[] = " !RESET "
+            print_string( serial_hw_data,str1 )
          end if
          
          _usb_handle_reset();
          UIR_URSTIF = low
       end if	
-      
-      
+            
       if ( UIR_STALLIF ) then
          if USB_DEBUG > 0 then					
             const byte str1[] = " !STALL "
@@ -848,23 +873,26 @@ procedure usb_handle_isr() is
          UIR_STALLIF = low
       end if
       
-      -- This whole section could be removed since this is not enabled.
-      if defined( UIR_ACTIVIF ) == true then
-         if ( UIR_ACTIVIF ) then
-            -- const byte str1[] = "!W"
-            -- print_string( serial_hw_data,str1)		
-            -- ACTVIF = low
-         end if 		
+      -- This interrupt is not enabled.
+      if UIR_ACTVIF then
+         if USB_DEBUG > 0 then		
+            print_string( serial_hw_data," !ACTIVE ")
+         end if
+         UIR_ACTVIF = low
       end if
-      
+
+      -- This interrupt is not enabled.
       if ( UIR_IDLEIF ) then
+         if USB_DEBUG > 0 then		
+            print_string( serial_hw_data," !IDLE ")
+         end if
          UIR_IDLEIF = low
       end if
       
       if ( UIR_SOFIF ) then
          if USB_DEBUG > 0 then		
-            --	const byte str1[] = " !SOF "
-            --	print_string( serial_hw_data,str1)
+            const byte str1[] = " !SOF "
+            print_string( serial_hw_data,str1)
          end if
          
          if defined( usb_sof_callback ) == true then
@@ -880,27 +908,37 @@ procedure usb_handle_isr() is
          end if
          UIR_UERRIF = low
       end if
-   end if -- PIR2_USBIF
+
+   end if 
+
 end procedure
 
 
 -- --------------------------------------------------------------------------------------
--- Internal procedure to set the correct interrupt flags, note that for PIC USB device
--- it does not make much sense to use real interrupts since all real time aspects
--- are handle by the SIE. However, the library does use the interrupt flags, this
--- procedure will setup to proper interrupt flags
+-- Internal procedure to set the correct interrupt flags. The driver can be used
+-- interrupt driven or on a polling basis.
 -- --------------------------------------------------------------------------------------
 procedure _usb_ints_on() is
-   pragma inline
-   -- set STALLIE, TRNIE, URSTIE, SOFIE, USBIE high
-   UIE= 0b_0110_1011
-   --	UIE_STALLIE = high  -- interrupt on stall
-   --	UIE_TRNIE = high 	  -- on transaction complete
-   --	UIE_URSTIE = high 	-- on reset 
-   --	UIE_SOFIE = high
-   
-   PIE2_USBIE = low 	-- general USB interrupts disabled
-   
+
+   -- Enable the relevant interrupts.
+   UIE_SOFIE   = HIGH  -- Interrupt on start of frame token
+   UIE_STALLIE = HIGH  -- Interrupt on stall
+   UIE_IDLEIE  = LOW   -- No interrupt on idle detect
+   UIE_TRNIE   = HIGH  -- Interrupt on transaction complete
+   UIE_ACTVIE  = LOW   -- No interrupt on bus activity detect
+   UIE_UERRIE  = HIGH  -- Interrupt on error
+   UIE_URSTIE  = HIGH  -- Interrupt on reset 
+
+   if defined(USB_INTERRUPT_DRIVEN) then   
+      -- Enable USB, peripheral and global interrupt.
+      _USB_INTERRUPT_ENABLE = TRUE
+      INTCON_PEIE           = TRUE
+      INTCON_GIE            = TRUE
+    else
+      -- No USB interrupts used.
+      _USB_INTERRUPT_ENABLE = FALSE
+    end if
+    
 end procedure
 
 
@@ -915,7 +953,7 @@ procedure usb_setup() is
    UCON = 0x00
    
    -- setup USB configuration (Speed, ping-ping buffers, transeiver enabled, pull up configuration
-   UCFG = USB_SPEED_OPTION | USB_TRANSCEIVER_OPTION |USB_PULLUP_OPTION |USB_PING_PONG__NO_PING_PONG
+   UCFG = USB_SPEED_OPTION | USB_TRANSCEIVER_OPTION | USB_PULLUP_OPTION | USB_PING_PONG__NO_PING_PONG
    
    -- enable the interrupt flags
    _usb_ints_on()
@@ -931,7 +969,7 @@ end procedure
 -- --------------------------------------------------------------------------------------
 function usb_get_state() return byte is
    pragma inline
-   return usb_state;
+   return usb_state
 end function
 
 
@@ -941,9 +979,9 @@ end function
 -- --------------------------------------------------------------------------------------
 function usb_is_configured() return bit is
    if ( usb_state == USB_STATE_CONFIGURED ) then
-      return 1
+      return TRUE
    else
-      return 0
+      return FALSE
    end if
 end function
 
@@ -953,23 +991,23 @@ end function
 -- --------------------------------------------------------------------------------------
 procedure usb_enable_module() is 
    pragma inline
-   UIR = 0      -- Clear all interrupt status flags
+
+   UIR  = 0      -- Clear all interrupt status flags
    UCON = 0x00
    
    -- If we use the PLL we have to wait until it is ready before enabling
    -- the USB serial interface (see PIC data sheet of 16F1455 section 26.2).
    -- Only valid for devices that have a PLL ready indication.
-   if defined ( OSCCON_SPLLEN ) then
-      if defined ( OSCSTAT_PLLRDY ) then
-         if OSCCON_SPLLEN then
-            while !OSCSTAT_PLLRDY loop  -- Wait for PLL to be ready.
-            end loop
-         end if
+   if defined(_USB_OSC_PLLEN) & defined(_USB_OSC_PLLRDY) then
+      if _USB_OSC_PLLEN then  -- PLL is used.
+         while !_USB_OSC_PLLRDY loop  -- Wait for PLL to be ready.
+         end loop
       end if
    end if
-   
+
    -- enable USB serial interface engine (SIE)
    UCON_USBEN = high 
    usb_state = USB_STATE_DEFAULT
+   
 end procedure
 

@@ -1,11 +1,12 @@
+-- -----------------------------------------------------------------------------
 -- Title: USB Communication Device Class driver
--- Author: Albert Faber, Copyright (c) 2008..2009, all rights reserved.
--- Adapted-by: - Matthew Schinkel, Rob Jansen, Copyright (c) 2018
--- Compiler: 2.4q6
+-- Author: Albert Faber, Copyright (c) 2008..2021, all rights reserved.
+-- Adapted-by: Matthew Schinkel, Rob Jansen
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: USB Communication Device Class (CDC) code
 -- This USB library files contains the low level implementation to perform serial
@@ -28,14 +29,14 @@ if defined( USB_CDC_DEBUG ) == false then
    const bit USB_CDC_DEBUG = false
 end if
 
-const byte USB_REQ_SEND_ENCAPSULATED_COMMAND	= 0x00
+const byte USB_REQ_SEND_ENCAPSULATED_COMMAND = 0x00
 const byte USB_REQ_GET_ENCAPSULATED_RESPONSE = 0x01
-const byte USB_REQ_SET_COMM_FEATURE = 0x02
-const byte USB_REQ_CLEAR_COMM_FEATURE = 0x04
-const byte USB_REQ_SET_LINE_CODING = 0x20
-const byte USB_REQ_GET_LINE_CODING = 0x21
-const byte USB_REQ_SET_CONTROL_LINE_STATE = 0x22
-const byte USB_REQ_SEND_BREAK = 0x23
+const byte USB_REQ_SET_COMM_FEATURE          = 0x02
+const byte USB_REQ_CLEAR_COMM_FEATURE        = 0x04
+const byte USB_REQ_SET_LINE_CODING           = 0x20
+const byte USB_REQ_GET_LINE_CODING           = 0x21
+const byte USB_REQ_SET_CONTROL_LINE_STATE    = 0x22
+const byte USB_REQ_SEND_BREAK                = 0x23
 
 
 -- Line coding struction that defines what (should) happen if we were actually
@@ -44,21 +45,19 @@ const byte USB_REQ_SEND_BREAK = 0x23
 
 var volatile byte cdc_line_coding[7]
 var volatile dword cdc_line_coding_dte_rate at cdc_line_coding[0]
-var volatile byte cdc_line_coding_stop_bits at cdc_line_coding[4]    -- 0=1 stop bit, 1=1.5 stop bits, 2=2 stop bits
-var volatile byte cdc_line_coding_parity at cdc_line_coding[5]       -- 0=None, 1=Odd, 2=Even, 3=Mark, 4=Space
-var volatile byte cdc_line_coding_data_bits at cdc_line_coding[6]    -- 5,6,7,8 or 16 bits
+var volatile byte cdc_line_coding_stop_bits at cdc_line_coding[4]  -- 0=1 stop bit, 1=1.5 stop bits, 2=2 stop bits
+var volatile byte cdc_line_coding_parity at cdc_line_coding[5]     -- 0=None, 1=Odd, 2=Even, 3=Mark, 4=Space
+var volatile byte cdc_line_coding_data_bits at cdc_line_coding[6]  -- 5,6,7,8 or 16 bits
 
 var byte cdc_line_status = 0x00
 var bit last_packet_is_full = false
 
 -- Transmit fifo
-
 if defined(USB_CDC_TX_BUFFER_ADDR) == true then
    var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE] at USB_CDC_TX_BUFFER_ADDR
 else
    var byte cdc_tx_buffer[USB_CDC_TX_BUFFER_SIZE]
 end if
-
 
 var volatile byte cdc_tx_wr=0
 var volatile byte cdc_tx_rd=0
@@ -85,9 +84,9 @@ alias cdc_in_addr is usb_bd3in_addr
 alias cdc_in_addrl is usb_bd3in_addrl
 alias cdc_in_addrh is usb_bd3in_addrh
 
+
 procedure usb_handle_class_request_callback() is
-   pragma inline
-   
+
    -- compiler issue, do local assignment to resolve
    var byte req01 = usb_sdp_request
    var word len = usb_sdp_length
@@ -181,8 +180,7 @@ end procedure
 
 
 procedure usb_handle_class_ctrl_write_callback() is
-   pragma inline
-   
+  
    -- compiler issue, do local assignment to resolve
    var byte req01 = usb_sdp_request
    
@@ -195,8 +193,7 @@ procedure usb_handle_class_ctrl_write_callback() is
          for count( cdc_line_coding ) using idx loop
             cdc_line_coding[ idx ] = bd0_out_buffer[idx]
          end loop
-         
-         
+                 
          if USB_CDC_DEBUG > 0  then
             const byte str[] = " st="
             const byte str1[] = " p="
@@ -213,8 +210,7 @@ procedure usb_handle_class_ctrl_write_callback() is
             print_string(serial_hw_data,str2)
             print_byte_hex(serial_hw_data,cdc_line_coding_data_bits)
          end if
-         
-         
+                  
          if defined( usb_cdc_line_coding_changed_callback ) == true then
             usb_cdc_line_coding_changed_callback()
          end if
@@ -260,8 +256,9 @@ end procedure
 
 
 procedure usb_ep_data_out_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
-   pragma inline
+
    var byte cdc_rx_next
+
    if USB_CDC_DEBUG > 0  then
       const byte str[] = " EP data out: "
       const byte str1[] = " bytes "
@@ -365,8 +362,7 @@ procedure usb_cdc_handle_tx() is
    if ( bytes_to_send  > USB_CDC_BULK_IN_EP_SIZE ) then
       bytes_to_send  = USB_CDC_BULK_IN_EP_SIZE
    end if
-   
-   
+      
    if USB_CDC_DEBUG > 0  then
       const byte str[] = "send="
       serial_hw_write(">")
@@ -377,18 +373,14 @@ procedure usb_cdc_handle_tx() is
       serial_hw_write(">")
       print_byte_hex(serial_hw_data,cdc_tx_wr)
       serial_hw_write("#")
-   end if
-   
-   
+   end if   
    
    var byte idx	
    -- copy bytes
    for bytes_to_send using idx loop
       usb_cdc_eptx_buffer[ idx ] = cdc_tx_buffer[ cdc_tx_rd + idx ]
    end loop
-   
-   
-   
+     
    cdc_in_addr = USB_CDC_BULK_IN_EP_ADDR
    
    if USB_CDC_DEBUG > 0  then
@@ -400,8 +392,7 @@ procedure usb_cdc_handle_tx() is
    end if
    
    cdc_in_cnt = bytes_to_send
-   
-   
+     
    var volatile bit dts_bit at cdc_in_stat : USB_BDSTATUS_DTS
    if ( dts_bit  ) then
       if USB_CDC_DEBUG > 0  then
@@ -428,11 +419,11 @@ procedure usb_cdc_handle_tx() is
    
 end procedure
 
+
 -- --------------------------------------------------------------------------------------
 -- This function is called when data can be transmitted via the bulk interface
 -- --------------------------------------------------------------------------------------
 procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte in byte_count) is
-   pragma inline
    if USB_CDC_DEBUG > 0  then
       const byte str[] = " EP data in: "
       const byte str1[] = " bytes "
@@ -447,6 +438,7 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte i
       usb_cdc_handle_tx()
    end if
 end procedure
+
 
 -- --------------------------------------------------------------------------------------
 -- This usb_cdc_putc will transmit the specified character. Under normal conditions
@@ -532,6 +524,10 @@ function usb_cdc_tx_empty() return byte is
 end function
 
 
+-- --------------------------------------------------------------------------------------
+-- This procedure is called when the Start Of Frame interrupt flag is set. It starts the
+-- tranmission of any pending data (if present).
+-- --------------------------------------------------------------------------------------
 procedure usb_sof_callback() is
    -- we don't care about the frame number, we only care if there's something to send...
    usb_cdc_handle_tx()	-- start transmission
@@ -550,10 +546,10 @@ end procedure
 -- This procedure will intialize the line status of the communicatin device class
 -- --------------------------------------------------------------------------------------
 procedure usb_cdc_setup() is
-   cdc_line_coding_dte_rate = 0x0001C200  -- data rate in bits per second , set to 115200
-   cdc_line_coding_stop_bits = 0	-- = 1 stop bit
-   cdc_line_coding_data_bits = 8	-- = 8 data bits
-   cdc_line_coding_parity = 0		-- = No parity
+   cdc_line_coding_dte_rate  = 0x0001C200  -- data rate in bits per second , set to 115200
+   cdc_line_coding_stop_bits = 0           -- = 1 stop bit
+   cdc_line_coding_data_bits = 8           -- = 8 data bits
+   cdc_line_coding_parity    = 0           -- = No parity
 end procedure
 
 -- --------------------------------------------------------------------------------------

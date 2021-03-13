@@ -1,7 +1,8 @@
+-- -----------------------------------------------------------------------------
 -- Title: USB Serial 
--- Author: Albert Faber, Copyright (c) 2009, all rights reserved.
--- Adapted-by: Rob Jansen, Copyright (c) 2018, all rights reserved.
--- Compiler: 2.4q6
+-- Author: Albert Faber, Copyright (c) 2009..2021, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r4
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -22,13 +23,16 @@
 -- ;-- main loop
 -- var byte ch
 -- forever loop
--- ;   -- call the flush routine on a regular base in the main loop
--- ;   -- in order to keep the USB communicaiton alive
+-- ;   -- Call the flush routine on a regular base in the main loop
+-- ;   -- in order to keep the USB communicaiton alive.
+-- ;   -- This is only needed when USB_INTERRUPT_DRIVEN is not defined, otherwise
+-- ;   -- the usb_serial_flush() is not needed, see notes.
+-- ; 
 --     usb_serial_flush()
 --     if ( usb_serial_read( ch ) )
---			usb_serial_data = ch -- echo
---		end if
---     	.....
+--         usb_serial_data = ch -- echo
+--      end if
+--        .....
 -- end loop
 -- --                                                                        
 -- In addition this library can be used in combination with other JAL
@@ -51,18 +55,23 @@
 -- const byte USB_STRING1[] = { .. }         -- set USB mfg string
 -- const byte USB_STRING2[] = { .. }         -- set USB product string
 --                                                                        
--- Notes: -
---                                                                        
+-- Notes: There are two options to use the USB driver for serial:
+--        1) Without interrupts by frequently calling 'usb_serial_flush()' 
+--           frequently in the main loop.
+--        2) Using interrupts. In that case no calls to 'usb_serial_flush()' are
+--           needed. This can be activated by defining
+--              const USB_INTERRUPT_DRIVEN = TRUE    
+--                                                                       
 
 
 -------------------------------------------------------------------------
 -- consts to enable debugging
 -------------------------------------------------------------------------
 if defined( USB_SERIAL_DEBUG ) == true then
-	const USB_CDC_DEBUG = 1
-	const USB_DEBUG = 1
-	const USB_DEBUG_HIGH = 1
-	const USB_CDC_DEBUG_HIGH = 1
+   const USB_CDC_DEBUG = 1
+   const USB_DEBUG = 1
+   const USB_DEBUG_HIGH = 1
+   const USB_CDC_DEBUG_HIGH = 1
 end if
 
 include usb_defs
@@ -74,42 +83,41 @@ include usb_defs
 -- And the bulk endpoint
 -- Note: Addresses are based on USB_EP0_ADDRESS and not USB_BDT_ADDRESS.
 -------------------------------------------------------------------------
-const bit USB_EP0 = 1
+const bit  USB_EP0 = 1
 const byte USB_EP0_OUT_SIZE = 8
 const word USB_EP0_OUT_ADDR = ( USB_EP0_ADDRESS )
 const byte USB_EP0_IN_SIZE  = 8
 const word USB_EP0_IN_ADDR  = ( USB_EP0_OUT_ADDR + USB_EP0_OUT_SIZE )
 
 var volatile byte usb_ep0out_buf[ USB_EP0_OUT_SIZE ] at USB_EP0_OUT_ADDR
-var volatile byte usb_ep0in_buf[ USB_EP0_IN_SIZE ] at USB_EP0_IN_ADDR
+var volatile byte usb_ep0in_buf[ USB_EP0_IN_SIZE ]   at USB_EP0_IN_ADDR
 
-const bit USB_EP1 = 1
+const bit  USB_EP1 = 1
 const byte USB_EP1_OUT_SIZE = 8
 const word USB_EP1_OUT_ADDR = ( USB_EP0_IN_ADDR + USB_EP0_IN_SIZE )
 const byte USB_EP1_IN_SIZE  = 8
 const word USB_EP1_IN_ADDR  = ( USB_EP1_OUT_ADDR + USB_EP1_OUT_SIZE )
 
 var volatile byte usb_ep1out_buf[ USB_EP1_OUT_SIZE ] at USB_EP1_OUT_ADDR
-var volatile byte usb_ep1in_buf[ USB_EP1_IN_SIZE ] at USB_EP1_IN_ADDR
+var volatile byte usb_ep1in_buf[ USB_EP1_IN_SIZE ]   at USB_EP1_IN_ADDR
 
-const bit USB_EP2 = 1
+const bit  USB_EP2 = 1
 const byte USB_EP2_OUT_SIZE = 8
 const word USB_EP2_OUT_ADDR = ( USB_EP1_IN_ADDR + USB_EP1_IN_SIZE )
 const byte USB_EP2_IN_SIZE  = 8
 const word USB_EP2_IN_ADDR  = ( USB_EP2_OUT_ADDR + USB_EP2_OUT_SIZE )
 
 var volatile byte usb_ep2out_buf[ USB_EP2_OUT_SIZE ] at USB_EP2_OUT_ADDR
-var volatile byte usb_ep2in_buf[ USB_EP2_IN_SIZE ] at USB_EP2_IN_ADDR
+var volatile byte usb_ep2in_buf[ USB_EP2_IN_SIZE ]   at USB_EP2_IN_ADDR
 
-const bit USB_EP3 = 1
+const bit  USB_EP3 = 1
 const byte USB_EP3_OUT_SIZE = 8
 const word USB_EP3_OUT_ADDR = ( USB_EP2_IN_ADDR + USB_EP2_IN_SIZE )
-const byte USB_EP3_IN_SIZE = 8
+const byte USB_EP3_IN_SIZE  = 8
 const word USB_EP3_IN_ADDR  = ( USB_EP3_OUT_ADDR + USB_EP3_OUT_SIZE )
 
 var volatile byte usb_ep3out_buf[ USB_EP3_OUT_SIZE ] at USB_EP3_OUT_ADDR
-var volatile byte usb_ep3in_buf[ USB_EP3_IN_SIZE ] at USB_EP3_IN_ADDR
---else
+var volatile byte usb_ep3in_buf[ USB_EP3_IN_SIZE ]   at USB_EP3_IN_ADDR
 
 
 if defined( USB_CDC_TX_BUFFER_SIZE ) == false then
@@ -150,7 +158,7 @@ const byte USB_CS_INTERFACE                = 0x24
 const byte USB_CS_ENDPOINT                 = 0x25
 const byte USB_DCS_INTERFACE               = 0x04
 
-const byte USB_CDC_DATA_INTF = 0x0A
+const byte USB_CDC_DATA_INTF   = 0x0A
 const byte USB_CDC_NO_PROTOCOL = 0x00    -- No class specific protocol required
 
 -------------------------------------------------------------------------
@@ -221,30 +229,31 @@ if defined( USB_DEVICE_DESCRIPTOR ) == false then
 -- before inclusion of the usb_serial library
 -- -----------------------------------------------------------------------
 const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] = {
-	USB_DEVICE_DESCRIPTOR_SIZE, 	-- 18 bytes long
-	USB_DT_DEVICE, 		-- DEVICE 01h
-	0x00,
-	0x02,				-- usb version 2.00
-	USB_CDC_DEVICE,		-- cdc class
-	0x00,				-- subclass
-	0x00,				-- protocol
-	0x08,				-- max packet size for end point 0
-	byte( USB_SERIAL_VENDOR_ID & 0xff ),
-	byte( USB_SERIAL_VENDOR_ID >> 8   ),		-- USB vendor ID
-	byte( USB_SERIAL_PRODUCT_ID & 0xff ),
-	byte( USB_SERIAL_PRODUCT_ID >> 8   ),		-- USB product ID
-	0x01,
-	0x00,				-- Device release number in BCD format
-	0x01,				-- string 1 for manufacturer
-	0x02,				-- string 2 for product
-	0x00,				-- string 3 for serial number
-	0x01				-- number of configurations
+   USB_DEVICE_DESCRIPTOR_SIZE,    -- 18 bytes long
+   USB_DT_DEVICE,       -- DEVICE 01h
+   0x00,
+   0x02,            -- usb version 2.00
+   USB_CDC_DEVICE,      -- cdc class
+   0x00,            -- subclass
+   0x00,            -- protocol
+   0x08,            -- max packet size for end point 0
+   byte( USB_SERIAL_VENDOR_ID & 0xff ),
+   byte( USB_SERIAL_VENDOR_ID >> 8   ),      -- USB vendor ID
+   byte( USB_SERIAL_PRODUCT_ID & 0xff ),
+   byte( USB_SERIAL_PRODUCT_ID >> 8   ),      -- USB product ID
+   0x01,
+   0x00,            -- Device release number in BCD format
+   0x01,            -- string 1 for manufacturer
+   0x02,            -- string 2 for product
+   0x00,            -- string 3 for serial number
+   0x01            -- number of configurations
 }
 end if
 
 
 if defined( USB_CONFIGURATION_DESCRIPTOR ) == false then
-const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x05 + 0x04 + 0x05 + 0x05 + 0x07 + 0x09 + 0x07 + 0x07
+const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x05 + 0x04 + 0x05 + 
+                                          0x05 + 0x07 + 0x09 + 0x07 + 0x07
 
 -- -----------------------------------------------------------------------
 -- Sets the default USB_CONFIGURATION_DESCRIPTOR record. It is not expected
@@ -255,97 +264,97 @@ const USB_CONFIGURATION_DESCRIPTOR_SIZE = 0x09 + 0x09 + 0x05 + 0x04 + 0x05 + 0x0
 -- conifguration
 -- -----------------------------------------------------------------------
 const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
-{	
-	-- configuration descriptor - - - - - - - - - - 0x09 bytes
-	0x09,	-- length,
-	USB_DT_CONFIGURATION,	-- descriptor_type
+{   
+   -- configuration descriptor - - - - - - - - - - 0x09 bytes
+   0x09,   -- length,
+   USB_DT_CONFIGURATION,   -- descriptor_type
 
-	USB_CONFIGURATION_DESCRIPTOR_SIZE,
-	0x00,	-- total_length;
-	
-	0x02,	-- num_interfaces,
-	0x01,	-- configuration_value,
-	0x00,	-- configuration_string_id,
-	0b10000000, -- attributes (bus powered, no remote wake up)
-	50,		-- max_power; (2x ma)
+   USB_CONFIGURATION_DESCRIPTOR_SIZE,
+   0x00,   -- total_length;
+   
+   0x02,   -- num_interfaces,
+   0x01,   -- configuration_value,
+   0x00,   -- configuration_string_id,
+   0b10000000, -- attributes (bus powered, no remote wake up)
+   50,      -- max_power; (2x ma)
 
-	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
-	0x09,	-- length,
-	USB_DT_INTERFACE,	-- descriptor_type,
-	0x00,	-- interface_number, (starts at zero)
-	0x00,	-- alternate_setting, (no alternatives)
-	0x01,	-- num_endpoints,
-	USB_COMM_INTF,	-- interface_class, (CDC)
-	USB_ABSTRACT_CONTROL_MODEL,	-- interface_subclass, (COMM interface)
-	USB_V25TER,	-- interface_protocol, (hayes type modem)
-	0x00,	-- interface_string_id;
+   -- interface descriptor - - - - - - - - - - - - 0x09 bytes
+   0x09,   -- length,
+   USB_DT_INTERFACE,   -- descriptor_type,
+   0x00,   -- interface_number, (starts at zero)
+   0x00,   -- alternate_setting, (no alternatives)
+   0x01,   -- num_endpoints,
+   USB_COMM_INTF,   -- interface_class, (CDC)
+   USB_ABSTRACT_CONTROL_MODEL,   -- interface_subclass, (COMM interface)
+   USB_V25TER,   -- interface_protocol, (hayes type modem)
+   0x00,   -- interface_string_id;
 
-	-- Functional Descriptor Structure - See CDC Specification 1.1 for details
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, -- DSC Type
-	USB_DSC_FN_HEADER, -- DSC Sub Type
-	0x10,
-	0x01, -- CDC (bcd)
+   -- Functional Descriptor Structure - See CDC Specification 1.1 for details
+   -- functional descriptor - - - - - - - - - - - - 0x05 bytes
+   0X05, -- length
+   USB_CS_INTERFACE, -- DSC Type
+   USB_DSC_FN_HEADER, -- DSC Sub Type
+   0x10,
+   0x01, -- CDC (bcd)
 
-	-- functional descriptor - - - - - - - - - - - - 0x04 bytes
-	0X04, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_ACM, 						-- DSC Sub Type
-	0x02, 									-- Capabilities
+   -- functional descriptor - - - - - - - - - - - - 0x04 bytes
+   0X04, -- length
+   USB_CS_INTERFACE,                   -- DSC Type
+   USB_DSC_FN_ACM,                   -- DSC Sub Type
+   0x02,                            -- Capabilities
 
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_UNION, 						-- DSC Sub Type
-	USB_CDC_COMM_INTF_ID,					-- MasterIntf
-	USB_CDC_DATA_INTF_ID,					-- SaveIntf0
-											
-	-- functional descriptor - - - - - - - - - - - - 0x05 bytes
-	0X05, -- length
-	USB_CS_INTERFACE, 						-- DSC Type
-	USB_DSC_FN_CALL_MGT, 					-- DSC Sub Type
-	0x00, 									-- Capabilities
-	USB_CDC_DATA_INTF_ID,					-- DataInterface
+   -- functional descriptor - - - - - - - - - - - - 0x05 bytes
+   0X05, -- length
+   USB_CS_INTERFACE,                   -- DSC Type
+   USB_DSC_FN_UNION,                   -- DSC Sub Type
+   USB_CDC_COMM_INTF_ID,               -- MasterIntf
+   USB_CDC_DATA_INTF_ID,               -- SaveIntf0
+                                 
+   -- functional descriptor - - - - - - - - - - - - 0x05 bytes
+   0X05, -- length
+   USB_CS_INTERFACE,                   -- DSC Type
+   USB_DSC_FN_CALL_MGT,                -- DSC Sub Type
+   0x00,                            -- Capabilities
+   USB_CDC_DATA_INTF_ID,               -- DataInterface
 
 
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b10000010,				-- endpoint_address, (Endpoint 2, IN)
-	USB_EPT_INT,			-- attributes
-	USB_CDC_INT_EP_SIZE,	-- 			
-	0x00,					-- max_packet_size
-	0x02	,				-- interval
+   -- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+   0x07,               -- length,
+   USB_DT_ENDPOINT,      -- descriptor_type,
+   0b10000010,            -- endpoint_address, (Endpoint 2, IN)
+   USB_EPT_INT,         -- attributes
+   USB_CDC_INT_EP_SIZE,   --          
+   0x00,               -- max_packet_size
+   0x02   ,            -- interval
 
-	-- interface descriptor - - - - - - - - - - - - 0x09 bytes
-	0x09,					-- length,
-	USB_DCS_INTERFACE,		-- descriptor_type,
-	0x01,					-- interface_number, (starts at zero)
-	0x00,					-- alternate_setting, (no alternatives)
-	0x02,					-- num_endpoints
-	USB_CDC_DATA_INTF,		-- interface_class
-	0x00,					-- interface_subclass
-	USB_CDC_NO_PROTOCOL,	-- interface_protocol
-	0x00,					-- interface_string_id;
-	
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b00000011,				-- endpoint_address, (Endpoint 3, OUT)
-	USB_EPT_BULK,			-- attributes
-	USB_CDC_BULK_OUT_EP_SIZE,				
-	0x00,					-- max_packet_size
-	0x00,					-- interval
+   -- interface descriptor - - - - - - - - - - - - 0x09 bytes
+   0x09,               -- length,
+   USB_DCS_INTERFACE,      -- descriptor_type,
+   0x01,               -- interface_number, (starts at zero)
+   0x00,               -- alternate_setting, (no alternatives)
+   0x02,               -- num_endpoints
+   USB_CDC_DATA_INTF,      -- interface_class
+   0x00,               -- interface_subclass
+   USB_CDC_NO_PROTOCOL,   -- interface_protocol
+   0x00,               -- interface_string_id;
+   
+   -- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+   0x07,               -- length,
+   USB_DT_ENDPOINT,      -- descriptor_type,
+   0b00000011,            -- endpoint_address, (Endpoint 3, OUT)
+   USB_EPT_BULK,         -- attributes
+   USB_CDC_BULK_OUT_EP_SIZE,            
+   0x00,               -- max_packet_size
+   0x00,               -- interval
 
-	-- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
-	0x07,					-- length,
-	USB_DT_ENDPOINT,		-- descriptor_type,
-	0b10000011,				-- endpoint_address, (Endpoint 3, IN)
-	USB_EPT_BULK,			-- attributes
-	USB_CDC_BULK_OUT_EP_SIZE,				
-	0x00,					-- max_packet_size
-	0x00					-- interval
+   -- end point descriptor - - - - - - - - - - - - - - - - 0x07 bytes
+   0x07,               -- length,
+   USB_DT_ENDPOINT,      -- descriptor_type,
+   0b10000011,            -- endpoint_address, (Endpoint 3, IN)
+   USB_EPT_BULK,         -- attributes
+   USB_CDC_BULK_OUT_EP_SIZE,            
+   0x00,               -- max_packet_size
+   0x00               -- interval
 }
 end if
 
@@ -362,10 +371,10 @@ if defined( USB_STRING0 ) == false then
 -- -----------------------------------------------------------------------
 const byte USB_STRING0[] = 
 {
-	0x04,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	0x09,	-- wLANGID[0] (low byte)
-	0x04	-- wLANGID[0] (high byte)
+   0x04,   -- bLength
+   USB_DT_STRING,   -- bDescriptorType
+   0x09,   -- wLANGID[0] (low byte)
+   0x04   -- wLANGID[0] (high byte)
 }
 end if
 
@@ -383,34 +392,34 @@ if defined( USB_STRING1 ) == false then
 -- -----------------------------------------------------------------------
 const byte USB_STRING1[0x36] = 
 {
-	0x36,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"M", 0x00, 
-	"i", 0x00, 
-	"c", 0x00, 
-	"r", 0x00, 
-	"o", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"i", 0x00, 
-	"p", 0x00, 
-	" ", 0x00,
-	"T", 0x00, 
-	"e", 0x00, 
-	"c", 0x00, 
-	"h", 0x00, 
-	"n", 0x00, 
-	"o", 0x00, 
-	"l", 0x00, 
-	"o", 0x00, 
-	"g", 0x00, 
-	"y", 0x00, 
-	",", 0x00, 
-	" ", 0x00,
-	"I", 0x00, 
-	"n", 0x00, 
-	"c", 0x00, 
-	".", 0x00
+   0x36,   -- bLength
+   USB_DT_STRING,   -- bDescriptorType
+   "M", 0x00, 
+   "i", 0x00, 
+   "c", 0x00, 
+   "r", 0x00, 
+   "o", 0x00, 
+   "c", 0x00, 
+   "h", 0x00, 
+   "i", 0x00, 
+   "p", 0x00, 
+   " ", 0x00,
+   "T", 0x00, 
+   "e", 0x00, 
+   "c", 0x00, 
+   "h", 0x00, 
+   "n", 0x00, 
+   "o", 0x00, 
+   "l", 0x00, 
+   "o", 0x00, 
+   "g", 0x00, 
+   "y", 0x00, 
+   ",", 0x00, 
+   " ", 0x00,
+   "I", 0x00, 
+   "n", 0x00, 
+   "c", 0x00, 
+   ".", 0x00
 }
 end if
 
@@ -427,22 +436,22 @@ if defined( USB_STRING2 ) == false then
 -- -----------------------------------------------------------------------
 const byte USB_STRING2[30] = 
 {
-	30,	-- bLength
-	USB_DT_STRING,	-- bDescriptorType
-	"J", 0x00, 
-	"A", 0x00, 
-	"L", 0x00, 
-	"L", 0x00, 
-	"I", 0x00, 
-	"B", 0x00, 
-	" ", 0x00, 
-	"S", 0x00, 
-	"e", 0x00, 
-	"r", 0x00, 
-	"i", 0x00, 
-	"a", 0x00, 
-	"l", 0x00,
-	".", 0x00
+   30,   -- bLength
+   USB_DT_STRING,   -- bDescriptorType
+   "J", 0x00, 
+   "A", 0x00, 
+   "L", 0x00, 
+   "L", 0x00, 
+   "I", 0x00, 
+   "B", 0x00, 
+   " ", 0x00, 
+   "S", 0x00, 
+   "e", 0x00, 
+   "r", 0x00, 
+   "i", 0x00, 
+   "a", 0x00, 
+   "l", 0x00,
+   ".", 0x00
 }
 end if
 
@@ -455,15 +464,17 @@ include usb_drv
 
 -- -----------------------------------------------------------------------
 -- usb_serial_flush shall be called on a regular base (millisecond range)
--- in order to keep the USB transmision alive. Therfore it is adviced to
+-- in order to keep the USB transmision alive. Therefore it is adviced to
 -- call the usb_serial_flush procedure in the main loop of your 
--- application
+-- application. 
+-- Note: Only needed when USB interrupt is not used otherwise this call
+--       can be omitted (it does nothing in interrupt mode).
 -- -----------------------------------------------------------------------
-procedure usb_serial_flush() is    
-    -- Servicing Hardware
-    -- use polling method
-    usb_handle_isr()
-	usb_cdc_handle_tx()
+procedure usb_serial_flush() is 
+   if !defined(USB_INTERRUPT_DRIVEN) then
+      usb_handle_isr()
+      usb_cdc_handle_tx()
+   end if
 end procedure
 
 -- -----------------------------------------------------------------------
@@ -475,16 +486,15 @@ end procedure
 -- -----------------------------------------------------------------------
 procedure usb_serial_init() is
 
-	-- setup the USB device
-	usb_setup()
+   -- setup the USB device
+   usb_setup()
 
-	-- setup USB communication class
-	usb_cdc_setup()
-	
-	-- enable USB device
-	usb_enable_module()
+   -- setup USB communication class
+   usb_cdc_setup()
+   
+   -- enable USB device
+   usb_enable_module()
 
-	
 end procedure
 
 
@@ -500,23 +510,23 @@ end procedure
 -- -----------------------------------------------------------------------
 procedure usb_serial_write(byte in data) is
 
-	-- give up when DTE is not online
-	-- in order to avoid blocking
-	if ( usb_cdc_line_status() ==  0x00 )  then
-		return
-	end if
-	
-	var byte cdc_tx_next = cdc_tx_wr + 1	-- get next buffer position
-	if (cdc_tx_next == USB_CDC_TX_BUFFER_SIZE) then
-		-- if we're at the end
-		cdc_tx_next = 0	-- wrap to the beginning
-	end if
+   -- give up when DTE is not online
+   -- in order to avoid blocking
+   if ( usb_cdc_line_status() ==  0x00 )  then
+      return
+   end if
+   
+   var byte cdc_tx_next = cdc_tx_wr + 1   -- get next buffer position
+   if (cdc_tx_next == USB_CDC_TX_BUFFER_SIZE) then
+      -- if we're at the end
+      cdc_tx_next = 0   -- wrap to the beginning
+   end if
 
-	while (cdc_tx_next == cdc_tx_rd) loop
-		usb_serial_flush()	
-	end loop
+    while (cdc_tx_next == cdc_tx_rd) loop
+      usb_serial_flush()   
+   end loop
 
-	usb_cdc_putc(data)
+   usb_cdc_putc(data)
 end procedure
 
 -- -----------------------------------------------------------------------
@@ -532,15 +542,15 @@ end procedure
 -- -----------------------------------------------------------------------
 function _usb_serial_read(byte out data) return bit is   
    
-	-- give up when DTE is not online
-	-- in order to avoid blocking
-	if ( usb_cdc_line_status() ==  0x00 )  then
-		return false
-	end if
+   -- give up when DTE is not online
+   -- in order to avoid blocking
+   if ( usb_cdc_line_status() ==  0x00 )  then
+      return false
+   end if
 
-	if ( !usb_cdc_rx_avail() ) then
-		return false
-	end if
+   if ( !usb_cdc_rx_avail() ) then
+      return false
+   end if
    
     -- get the character
     data = usb_cdc_getc()
@@ -571,7 +581,7 @@ end function
 -- avoid lockup(s)
 -- -----------------------------------------------------------------------
 function usb_serial_read(byte out data) return bit is
-	return _usb_serial_read(data)
+   return _usb_serial_read(data)
 end function
 
 
@@ -585,7 +595,7 @@ end function
 -- avoid lockup(s)
 -- -----------------------------------------------------------------------
 procedure usb_serial_data'put(byte in data) is
-	usb_serial_write( data )
+   usb_serial_write( data )
 end procedure
 
 
@@ -598,8 +608,8 @@ end procedure
 function usb_serial_data'get() return byte is
    var byte data
    while !usb_serial_read(data) loop 
-		-- keep usb alive
-		usb_serial_flush()
+      -- keep usb alive
+      usb_serial_flush()
    end loop
    return data   
 end function

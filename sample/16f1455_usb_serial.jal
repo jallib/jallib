@@ -17,8 +17,13 @@
 --
 -- Sources: http://www.usb.org for USB specifications.
 -- 
--- Notes: 
--- 
+-- Notes: There are two options to use the USB driver:
+--        1) Without interrupts by frequently calling 'usb_serial_flush()' 
+--           frequently in the main loop.
+--        2) Using interrupts to make timing less critical. In that case no 
+--           calls to 'usb_serial_flush()' are needed. 
+--           This can be activated by defining: const USB_INTERRUPT_DRIVEN = TRUE    
+--
 -- Some instructions for use:
 -- -
 -- 1. Make sure you logon as administrator, or with administrator privileges,
@@ -41,9 +46,7 @@
 -- ------------------------------------------------------
 --
 -- This file was orginally copied from 18f14k50_usb_serial.jal and made
--- operational to work for the PIC16F1454/55/59 using the modified usb driver
--- as to function without the availability of a POSTINC1 feature which is not
--- present in these PICs.
+-- operational to work for the PIC16F1454/55/59 using the modified usb driver.
 --
 
 include 16f1455                  -- Target processor.
@@ -61,12 +64,7 @@ include 16f1455                  -- Target processor.
 -- Settings are also given to use the internal oscilator of the PIC so no need
 -- for the 12 MHz crystal which saves you a crystal and 2 pins on the chip.
 -- The configuration runs at an internal clock of 48 MHz.
--- For debugging purposes the USART is used to send information (pin 5)
---
--- Some info on timing. With an 48 MHz clock the 'usb_serial_flush' takes about
--- between 3 us and 10 us which is about 15% slower than a PIC that has the 
--- POSTINC feature. This POSTINC feature is used by the memory_pointer library 
--- but this library has been adapted to support PICs without the POSTINC feature.
+-- For debugging purposes the USART is used to send information (pin 6)
 --
 
 pragma target clock       48_000_000
@@ -93,7 +91,7 @@ pragma target IESO          DISABLED -- Internal/External Switchover Mode is dis
 pragma target PWRTE         DISABLED -- power up timer
 pragma target BROWNOUT      DISABLED -- no brownout detection
 pragma target WDT           DISABLED -- Watchdog disabled
-pragma target MCLR          INTERNAL -- Internal reset
+pragma target MCLR          EXTERNAL -- External reset
 pragma target LVP           ENABLED  -- allow low-voltage programming
 pragma target VOLTAGE       MAXIMUM  -- brown out voltage
 pragma target CP            DISABLED -- Program memory code protection is disabled
@@ -108,26 +106,15 @@ TRISC         = 0b0000_0000          -- Port c output.
 
 alias configured_led is pin_c3       -- Pin 7.
 pin_c3_direction = output
-                                     
--- For debugging purposes only: Set debug mode and set variables for debug. See
--- usb_serial.jal to see which options exist. Note that enabling all debugging
--- will prevent the driver from correct operation.
--- const USB_CDC_DEBUG = 1
--- alias pin_RX_direction is pin_RX_DT_direction
--- alias pin_TX_direction is pin_TX_CK_direction
--- const serial_hw_baudrate = 115_200
--- include serial_hardware
--- serial_hw_init()
-
--- Include the rest
-include print
+                                 
+-- Use the USB driver on an interrupt basis. This makes it possible to use
+-- delays in the main loop since timing becomes less critical.
+const USB_INTERRUPT_DRIVEN = TRUE
 include usb_serial
+include print
 
 -- constants
 const byte str_welcome[] = "JALLIB USB Serial Demo app\n"
-
--- interrupts? No thanks
-INTCON_GIE = false
 
 -- setup the USB serial library
 usb_serial_init()
@@ -136,11 +123,18 @@ usb_serial_init()
 var bit has_shown_welcome_msg = true
 var byte ch
 
+var dword counter = 0
+var word timer = 0
+
 -- main loop
 forever loop
-   -- poll the usb ISR function on a regular base, in order to
-   -- serve the USB requests
-   usb_serial_flush()
+  
+   if !defined(USB_INTERRUPT_DRIVEN) then
+      -- When the interrupt mode is not used we need to poll the usb ISR function 
+      -- on a regular base, in order to serve the USB requests otherwise
+      -- this call can be removed.                              
+      usb_serial_flush()
+   end if
    
    -- check if USB device has been configured by the HOST
    if ( usb_cdc_line_status() !=  0x00 )  then
@@ -157,7 +151,7 @@ forever loop
    -- check for input character
    if usb_serial_read( ch ) then
       -- echo input character
-      usb_serial_data = ch
+      usb_serial_data = ch      
    end if
-   
+
 end loop

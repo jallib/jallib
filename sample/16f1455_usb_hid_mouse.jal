@@ -1,5 +1,5 @@
 -- -----------------------------------------------------------------------------
--- Title: USB HID device demo for the PIC16F1455
+-- Title: USB Mouse device demo for the PIC16F1455
 -- Author: Rob Jansen, Copyright (c) 2018..2021, all rights reserved.
 -- Adapted-by: 
 -- Compiler: 2.5r4
@@ -14,14 +14,17 @@
 --
 -- Sources: http://www.usb.org for USB specifications
 --
--- Notes: 
+-- Notes: There are two options to use the USB driver:
+--        1) Without interrupts by frequently calling 'usb_tasks()' 
+--           frequently in the main loop.
+--        2) Using interrupts to make timing less critical. In that case no 
+--           calls to 'usb_tasks()' are needed. 
+--           This can be activated by defining: const USB_INTERRUPT_DRIVEN = TRUE    
 --
 -- ------------------------------------------------------
 --
 -- This file was orginally copied from 18f14k50_usb_mouse.jal and made
--- operational to work for the PIC16F1454/55/59 using the modified usb driver
--- as to function without the availability of a POSTINC1 feature which is not
--- present in these PICs.
+-- operational to work for the PIC16F1454/55/59 using the modified usb driver.
 --
 
 include 16f1455
@@ -320,8 +323,10 @@ USB_DT_STRING,   -- bDescriptorType
 "o", 0x00
 }
 
+-- Use the USB driver on an interrupt basis. This makes it possible to use
+-- delays in the main loop since timing becomes less critical.
+-- const USB_INTERRUPT_DRIVEN = TRUE
 include usb_drv_core
-
 
 procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte  in byte_count) is
    pragma inline
@@ -340,7 +345,6 @@ procedure usb_ep_data_in_callback(byte in end_point, word in buffer_addr, byte  
    end if
 end procedure
 
-
 include usb_drv
 
 -- constants
@@ -357,16 +361,21 @@ var word ticks100us = 0
 var bit enable_mouse = false
 
 
+-- -----------------------------------------------------------------------
+-- usb_tasks shall be called on a regular base (millisecond range)
+-- in order to keep the USB transmision alive. Therefore it is adviced to
+-- call the usb_tasks procedure in the main loop of your 
+-- application. 
+-- Note: Only needed when USB interrupt is not used otherwise this call
+--       can be omitted (it does nothing in interrupt mode).
+-- -----------------------------------------------------------------------
 procedure usb_tasks() is    
-   -- Servicing Hardware
-   -- use polling method
-   usb_handle_isr()
+   if !defined(USB_INTERRUPT_DRIVEN) then
+      -- Servicing Hardware use polling method
+      usb_handle_isr()
+   end if
 end procedure
 
--- interrupts? No thanks
-while INTCON_GIE loop
-   INTCON_GIE = false
-end loop
 
 if defined( HAS_SERIAL_DEBUG_PORT ) == high then
    -- put info on RS-232 serial line
@@ -390,9 +399,13 @@ data_buffer[2] = 0x00
 
 -- main loop
 forever loop
-   -- poll the usb ISR function on a regular base, in order to 
-   -- serve the USB requests
-   usb_tasks()
+
+   if !defined(USB_INTERRUPT_DRIVEN) then
+      -- When the interrupt mode is not used we need to poll the usb ISR function 
+      -- on a regular base, in order to serve the USB requests otherwise
+      -- this call can be removed.                              
+      usb_tasks()
+   end if
    
    -- check if USB device has been configured by the HOST
    if usb_is_configured()  then
