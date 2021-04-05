@@ -15,7 +15,7 @@
 -- Description: Demonstrates the features of the Bluetooth HC06 slave module.
 --              With this program LEDs can be controlled remotely from a host
 --              and when a key is pressed it will be sent to the host. The HC-06
---              can be reprogrammed by making the 'program' pin active low.  
+--              can be reprogrammed by making the 'program' pin active low. 
 --                 
 -- Sources:     Bluetooth HC-06 Module Datasheet revision 2.2 (2011/04/06)
 --              Guangzhou HC Information Technology Co., Ltd.
@@ -23,26 +23,33 @@
 -- Notes:       The HC-06 module uses a serial interface so at least one of the 
 --              JAL serial hardware libraries must be included by the main program.       
 --
---              PIC USART connections to module (40 pin DIP):
---              *) TX: pin 25 of the USART1 of the PIC to the RX pin of the Module.
---              *) RX: pin 26 of the USART1 of the PIC to the TX pin of the Module.
+--              PIC USART connections to module (14 pin DIP):
+--              *) TX: pin 6 of the USART1 of the PIC to the RX pin of the Module.
+--              *) RX: pin 5 of the USART1 of the PIC to the TX pin of the Module.
 --
-include 16f877a                 
+include 16f1823                 
 
 -- ------------------------------- Pragmas -------------------------------------
 
--- This program assumes that a 20 MHz resonator or crystal
--- is connected to pins OSC1 and OSC2.
-pragma target clock 20_000_000      -- oscillator frequency
---
-pragma target OSC      HS           -- crystal or resonator
-pragma target WDT      DISABLED     -- watchdog
-pragma target DEBUG    DISABLED     -- no debugging
-pragma target BROWNOUT DISABLED     -- no brownout reset
-pragma target LVP      ENABLED      -- low voltage programming
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
 
--- Enable weak pull-up on port B.
-OPTION_REG_NRBPU = FALSE   
+-- Enable weak pull up for all ports. 
+WPUA = 0b0011_1111       
+WPUC = 0b0011_1111       
+OPTION_REG_WPUEN = FALSE 
 
 enable_digital_io()
 -- Give the hardware some time to stabilize.
@@ -50,43 +57,47 @@ _usec_delay(100_000)
 
 -- -------------------------------- Pins ---------------------------------------
 
+-- Setup the serial hardware interface for communication with the module.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate = 9600                -- Default baudrate of module.
+
 -- Programming pin.
-alias program_pin is pin_B1                    -- Active LOW. 
-pin_B1_direction = input                       -- Pin 34 for 40 pin DIP.  
+alias program_pin is pin_C3                    -- Active LOW. 
+pin_C3_direction = input                       -- Pin 7  for 14 pin DIP.  
 
 -- Aliases for keys.
-alias key_red is pin_B2                        -- Active LOW. 
-pin_B2_direction = input                       -- Pin 35 of 40 pin DIP.
-alias key_green is pin_B4                      -- Active LOW. 
-pin_B4_direction = input                       -- Pin 37 of 40 pin DIP.
+alias key_red is pin_C0                        -- Active LOW. 
+pin_C0_direction = input                       -- Pin 10 of 14 pin DIP.
+alias key_green is pin_A2                      -- Active LOW. 
+pin_A2_direction = input                       -- Pin 11 of 14 pin DIP.
 
 -- Aliases for leds.
-alias led_amber  is pin_D0                     -- On when connected.  
-pin_D0_direction = output                      -- Pin 19 of 40 pin DIP.
-alias led_red    is pin_D1                     
-pin_D1_direction = output                      -- Pin 20 of 40 pin DIP.
-alias led_green is pin_D2
-pin_D2_direction = output                      -- Pin 21 of 40 pin DIP.
+alias led_amber is pin_A5                      -- On when connected.  
+pin_A5_direction = output                      -- Pin 2 of 14 pin DIP.
+alias led_red is pin_C2                     
+pin_C2_direction = output                      -- Pin 8 of 14 pin DIP.
+alias led_green is pin_C1
+pin_C1_direction = output                      -- Pin 9 of 14 pin DIP.
 
 -- ------------------------- Constant declarations -----------------------------
-const serial_hw_baudrate = 9600   -- Default baudrate of module. 
 
 -- It is best to use the interrupt based serial routines to prevent data loss
 -- when data is received. Adjust the buffer size.
-const SERIAL_XMTBUFSIZE = 10 -- size of transmit buffer
-const SERIAL_RCVBUFSIZE = 10 -- size of receive buffer
+const SERIAL_XMTBUFSIZE = 15 -- size of transmit buffer
+const SERIAL_RCVBUFSIZE = 15 -- size of receive buffer
 
 -- Optional. Wait at most 1 second for a character from the module.
--- const word BT_HC06_READ_TIMEOUT = 10_000 -- 10.000 times 100 us, see library.
+-- const word BLUETOOTH_HC06_READ_TIMEOUT = 10_000 -- 10.000 times 100 us, see library.
 
 -- -------------------------- Includes go here ---------------------------------
 include serial_hw_int_cts
-include bt_hc06  -- It will use the above included serial interface.
+include bluetooth_hc06  -- It will use the above included serial interface.
 
 -- Some constants for reprogramming the HC-06. Change to your needs.
-const byte DEVICE_PINCODE[] = "1111"              -- Default is "1234"
+const byte DEVICE_PINCODE[] = "1111"                       -- Default is "1234"  
 const byte DEVICE_NAME[]    = "My HC-06"
-const byte DEVICE_BAUDRATE  = BT_HC06_BAUDRATE_9600 -- This is the default.
+const byte DEVICE_BAUDRATE  = BLUETOOTH_HC06_BAUDRATE_9600 -- This is the default. 
 
 -- ------------------------- Variable declarations -----------------------------
 var byte character
@@ -96,7 +107,7 @@ var bit  all_ok
 
 -- Initialize the libraries
 serial_hw_init()
-bt_hc06_init()
+bluetooth_hc06_init()
 
 -- LEDs off.
 led_amber = LOW
@@ -104,26 +115,26 @@ led_red = LOW
 led_green = LOW
 
 -- Let's see if the module is available for programming.
-all_ok = bt_hc06_available()  
+all_ok = bluetooth_hc06_available()  
 
 -- Check the program pin, if low we will change some default values of the
 -- HC-06 module but only if the module is available.
 if all_ok & !program_pin then
 
    -- Change the pincode of the module.
-   all_ok = all_ok & bt_hc06_set_device_pin(DEVICE_PINCODE)
+   all_ok = all_ok & bluetooth_hc06_set_device_pin(DEVICE_PINCODE)
 
    -- Change the name of the module.
-   all_ok = all_ok & bt_hc06_set_device_name(DEVICE_NAME)
+   all_ok = all_ok & bluetooth_hc06_set_device_name(DEVICE_NAME)
 
    -- Change the baudrate. Note that the baudrate changes after a new power up 
    -- of the module. Make sure that the PIC also uses this new baudrate after power up.
-   all_ok = all_ok &  bt_hc06_set_baudrate(DEVICE_BAUDRATE)
+   all_ok = all_ok &  bluetooth_hc06_set_baudrate(DEVICE_BAUDRATE)
    
    -- If all went OK, flash the green LED, else flash the red LED.
    if all_ok then
       -- In order to take effect we need to reset the device.
-      bt_hc06_reset()
+      bluetooth_hc06_reset()
       led_green = HIGH
       _usec_delay(3_000_000)
       led_green = LOW
@@ -141,7 +152,7 @@ end if
 -- while waiting. This step is just for information and can be removed since 
 -- there is also a LED blinking on the device that shows if the module is 
 -- connected or not.                                         
-while bt_hc06_available() loop
+while bluetooth_hc06_available() loop
    led_amber = !led_amber
    _usec_delay(500_000)
 end loop
@@ -153,8 +164,8 @@ led_amber = HIGH
 forever loop
 
   -- Check if data is received from the Bluetooth Module to control the LEDs. 
-  if bt_hc06_data_available() then
-     character = bt_hc06_data
+  if bluetooth_hc06_data_available() then
+     character = bluetooth_hc06_data
      if (character == "R") | (character == "r") then
         led_red = !led_red
      elsif (character == "G") | (character == "g") then  
@@ -164,11 +175,11 @@ forever loop
   
    -- Check if we need to send a pressed key.
    if !key_red then
-      bt_hc06_data = "R"
+      bluetooth_hc06_data = "R"
      _usec_delay(50_000) -- Key debounce & repeat.
    end if
    if !key_green then
-      bt_hc06_data = "G"
+      bluetooth_hc06_data = "G"
      _usec_delay(50_000) -- Key debounce & repeat.
    end if
  
