@@ -3,7 +3,7 @@
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2020, all rights reserved.
+        Rob Jansen,    Copyright (c) 2018..2021, all rights reserved.
 
 Adapted-by:
 
@@ -63,7 +63,7 @@ from xml.dom.minidom import parse, Node
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
 scriptversion = "1.5.0"     # script version
-compilerversion = "2.5r4"   # latest JalV2 compiler version
+compilerversion = "2.5r5"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications

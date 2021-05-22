@@ -61,7 +61,7 @@ platform_name = platform.system()
 # --- general constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5r4"
+CompilerVersion = "2.5r5"
 
 
 # specification of system dependent compiler executable
