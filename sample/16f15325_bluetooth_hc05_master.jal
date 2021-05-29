@@ -1,0 +1,629 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the Bluetooth HC-05 module in master mode.
+--
+-- Author: Rob Jansen, Copyright (c) 2021..2021 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demonstrates the features of the Bluetooth HC-05 module in master mode.
+--              Next to that this sample program offers 2 different functionalities
+--              which requires that it needs to be re-compiled.
+--              1) The first feature is setting up the HC-05 in master mode so it will be
+--                 able to connect with HC-06 slave. The constant BLUETOOTH_HC05_SETUP 
+--                 must be set to compile this sample program for this featre. If not 
+--                 set it will be compiled for the second (following) feature. 
+--                 Once the setup is done the HC-05 keeps that setting until it is 
+--                 reprogrammed again.
+--              2) This feature can be programmed after 1) has been one which is exchanging 
+--                 data between the HC-05 and HC-06. Data received from the HC-06 will be
+--                 sent to USART2 and data received via USART2 will be sent to th HC-06.
+--                 Also see the notes what is required from a hardware point of view.
+--                 
+-- Sources:     *) GHC-03/05 Embedded Bluetooth Serial Communication Module AT command set
+--                 April, 2011
+--              *) EGBT-045MS-046S Hardware Manual & AT Commands Reference Manual 
+--                 Rev. 1r0
+--              *) http://www.martyncurrey.com/arduino-with-hc-05-bluetooth-module-at-mode/    
+--              
+-- Notes:       The HC-05 module uses a serial interface so at least one of the  
+--              JAL serial hardware libraries must be included by the main program.       
+--
+--              This sample programs assumes that a slave Bluetooth device is
+--              available with the application with the 2 switches and the 2 LEDs
+--              as given in sample program '16f1823_bluetooth_hc06.jal'.
+--
+--              This sample program also contains some extra options to show status
+--              information of the HC-05 module. This information is not needed for the
+--              the set-up (feature 1) but can be used for debugging purposes. This
+--              can be enabled by defining the constant BLUETOOTH_HC05_EXTRA.
+--
+--              PIC USART connections for this PIC (14 pin DIP):
+--              *) TX 1: pin 5  of the USART1 of the PIC to the RX pin of the Module.
+--              *) RX 1: pin 6  of the USART1 of the PIC to the TX pin of the Module.
+--              *) TX 2: pin 9  of the USART2 of the PIC to the pin 11 of the MAX232.
+--              *) RX 2: pin 10 of the USART2 of the PIC to the pin 12 of the MAX232. 
+--
+include 16f15325                  
+
+-- ------------------------------- Pragmas -------------------------------------
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000  -- oscillator frequency
+--
+pragma target OSC      OFF         -- internal oscillator
+pragma target RSTOSC   HFINT32     -- select 32 MHz
+pragma target CLKOUTEN DISABLED    -- no clock output
+pragma target WDT      DISABLED    -- watchdog
+pragma target BROWNOUT DISABLED    -- no brownout reset
+pragma target FCMEN    DISABLED    -- no clock monitoring
+pragma target CSWEN    ENABLED     -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED     -- Low voltage programming
+pragma target MCLR     EXTERNAL    -- external reset
+OSCCON2 = 0x00                     -- 32 MHz and no division
+--
+-- Enable weak pull up for all ports since some inputs are not connected
+WPUA = 0b0001_1111       
+WPUC = 0b0001_1111       
+
+enable_digital_io()
+ 
+-- -------------------------------- Pins ---------------------------------------
+-- Declaration of the USART1 pins for the Module
+alias pin_RX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP
+alias pin_TX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP. 
+
+-- Declaration of the remapped USART2 pins for the PC.
+alias pin_RX2_direction is pin_C0_direction  -- Pin 10 for 14 pin DIP
+alias pin_TX2_direction is pin_C1_direction  -- Pin 9  for 14 pin DIP.
+
+-- Pin to power up the module (active LOW).
+alias Power_pin is pin_A4                   -- Active LOW
+pin_A4_direction = output                   -- Pin 3 for 14 pin DIP. 
+
+-- Pin to enable the full AT command mode..
+alias Enable_pin is pin_C2                  -- Active HIGH
+pin_C2_direction = output                   -- Pin 8 for 14 pin DIP. 
+
+
+-- ------------------------- Constant declarations -----------------------------
+
+-- When we compile this program with the following constant it will set-up the 
+-- HC-05 as master to communicate with a Bluetooth slave device like an HC-06.
+-- If not defined and compiling this program, this program is just an 
+-- application that sends received data back assuming that the set-up has
+-- been done (since the set-up that is done is stored in the HC-05). 
+const BLUETOOTH_HC05_SETUP = TRUE
+
+-- The following constant is used to include some extra information that will
+-- be printed for testing purposes but which is not required for the set-up.
+-- const BLUETOOTH_HC05_EXTRA = TRUE
+
+-- Baudrate definitions. Module default is 38400 baud but after set up it is 
+-- 9600 baud since that is what we use in the set-up for communicating with
+-- the HC-06.
+if defined(BLUETOOTH_HC05_SETUP) then
+   -- Baudrate of the HC-05 module in full AT mode (enable pin is high).
+   const serial_hw_baudrate = 38400 
+   Enable_pin = HIGH
+else
+   -- Baudrate of the HC-05 module for communcation with the HC-06 (enable pin is low).
+   const serial_hw_baudrate = 9600  
+   Enable_pin = LOW
+end if
+
+-- USART speed for the terminal.
+const serial_hw2_baudrate = 115200 
+
+-- Optional. Wait at most 30 seconds for a response from the module. This very long
+-- timeout is needed for the inquiry to find the available bluetooth devices.
+const dword BLUETOOTH_HC05_SHORT_READ_TIMEOUT = 30_000  -- 3 seconds, see library.
+const dword BLUETOOTH_HC05_LONG_READ_TIMEOUT = 200_000 -- 20 seconds, see library.
+
+-- -------------------------- Includes go here ---------------------------------
+
+-- We need to include the serial library first followed by the include of the
+-- module so that this USART is used for communication with the module.
+-- For the HC-05 library  must use the interrupt based serial routines to prevent 
+-- data loss when data is received. Adjust the buffer size to limit timing 
+-- problems or to deal with baudrate differences.
+const SERIAL_XMTBUFSIZE = 10 -- size of transmit buffer
+const SERIAL_RCVBUFSIZE = 50 -- size of receive buffer     
+const SERIAL_DELTA      = 0  
+include serial_hw_int_cts
+include bluetooth_hc05       -- It will use the above included serial interface.
+
+-- Some constants for reprogramming the HC-05. Change to your needs. The password and
+-- the baudrate must be the same as the password and the bauddrate of the HC-06 module 
+-- that we want to connect with.
+const dword DEVICE_CLASS      = 0x0000_1F00 -- Uncategorized, for testing purposes. 
+const byte  DEVICE_PASSWORD[] = "1111" -- Default is "1234"  
+const byte  DEVICE_NAME[]     = "My HC-05"
+const byte  DEVICE_BAUDRATE   = BLUETOOTH_HC05_BAUDRATE_9600 -- This is the default. 
+
+-- Name of the device we want to connect with.
+const byte REMOTE_DEVICE_NAME[] = "My HC-06" 
+
+-- Some Bluetooth addresses for testing.This was the address of my HC-06 module.
+-- Change to the address of your remote device.
+const word  REMOTE_ADDRESS_NAP = 0x98DA
+const byte  REMOTE_ADDRESS_UAP = 0x60
+const dword REMOTE_ADDRESS_LAP = 0x00C0B0
+
+-- Terminal data goes via the second USART interface. Adjust the buffer size to 
+-- limit timing problems or to deal with baudrate differences.           
+const SERIAL2_XMTBUFSIZE = 10 -- size of transmit buffer
+const SERIAL2_RCVBUFSIZE = 50 -- size of receive buffer     
+const SERIAL2_DELTA      = 0  
+include serial_hw2_int_cts  
+include PPS
+include print
+include strings                            
+
+-- Re-assign the pins. Note: This must always be done to let it work even for 
+-- the default assignment.
+pps_control_lock(FALSE)                
+RC5PPS   = PPS_TX1       -- TX1 re-assigned to C5  (default)             
+RX1DTPPS = PPS_RC4       -- C4  re-assigned to RX1 (default)            
+RC1PPS   = PPS_TX2       -- TX2 re-assigned to C1  (default)     
+RX2DTPPS = PPS_RC0       -- C0  re-assigned to RX2 (default)             
+pps_control_lock(TRUE)                 
+
+-- ------------------------- Variable declarations -----------------------------
+
+var dword address_lap
+var word address_nap
+var byte address_uap
+var byte inquire_access_mode
+var word maximum_devices
+var byte timeout
+var byte value
+
+-- ------------------------- Procedures ----------------------------------------
+
+-- Wait for 3 seconds.
+procedure wait_some_time() is
+
+   _usec_delay(3_000_000)
+
+end procedure
+
+-- Print an ok message. We use this procedure to limit the amount of rom
+-- space that is needed when using dedicated messages.
+procedure print_ok_message() is
+   print_string(serial_hw2_data,"Succes!\r\n")
+end procedure
+
+
+-- Print an error message. We use this procedure to limit the amount of rom
+-- space that is needed when using dedicated messages.
+procedure print_error_message() is
+   print_string(serial_hw2_data,"Failed!\r\n")
+end procedure
+
+
+-- Print the contents of the bluetooth receive buffer including CR + LF.
+procedure print_receive_buffer() is
+
+   var byte index
+
+   for bluetooth_hc05_bytes_received using index loop
+      serial_hw2_data = bluetooth_hc05_receive_buffer[index]
+   end loop
+ 
+   print_crlf(serial_hw2_data)
+
+end procedure
+
+-- Reset the HC-05 module and print the status of the reset. We will
+-- also wait some time after reset.
+procedure reset_hc05() is
+
+   print_string(serial_hw2_data,"Reset module: ")
+   if bluetooth_hc05_reset() then
+      print_ok_message()
+   else
+      print_error_message()
+   end if 
+   -- Always give reset some time.
+   wait_some_time()
+
+end procedure
+
+-- Print the given bluetooth address in format NAP:UAP:LAP
+procedure print_bluetooth_address(word in nap, byte in uap, dword in lap) is
+
+   var byte lap_byte[3] at lap
+
+   print_string(serial_hw2_data," (NAP:UAP:LAP): ")
+   print_word_hex(serial_hw2_data, nap)
+   print_string(serial_hw2_data,":")
+   print_byte_hex(serial_hw2_data, uap)
+   print_string(serial_hw2_data,":")
+   -- Only print 24 bits of the lap. 
+   print_byte_hex(serial_hw2_data, lap_byte[2])
+   print_byte_hex(serial_hw2_data, lap_byte[1])
+   print_byte_hex(serial_hw2_data, lap_byte[0])
+   print_crlf(serial_hw2_data)
+
+end procedure
+
+-- Print the device name of the HC-05 module
+procedure print_hc05_device_name() is
+
+   print_string(serial_hw2_data,"Get moduled device name: ")
+   if bluetooth_hc05_get_device_name() then
+      print_receive_buffer()
+   else
+      print_error_message()
+   end if 
+
+end procedure
+
+-- Print the device class of the HC-05 module. It is only 24 bits
+procedure print_hc05_device_class() is
+
+   var dword class
+   var byte class_byte[3] at class
+
+   print_string(serial_hw2_data,"Get module device class: ")
+   if bluetooth_hc05_get_device_class(class) then
+      print_byte_hex(serial_hw2_data,class_byte[2])
+      print_byte_hex(serial_hw2_data,class_byte[1])
+      print_byte_hex(serial_hw2_data,class_byte[0])
+      print_crlf(serial_hw2_data)
+   else
+      print_error_message()
+   end if 
+
+end procedure
+
+
+-- This procedure does the set-up of the HC-05 module as described
+-- for feature 1). It will also show the status of some settings,
+-- for the purpose of testing the library.
+procedure setup_hc_05_module() is
+
+   if defined(BLUETOOTH_HC05_EXTRA) then
+     -- Let's see if the module is available for programming.
+      print_string(serial_hw2_data,"Check if module is available: ")
+      if bluetooth_hc05_available() then
+         print_ok_message()
+      else
+         print_error_message()
+      end if
+   end if
+
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the Module version number.
+      print_string(serial_hw2_data,"Get module firmware version: ")
+      if bluetooth_hc05_get_firmware_version() then
+        print_receive_buffer()
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the Module Bluetooth address.
+      print_string(serial_hw2_data,"Get module bluetooth address: ")
+      if bluetooth_hc05_get_bluetooth_address(address_nap, address_uap, address_lap) then
+         print_bluetooth_address(address_nap, address_uap, address_lap)   
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the device name of the module. 
+      print_hc05_device_name()
+      print_string(serial_hw2_data,"Set device name: ")   
+      -- Now change it and print it again.
+      if bluetooth_hc05_set_device_name(DEVICE_NAME) then
+         print_ok_message()
+      else
+         print_error_message()
+      end if  
+      -- Now get the name again. 
+      print_hc05_device_name()
+   end if
+
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the device class of the module. 
+      print_hc05_device_class()
+      -- Now change it and print it again.
+      print_string(serial_hw2_data,"Set device class: ")
+      if bluetooth_hc05_set_device_class(DEVICE_CLASS) then
+         print_ok_message()
+      else
+        print_error_message()
+      end if   
+      -- Now get it again.
+      print_hc05_device_class()
+   end if 
+  
+   -- In my case the restore default did work but did often not
+   -- return an OK so I ignore it when this happens.
+   print_string(serial_hw2_data,"Restore default setting (may fail): ")
+   if bluetooth_hc05_restore_default() then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   wait_some_time()
+
+   -- Device password must be set the same as for the HC-06.
+   print_string(serial_hw2_data,"Set device password: ")
+   if bluetooth_hc05_set_device_password(DEVICE_PASSWORD) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Show the set password.
+      print_string(serial_hw2_data,"Get device password: ")
+      if bluetooth_hc05_get_device_password() then
+         print_receive_buffer()
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   -- Set the baudrate to communicate with the HC-06 must be equal.
+   print_string(serial_hw2_data,"Set device baudrate: ")
+   if bluetooth_hc05_set_baudrate(BLUETOOTH_HC05_BAUDRATE_9600) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+       -- Show the set baudrate.
+      print_string(serial_hw2_data,"Get device baudrate: ")
+      if bluetooth_hc05_get_device_baudrate() then
+         print_receive_buffer()
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   -- Find the address of the HC-06. First clear all paired devices.
+   print_string(serial_hw2_data,"Clear any paired devices: ")
+   if bluetooth_hc05_clear_all_paired_devices() then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+
+   -- Put the HC-05 in master mode.
+   print_string(serial_hw2_data,"Put module in master mode: ")
+   if bluetooth_hc05_set_device_role(BLUETOOTH_HC05_ROLE_MASTER) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the role of the module.
+      print_string(serial_hw2_data,"Get module mode: ")
+      if bluetooth_hc05_get_device_role(value) then
+         print_byte_dec(serial_hw2_data, value)
+         print_crlf(serial_hw2_data)
+      else
+         print_error_message()
+      end if
+   end if  
+
+   -- Reset the HC-05, this is sometimes needed after changing roles.
+   reset_hc05()
+
+   print_string(serial_hw2_data,"Set connection mode to a specific bluetooth address: ")
+   if bluetooth_hc05_set_connection_mode(BLUETOOTH_HC05_CONNECTION_MODE_SPECIFIC) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the connection mode of the module
+      print_string(serial_hw2_data,"Get connection mode: ")
+      if bluetooth_hc05_get_connection_mode(value) then
+         print_byte_dec(serial_hw2_data, value)
+         print_crlf(serial_hw2_data)
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   -- Note that we use the default of BLUETOOTH_HC05_MAX_INQUIRED_DEVICES which is 5.
+   print_string(serial_hw2_data,"Set enquire mode to standard, 5 devices, for 9 * 1.28 seconds: ")
+   if bluetooth_hc05_set_inquire_access_mode(BLUETOOTH_HC05_INQUIRY_MODE_STANDARD,5,9) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Now get the inquire mode.
+      print_string(serial_hw2_data,"Get enquire mode: ")
+      if bluetooth_hc05_get_inquire_access_mode(inquire_access_mode,maximum_devices,timeout) then
+         print_byte_dec(serial_hw2_data,inquire_access_mode)
+         print_string(serial_hw2_data,",")
+         print_word_dec(serial_hw2_data,maximum_devices)
+         print_string(serial_hw2_data,",")
+         print_byte_dec(serial_hw2_data,timeout)
+         print_crlf(serial_hw2_data)
+      else
+         print_error_message()
+      end if
+   end if 
+
+
+   -- Intialize the SSP profile. This may return an error when it is already initialized 
+   -- which is no problem so you can ignore it.
+   print_string(serial_hw2_data,"Initialize SSP profile (if not already done, so may fail): ")
+   if bluetooth_hc05_initialize_ssp_profile() then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+
+   -- Search for Bluetooth device we want to connect with and obtain the address. 
+   -- For this function an inquiry command is sent to the device and response may take a 
+   -- while so set a long wait time. The maximum inquire time was previously set by the 
+   -- function bluetooth_hc05_set_inquire_access_mode so we have to wait at least longer
+   -- than that time before 'OK' is returned by the module.
+   print_string(serial_hw2_data,"Find remote device address (this may take some time): ")
+   bluetooth_hc05_set_wait_time(BLUETOOTH_HC05_LONG_READ_TIMEOUT)
+   if bluetooth_hc05_get_device_address(REMOTE_DEVICE_NAME, address_nap,
+                                        address_uap,address_lap) then
+      print_bluetooth_address(address_nap, address_uap, address_lap)   
+    else
+      print_error_message()
+   end if 
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      print_string(serial_hw2_data,"Get remote device name: ")
+      -- Now that we have remote device address we can get the name.
+      if bluetooth_hc05_get_remote_device_name(address_nap,address_uap,
+                                               address_lap) then
+         print_receive_buffer()
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   -- Shorten the wait time again, it is not needed to wait that long anymore.
+   bluetooth_hc05_set_wait_time(BLUETOOTH_HC05_SHORT_READ_TIMEOUT)
+   -- We need to pair with the HC-06. This command did not give a response but it still
+   -- worked (or was not needed) so we do not check for the result.
+   print_string(serial_hw2_data,"Pair modules (may fail): ")
+   if bluetooth_hc05_pair_with_device(address_nap,address_uap,address_lap) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+
+   -- Now bind to this device.
+   print_string(serial_hw2_data,"Set binding address: ")
+   if bluetooth_hc05_set_binding_address(address_nap,address_uap,address_lap) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the binding address.
+      print_string(serial_hw2_data,"Get binding address: ")
+      if bluetooth_hc05_get_binding_address(address_nap,address_uap,address_lap) then
+         print_bluetooth_address(address_nap, address_uap, address_lap)   
+      else
+         print_error_message()
+      end if 
+   end if 
+
+   -- Set the HC-05 to connect to any device.  
+   print_string(serial_hw2_data,"Set connection mode set to any device: ")
+   if bluetooth_hc05_set_connection_mode(BLUETOOTH_HC05_CONNECTION_MODE_ANY) then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   if defined(BLUETOOTH_HC05_EXTRA) then
+      -- Get the connection mode.
+      print_string(serial_hw2_data,"Get connection mode: ")
+      if bluetooth_hc05_get_connection_mode(value) then
+         print_byte_dec(serial_hw2_data, value)
+         print_crlf(serial_hw2_data)
+      else
+         print_error_message()
+      end if
+   end if
+
+   -- Last but not least, connect to our remote device using its address.
+   print_string(serial_hw2_data,"Connect to remote device: ")
+   if bluetooth_hc05_connect_to_device(address_nap,address_uap,address_lap)  then
+      print_ok_message()
+   else
+      print_error_message()
+   end if
+   print_crlf(serial_hw2_data)
+
+end procedure
+
+
+-- -----------------------  Main program starts here ---------------------------
+
+-- The enable pin is already set earlier. Now we need to power up and wait some time.
+Power_pin = LOW -- Active low.
+-- Give the HC-05 some time to stabilize and start-up.
+wait_some_time()
+
+-- Initialize the serial libraries.
+serial_hw_init()   -- Used by Bluetooth Module
+serial_hw2_init()  -- Used by the main program.
+
+print_crlf(serial_hw2_data)
+print_string(serial_hw2_data,"Sample program for the Bluetooth HC-05 Module.\r\n")
+
+-- Initialize the module. This is the same as reset.
+print_string(serial_hw2_data,"Initialze module (may fail but is done anyway): ")
+if bluetooth_hc05_init() then
+   print_ok_message()
+else
+   print_error_message()
+end if 
+-- Wait some time after reset.
+wait_some_time()
+
+-- Set the read timeout to another value. Depends on the module being used.
+bluetooth_hc05_set_wait_time(BLUETOOTH_HC05_SHORT_READ_TIMEOUT)
+
+-- Here we make the split in set-up or normal operation.
+if defined(BLUETOOTH_HC05_SETUP) then
+   -- Feature 1): This is the set-part of this sample program.
+   print_string(serial_hw2_data,"This version does the set-up of the HC-05 module.\r\n")
+
+   setup_hc_05_module() 
+
+   print_string(serial_hw2_data,"Now recompile this program without BLUETOOTH_HC05_SETUP and reprogram the PIC.\r\n")
+   print_string(serial_hw2_data,"After that power off and power on both the HC-05 and HC-06.\r\n")
+   print_string(serial_hw2_data,"The LEDs on the HC-06 can be controlled using G or R.\r\n")
+   print_string(serial_hw2_data,"Note that the module baudrate is set to 9600 baud.\r\n")
+   print_crlf(serial_hw2_data)
+
+   -- We are done here. 
+   forever loop 
+      -- Do nothing.
+   end loop
+
+else
+
+   -- Feature 2): Not the set-up mode. We are connected use the HC-06, run the main loop.
+   -- This is sending the received data to the USART2 but also controlling the LEDs on 
+   -- the HC-06 sample board using G or R.
+   print_string(serial_hw2_data,"This version communicates with the HC-06 module with the name: ")
+   print_string(serial_hw2_data,REMOTE_DEVICE_NAME)
+   print_crlf(serial_hw2_data)
+   print_string(serial_hw2_data,"Note that the module baudrate is set to 9600 baud.\r\n")
+   print_string(serial_hw2_data,"To connect to another device change the constant REMOTE_DEVICE_NAME to the name of your module.\r\n")
+   print_crlf(serial_hw2_data)
+
+   forever loop
+
+      -- If data is received from the HC-06 slave send it to USART2.
+      if bluetooth_hc05_data_available() then
+         serial_hw2_data = bluetooth_hc05_data 
+      end if
+
+     -- If data was received from USART2 send it to the HC-06 slave via
+     -- the HC-05 master Bluetooth module.
+     if serial_hw2_data_available() then
+        bluetooth_hc05_data = serial_hw2_data
+     end if 
+  
+   end loop
+
+end if
+
+

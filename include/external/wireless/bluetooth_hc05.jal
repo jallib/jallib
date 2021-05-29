@@ -1,0 +1,1352 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for the Bluetooth HC-05 module.
+--
+-- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
+--
+-- Adapted-by:
+--
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: JAL library for use of the Bluetooth HC-05 module.
+--              Created for HC-05 firmware version: 4.0-20190815   
+--
+-- Sources: -) GHC-03/05 Embedded Bluetooth Serial Communication Module AT command set
+--             April, 2011
+--          -) EGBT-045MS-046S Hardware Manual & AT Commands Reference Manual 
+--             Rev. 1r0
+--
+-- Notes: The default serial interface of the HC-05 is 34800 baud, 1 stopbit, 
+--        no parity and no flowcontrol. 
+--        At least one of the JAL serial hardware libraries must be included and
+--        initialized by the main program with these settings. 
+--
+--        It is recommended to use the JAL serial libraries that work on an 
+--        interrupt basis. These libraries make use of buffers which reduce
+--        the chance of data loss in case the main program is slow or in case
+--        where different baudrates are used.
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFINTIONS --------------------------
+-- -----------------------------------------------------------------------------
+
+-- Definition of the size of the receive buffer. The size is mainly
+-- determined by the number of Bluetooth devices that can be
+-- discovered by the HC-05 when using the inquire command (+INQ).
+-- If this number is low, the buffer can be smaller. If the a
+-- buffer of more than 78 bytes is used, the large_array library
+-- will be included and used.
+if !defined(BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE) then
+   const byte BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE = 60
+end if
+
+-- Maximum number of devices that will be looked for during an 
+-- inquire command.
+if !defined(BLUETOOTH_HC05_MAX_INQUIRED_DEVICES) then
+   const byte BLUETOOTH_HC05_MAX_INQUIRED_DEVICES = 5
+end if
+
+-- Other size definitions.
+const byte BLUETOOTH_HC05_PASSWORD_MAX_LENGTH = 16
+const byte BLUETOOTH_HC05_NAME_MAX_LENGTH     = 32
+
+-- Baudrate definitions. Default baudrate of the HC-05 module is 9600 baud.
+-- Baudrate setting is using no parity and one stopbit which is the default.
+const byte BLUETOOTH_HC05_BAUDRATE_4800    = 1
+const byte BLUETOOTH_HC05_BAUDRATE_9600    = 2
+const byte BLUETOOTH_HC05_BAUDRATE_19200   = 3
+const byte BLUETOOTH_HC05_BAUDRATE_38400   = 4
+const byte BLUETOOTH_HC05_BAUDRATE_57600   = 5
+const byte BLUETOOTH_HC05_BAUDRATE_115200  = 6
+const byte BLUETOOTH_HC05_BAUDRATE_230400  = 7 
+const byte BLUETOOTH_HC05_BAUDRATE_460800  = 8 
+const byte BLUETOOTH_HC05_BAUDRATE_921600  = 9 
+const byte BLUETOOTH_HC05_BAUDRATE_1382400 = 10 
+
+-- Role definitions.
+const byte BLUETOOTH_HC05_ROLE_SLAVE      = 0 -- Default
+const byte BLUETOOTH_HC05_ROLE_MASTER     = 1
+const byte BLUETOOTH_HC05_ROLE_SLAVE_LOOP = 2
+
+--Connection modes. 
+const byte BLUETOOTH_HC05_CONNECTION_MODE_SPECIFIC  = 0 -- Default
+const byte BLUETOOTH_HC05_CONNECTION_MODE_ANY       = 1
+const byte BLUETOOTH_HC05_CONNECTION_MODE_TEST      = 2 
+
+--Inquiry modes. 
+const byte BLUETOOTH_HC05_INQUIRY_MODE_STANDARD = 0 
+const byte BLUETOOTH_HC05_INQUIRY_MODE_RSSI     = 1 
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- We may need to include the large array since the amount of data can be big but 
+-- only if the user has defined this. The receive buffer size must include 'OK' 
+-- it is always so 2 bytes more.
+if (BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE <= 78) then
+   var byte bluetooth_hc05_receive_buffer[BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE+2]
+else
+   const word LARGE_ARRAY_1_SIZE = BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE+2        
+   const word LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- Array of bytes.
+   include large_array_1   
+   alias bluetooth_hc05_receive_buffer is large_array_1
+end if 
+-- The number of bytes available in the receive buffer (excluding 'OK').
+var byte bluetooth_hc05_bytes_received
+
+-- Resets the bluetooth module.
+function bluetooth_hc05_reset() return bit
+
+-- Initialize (reset) the module. The wait time is set to 1 second.
+-- Returns TRUE if succesful.
+function bluetooth_hc05_init() return bit
+
+-- Set the wait time for the HC-05 to respond. Time is set in 100 us times.
+procedure bluetooth_hc05_set_wait_time(dword in waittime)
+
+-- Returns TRUE if the module is responding, otherwise FALSE is returned.
+-- When the module is connected to the host the response will also be FALSE.
+function bluetooth_hc05_available() return bit 
+
+-- Restore the device to the factory defaults. Returns TRUE when succcesful.
+function bluetooth_hc05_restore_default() return bit 
+
+-- Get the firmware version number. Returns TRUE if succesful. The version
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_firmware_version() return bit
+
+-- Get the Bluetooth address of the module. The Bluetooth device address 
+-- (BD_ADDRESS) is a 48-bit address and consists of the following parts:
+-- *) Non-significant address part (NAP), consisting of 16 bits
+-- *) Upper address part (UAP), consisting of 8 bits
+-- *) Lower address part (LAP), consisting of 24 bits
+-- Returns TRUE if succesful.
+function bluetooth_hc05_get_bluetooth_address(word out nap, byte out uap,
+                                              dword out lap) return bit 
+
+-- Get the device name of the remote module by sending the address. The address 
+-- of the remote module is given in de NAP:UAP:LAP format. The remote device
+-- name is returned in the bluetooth_hc05_receive_buffer. Returns TRUE if succesful.
+function bluetooth_hc05_get_remote_device_name(word in nap, byte in uap,
+                                               dword in lap) return bit 
+
+-- Get the device name of the module. Returns TRUE if succesful. The 
+-- device name is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_name() return bit
+
+-- Set the device name. The device name may not be longer than 
+-- BLUETOOTH_HC05_NAME_MAX_LENGTH. Returns TRUE when succcesful.
+function bluetooth_hc05_set_device_name(byte in name[]) return bit  
+
+-- Get the device role. Returns TRUE if succesful. 
+function bluetooth_hc05_get_device_role(byte out role) return bit
+
+-- Set the role of the device. Return TRUE when succesful.
+function bluetooth_hc05_set_device_role(byte in role) return bit 
+
+-- Get the device class and return it as dword. Returns TRUE when succesful.
+-- The device class is a 24 bit number.
+function bluetooth_hc05_get_device_class(dword out class) return bit
+
+-- Set the device class. Returns TRUE when succesful. The device class
+-- is a 24 bit number.
+function bluetooth_hc05_set_device_class(dword in class) return bit 
+
+-- Get the device access code and return it as dword. Returns TRUE when succesful.r. 
+-- The access code is a 24 bit number.
+function bluetooth_hc05_get_inquire_access_code(dword out access_code) return bit
+
+-- Set the inquire access code. Returns TRUE when succesful.
+-- The access code is a 24 bit number.
+function bluetooth_hc05_set_inquire_access_code(dword in access_code) return bit 
+
+-- Get the inquire access mode. Values of paramters are:
+-- *) Inquire_access_mode: 0 (standard) or 1 (rssi - default)
+-- *) Maximum_devices: 0 to 32000  (default is 1)
+-- *) Timeout: 1 to 48 (default is 48). Timeout * 1.28 gives timeout in seconds.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_get_inquire_access_mode(byte out inquire_access_mode, word out maximum_devices,
+                                                byte out timeout) return bit
+
+-- Set the inquire access mode. Values of paramters are:
+-- *) Inquire_access_mode: 0 (standard) or 1 (rssi - default)
+-- *) Maximum_devices: 0 to 32000 (default is 1)
+-- *) Timeout: 1 to 48 (default is 48). Timeout * 1.28 gives timeout in seconds.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_set_inquire_access_mode(byte in inquire_access_mode, word in maximum_devices,
+                                                byte in timeout) return bit
+
+-- Get the device password. Returns TRUE if succesful. The device password
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_password() return bit 
+
+-- Set the device password. The password may not be longer than 
+-- BLUETOOTH_HC05_PASSWORD_MAX_LENGTH. Returns TRUE when succesful. 
+-- The default factory password is "1234".                                          
+function bluetooth_hc05_set_device_password(byte in password[]) return bit   
+
+-- Get the device baudrate. Returns TRUE if succesful. The device baudrate
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_baudrate() return bit
+
+-- Set the baudrate of the module and the baudrate of the serial interface
+-- connected to the module. Returns TRUE when succesful. Baudrate is set
+-- to 1 stop bit, no parity.
+-- Note: The baudrate changes after a new power up of the module. Make sure
+--       that the baudrate of the PIC is also changed to this new baudrate 
+--       after power up.
+function bluetooth_hc05_set_baudrate(byte in baudrate) return bit   
+
+-- Get the connection mode. Returns TRUE when succesful.
+function bluetooth_hc05_get_connection_mode(byte out connection_mode) return bit
+ 
+ -- Set the connection mode. If the mode BLUETOOTH_HC05_CONNECTION_MODE_SPECIFIC
+ -- is used, the actual Bleutooth device address must be set by the function 
+ -- bluetooth_hc05_set_binding_bluetooth_address(). Returns TRUE when succesful.
+function bluetooth_hc05_set_connection_mode(byte in connection_mode) return bit
+
+-- Pair with the remote Bluetooth device using the given address.The address 
+-- of the remote module is given in de NAP:UAP:LAP format.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_pair_with_device(word in nap, byte in uap,
+                                         dword in lap) return bit 
+
+-- Get the binding Bluetooth address of the connected device. The address 
+-- of the remote module is given in de NAP:UAP:LAP format.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_get_binding_address(word out nap, byte out uap,
+                                            dword out lap) return bit
+
+-- Set the binding Bluetooth address of the device to connect to.
+-- The address is given in de NAP:UAP:LAP format. Returns TRUE when succesful.
+function bluetooth_hc05_set_binding_address(word in nap, byte in uap,
+                                            dword in lap) return bit
+
+-- Connect to the device with the given  Bluetooth address.
+-- The address is given in de NAP:UAP:LAP format. Returns TRUE when succesful.
+function bluetooth_hc05_connect_to_device(word in nap, byte in uap,
+                                          dword in lap) return bit
+
+-- Deletes all authenticated devices in the pair list.
+function bluetooth_hc05_clear_all_paired_devices() return bit
+
+-- Initialize the SSP profile.
+function bluetooth_hc05_initialize_ssp_profile() return bit
+
+-- Get the bluetooth addres of the device with the given name. This function handles
+-- at most BLUETOOTH_HC05_MAX_INQUIRED_DEVICES responses. Returns TRUE when found.
+-- The address is given in de NAP:UAP:LAP format. 
+function bluetooth_hc05_get_device_address(byte in name[], word out nap, 
+                                           byte out uap, dword out lap) return bit
+
+-- Returns TRUE if data is received from the module. Data can then be obtained 
+-- by reading from the variable 'bluetooth_hc05_data'.
+function bluetooth_hc05_data_available() return bit
+
+-- Returns TRUE when data can be sent to the module. The data can then be sent 
+-- by writing to the variable 'bluetooth_hc05_data'.                 
+function bluetooth_hc05_data_ready() return bit
+
+-- Send a command to the module and return TRUE when succesful. This function
+-- can be used if the firmware of the module uses commands not supported by
+-- this library.
+function bluetooth_hc05_send_command(byte in command[]) return bit
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Private stuff ------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Sends a carriage returen + linefeed over the serial interface. 
+procedure _bluetooth_hc05_send_crlf()
+
+-- Sends the given string to the module over the serial interface. We will also
+-- clear the receive buffer to be prepared for the response.
+procedure _bluetooth_hc05_send_string(byte in string[])
+
+-- Flush the serial receive buffer. Also reset the read pointer and 
+-- the number of bytes received.
+procedure _bluetooth_hc05_flush_serial_receive_buffer()
+
+-- Get a byte from the bluetooth receive buffer. Returs TRUE if a byte is available.
+-- The read pointer is advanced to the next byte in the buffer.
+function _bluetooth_hc05_get_received_byte(byte out character) return bit 
+
+-- Strip carriage return and linefeed from the end of the receive buffer
+procedure _bluetooth_hc05_strip_crlf_from_receive_buffer() 
+
+-- Purge the receive buffer, that is move all data starting at the read pointer
+-- to the first location of the receive buffer, removing stuff that we no
+-- longer need. The number of bytes in the receive buffer is adjusted and the
+-- read pointer is reset.
+procedure _bluetooth_hc05_purge_receive_buffer() 
+
+-- Find the given token in the receive buffer. Returns TRUE if the given  
+-- token if found. The read pointer is adjusted until the end of the token
+-- by the call the the get received byte function.
+function _bluetooth_hc05_find_token(byte in token[]) return bit 
+
+-- Wait for data and find the given token in the receive buffer. Returns TRUE 
+-- if the given token if found. The receive buffer is purged to remove the
+-- token from the buffer but the rest of the buffer remains.
+function _bluetooth_hc05_wait_and_find_token(byte in token[]) return bit
+
+-- Wait for data from the module and copy all data to the bluetooth receive
+-- buffer until 'OK' is found. If 'OK' is found the function returns TRUE.
+-- The number of bytes in the receive buffer is stored in the global variable
+-- bluetooth_hc05_bytes_received and the read pointer is reset.
+-- Note that 'OK' is not stored in bluetooth_hc05_bytes_received but the
+-- carriage return and line feed are. 
+function _bluetooth_hc05_wait_and_get_data_ok() return bit 
+
+-- Convert a hexadecimal ascii character to a value.
+function _bluetooth_hc05_hex_char_to_value(byte in character) return byte
+
+-- Convert a value to a hexadecimal ascii character.
+function _bluetooth_hc05_value_to_hex_char(byte in value) return byte 
+
+-- Check if the given byte is a valid hexdeximal ascii character. 
+-- Returns TRUE when OK.
+function _bluetooth_hc05_is_valid_ascii_hex(byte in character) return bit
+
+-- Convert the ascii string in the bluetooth_hc05_receive_buffer to a binary number.
+function _bluetooth_hc05_ascii_to_binary() return dword
+
+-- Get a part of the Bluetooth adress from the receive buffer. The receive
+-- buffer calculates the part of the address until ':' is received. The
+-- received data is hexadecimal.
+function _bluetooth_hc05_get_bluetooth_address_part() return dword
+
+-- Parse the bluetooth address that is given in the bluetooth_hc05_receive buffer.
+procedure _bluetooth_hc05_parse_bluetooth_address(word out nap, byte out uap,
+                                                  dword out lap) 
+
+-- Send on byte in ascii hex format to the module.
+procedure _bluetooth_hc05_send_byte_hex(byte in value) 
+
+-- Convert to ASCII and send the bluetooth address that is given in the parameters.
+procedure _bluetooth_hc05_send_bluetooth_address(word in nap, byte in uap,
+                                                 dword in lap)
+
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Implementation -----------------------------------
+-- -----------------------------------------------------------------------------
+-- Wait for response of the HC-05 module in steps of 100 us.
+var dword _bluetooth_hc05_wait_time
+
+-- We use a read pointer on the receive buffer so that we can more easily process
+-- the data.
+var byte _bluetooth_hc05_read_pointer 
+
+-- The main program can use different versions of the JAL serial hardware
+-- libraries so we use aliases to make this generic.
+if defined(serial_hw_write) then
+   alias _bluetooth_hc05_serial_write          is serial_hw_write
+   alias _bluetooth_hc05_serial_read           is serial_hw_read
+   alias _bluetooth_hc05_serial_data           is serial_hw_data
+   alias _bluetooth_hc05_serial_data_available is serial_hw_data_available
+   alias _bluetooth_hc05_serial_data_ready     is serial_hw_data_ready
+elsif defined(serial_hw2_write) then
+   alias _bluetooth_hc05_serial_write          is serial_hw2_write
+   alias _bluetooth_hc05_serial_read           is serial_hw2_read
+   alias _bluetooth_hc05_serial_data           is serial_hw2_data
+   alias _bluetooth_hc05_serial_data_available is serial_hw2_data_available
+   alias _bluetooth_hc05_serial_data_ready     is serial_hw2_data_ready
+else
+   _error "no serial port defined"     
+end if
+
+
+-- Resets the bluetooth module.
+function bluetooth_hc05_reset() return bit is
+
+  _bluetooth_hc05_send_string("AT+RESET\r\n")
+
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+
+-- Initialize (reset) the module. The wait time is set to 1 second.
+-- Returns TRUE if succesful.
+function bluetooth_hc05_init() return bit is
+
+  _bluetooth_hc05_wait_time = 10_000
+
+   return bluetooth_hc05_reset() 
+
+end function
+
+
+-- Set the wait time for the HC-05 to respond. Time is set in 100 us times.
+procedure bluetooth_hc05_set_wait_time(dword in waittime) is
+   
+   _bluetooth_hc05_wait_time = waittime
+
+end procedure
+
+
+-- Returns TRUE if the module is responding, otherwise FALSE is returned.
+-- When the module is connected to the host the response will also be FALSE.
+function bluetooth_hc05_available() return bit is
+
+   _bluetooth_hc05_send_string("AT\r\n")   
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+
+-- Restore the device to the factory defaults. Returns TRUE when succcesful.
+function bluetooth_hc05_restore_default() return bit is  
+
+   _bluetooth_hc05_send_string("ORGL\r\n")
+   return _bluetooth_hc05_wait_and_get_data_ok() 
+     
+end function
+
+
+-- Get the firmware version number. Returns TRUE if succesful. The version
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_firmware_version() return bit is
+
+   _bluetooth_hc05_send_string("AT+VERSION?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+VERSION:") then 
+      _bluetooth_hc05_strip_crlf_from_receive_buffer()
+      return TRUE
+   else
+      return FALSE  
+   end if
+   
+end function
+
+
+-- Get the Bluetooth address of the module. The Bluetooth device address 
+-- (BD_ADDRESS) is a 48-bit address and consists of the following parts:
+-- *) Non-significant address part (NAP), consisting of 16 bits
+-- *) Upper address part (UAP), consisting of 8 bits
+-- *) Lower address part (LAP), consisting of 24 bits
+-- Returns TRUE if succesful.
+function bluetooth_hc05_get_bluetooth_address(word out nap, byte out uap,
+                                              dword out lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+ADDR?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+ADDR:") then   
+      _bluetooth_hc05_parse_bluetooth_address(nap, uap, lap)  
+      return TRUE
+   else
+      return FALSE 
+   end if
+
+end function
+
+
+-- Get the device name of the remote module by sending the address. The address 
+-- of the remote module is given in de NAP:UAP:LAP format. The remote device
+-- name is returned in the bluetooth_hc05_receive_buffer. Returns TRUE if succesful.
+function bluetooth_hc05_get_remote_device_name(word in nap, byte in uap,
+                                               dword in lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+RNAME?")
+   _bluetooth_hc05_send_bluetooth_address(nap, uap, lap)
+   _bluetooth_hc05_send_crlf()
+   if _bluetooth_hc05_wait_and_find_token("+RNAME:") then 
+      _bluetooth_hc05_strip_crlf_from_receive_buffer()
+      return TRUE
+   else
+      return FALSE  
+   end if
+   
+end function
+
+
+-- Get the device name of the module. Returns TRUE if succesful. The 
+-- device name is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_name() return bit is
+
+   _bluetooth_hc05_send_string("AT+NAME?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+NAME:") then 
+      _bluetooth_hc05_strip_crlf_from_receive_buffer()
+      return TRUE
+   else
+      return FALSE  
+   end if
+       
+end function
+
+
+-- Set the device name. The device name may not be longer than 
+-- BLUETOOTH_HC05_NAME_MAX_LENGTH. Returns TRUE when succcesful.
+function bluetooth_hc05_set_device_name(byte in name[]) return bit is  
+
+   -- Set the name if not too long.
+   if (count(name) <= BLUETOOTH_HC05_NAME_MAX_LENGTH) then
+      _bluetooth_hc05_send_string("AT+NAME=")
+      _bluetooth_hc05_send_string(name)
+      _bluetooth_hc05_send_crlf()
+       return _bluetooth_hc05_wait_and_get_data_ok() 
+   else
+      return FALSE     
+   end if 
+     
+end function
+
+
+-- Get the device role. Returns TRUE if succesful. 
+function bluetooth_hc05_get_device_role(byte out role) return bit is
+
+   _bluetooth_hc05_send_string("AT+ROLE?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+ROLE:") then   
+      -- Convert the ACII value in the receive buffer to a binary value.
+      role = byte(_bluetooth_hc05_ascii_to_binary)
+      return TRUE
+   else
+      return FALSE
+   end if
+  
+end function
+
+
+-- Set the role of the device. Return TRUE when succesful.
+function bluetooth_hc05_set_device_role(byte in role) return bit is  
+
+   var byte role_array[1]
+    
+   role_array[0] = _bluetooth_hc05_value_to_hex_char(role)
+   _bluetooth_hc05_send_string("AT+ROLE=")
+   _bluetooth_hc05_send_string(role_array)
+   _bluetooth_hc05_send_crlf()
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok()
+     
+end function
+
+
+-- Get the device class and return it as dword. Returns TRUE when succesful.
+-- The device class is a 24 bit number.
+function bluetooth_hc05_get_device_class(dword out class) return bit is
+ 
+   _bluetooth_hc05_send_string("AT+CLASS?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+CLASS:") then  
+      class = _bluetooth_hc05_ascii_to_binary
+      return TRUE
+   else
+      return FALSE
+   end if
+  
+end function
+
+
+-- Set the device class. Returns TRUE when succesful. The device class
+-- is a 24 bit number.
+function bluetooth_hc05_set_device_class(dword in class) return bit is  
+
+    var byte class_byte[3] at class
+   
+   _bluetooth_hc05_send_string("AT+CLASS=")
+   -- Fill the access code array. Only 3 bytes. Skip highest byte.
+   _bluetooth_hc05_send_byte_hex(class_byte[2])
+   _bluetooth_hc05_send_byte_hex(class_byte[1])
+   _bluetooth_hc05_send_byte_hex(class_byte[0])
+   _bluetooth_hc05_send_crlf()
+    
+    return _bluetooth_hc05_wait_and_get_data_ok() 
+
+end function
+
+
+-- Get the device access code and return it as dword. Returns TRUE when succesful.
+-- The access code is a 24 bit number.
+function bluetooth_hc05_get_inquire_access_code(dword out access_code) return bit is
+
+   _bluetooth_hc05_send_string("AT+IAC?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+IAC:") then   
+      access_code = _bluetooth_hc05_ascii_to_binary
+      return TRUE
+   else
+      return FALSE
+   end if
+    
+end function
+
+
+-- Set the device access code. Returns TRUE when succesful.
+-- The access code is a 24 bit number.
+function bluetooth_hc05_set_inquire_access_code(dword in access_code) return bit is  
+
+   var byte access_code_byte[3] at access_code
+   
+   _bluetooth_hc05_send_string("AT+IAC=")
+   -- Send the access code. Only 3 bytes (6 nibbles). Skip highest byte.
+   _bluetooth_hc05_send_byte_hex(access_code_byte[2])
+   _bluetooth_hc05_send_byte_hex(access_code_byte[1])
+   _bluetooth_hc05_send_byte_hex(access_code_byte[0])
+   _bluetooth_hc05_send_crlf()
+
+   return _bluetooth_hc05_wait_and_get_data_ok()  
+
+end function
+
+-- Get the inquire access mode. Return values are:
+-- *) Inquire_access_mode: 0 (standard) or 1 (rssi - default)
+-- *) Maximum_devices: 0 to 32000  (default is 1)
+-- *) Timeout: 1 to 48 (default is 48). Timeout * 1.28 gives timeout in seconds.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_get_inquire_access_mode(byte out inquire_access_mode, word out maximum_devices,
+                                                byte out timeout) return bit is
+
+   var byte character
+   var byte index
+   var bit stop
+
+    inquire_access_mode = 0
+    maximum_devices = 0
+    timeout = 0
+   _bluetooth_hc05_send_string("AT+INQM?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+INQM:") then   
+      -- Get Inquire Access Mode.
+      inquire_access_mode = _bluetooth_hc05_hex_char_to_value(bluetooth_hc05_receive_buffer[0])
+      -- Get Maximum number of devices response.
+      index = 2 -- Starts at position 2 after the comma.
+      -- Maximum devices is a decimal number, loop until non-ascii number is received.
+      stop = FALSE
+      while !stop & (index < bluetooth_hc05_bytes_received) loop
+         character = bluetooth_hc05_receive_buffer[index]
+         if _bluetooth_hc05_is_valid_ascii_hex(character) then
+            maximum_devices = maximum_devices * 10
+            maximum_devices = maximum_devices + _bluetooth_hc05_hex_char_to_value(character)
+         else 
+            stop = TRUE
+         end if 
+         index = index + 1
+      end loop
+      -- Get the inquire timeout.
+      stop = FALSE
+      while !stop  & (index < bluetooth_hc05_bytes_received) loop
+         character = bluetooth_hc05_receive_buffer[index]
+         if _bluetooth_hc05_is_valid_ascii_hex(character) then
+            timeout = timeout * 10
+            timeout = timeout + _bluetooth_hc05_hex_char_to_value(character)
+         else 
+            stop = TRUE
+         end if 
+         index = index + 1
+      end loop
+      -- The timeout value can never be 0 so return this as success.
+      return timeout != 0
+   else
+      return FALSE
+   end if
+ 
+end function
+
+
+-- Set the inquire access mode. Values of paramters are:
+-- *) Inquire_access_mode: 0 (standard) or 1 (rssi - default)
+-- *) Maximum_devices: 0 to 32000 (default is 1)
+-- *) Timeout: 1 to 48 (default is 48). Timeout * 1.28 gives timeout in seconds.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_set_inquire_access_mode(byte in inquire_access_mode, word in maximum_devices,
+                                                byte in timeout) return bit is
+
+    var byte temp_array[5] -- Can hold the characters to display one word
+    var byte device_map[2] at maximum_devices
+    var byte index
+
+   _bluetooth_hc05_send_string("AT+INQM=")
+   -- Send inquire access mode as character.
+   _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(inquire_access_mode)
+   _bluetooth_hc05_serial_data = ","
+ 
+   -- Send maximum devices as hexadcimal ASCII characters
+   if maximum_devices == 0 then
+       _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(0)
+   else
+      index = 0
+      while maximum_devices > 0 loop
+         temp_array[index] = byte(maximum_devices % 10)
+         maximum_devices = maximum_devices / 10
+         index = index + 1
+      end loop
+      -- Send the characters in the right order.
+      while index != 0 loop
+          index = index - 1
+         _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(temp_array[index])
+      end loop
+   end if
+
+   _bluetooth_hc05_serial_data = ","
+   -- Send the timeout as a string of characters.
+   if timeout >= 10 then
+      _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(byte(timeout / 10))
+   end if
+   _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(timeout % 10)
+   _bluetooth_hc05_send_crlf()
+
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+
+-- Get the device password. Returns TRUE if succesful. The device password
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_password() return bit is
+
+   _bluetooth_hc05_send_string("AT+PSWD?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+PSWD:") then  
+      _bluetooth_hc05_strip_crlf_from_receive_buffer()
+      return TRUE
+   else
+      return FALSE
+   end if
+                                         
+end function
+
+
+-- Set the device password. The password may not be longer than 
+-- BLUETOOTH_HC05_PASSWORD_MAX_LENGTH. Returns TRUE when succesful. 
+-- The default factory password is "1234".                                          
+function bluetooth_hc05_set_device_password(byte in password[]) return bit is 
+
+   _bluetooth_hc05_flush_serial_receive_buffer()  
+   -- Send the command,
+   if (count(password) <= BLUETOOTH_HC05_PASSWORD_MAX_LENGTH) then
+      _bluetooth_hc05_send_string("AT+PSWD=")
+      _bluetooth_hc05_send_string(password)
+      _bluetooth_hc05_send_crlf()
+      return _bluetooth_hc05_wait_and_get_data_ok()
+   else
+      return FALSE    
+   end if 
+   
+end function
+
+
+-- Get the device baudrate. Returns TRUE if succesful. The device baudrate
+-- is returned in the bluetooth_hc05_receive_buffer. 
+function bluetooth_hc05_get_device_baudrate() return bit is
+
+   _bluetooth_hc05_send_string("AT+UART?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+UART:") then  
+      _bluetooth_hc05_strip_crlf_from_receive_buffer()
+      return TRUE
+   else
+      return FALSE
+   end if
+                                         
+end function
+
+
+-- Set the baudrate of the module and the baudrate of the serial interface
+-- connected to the module. Returns TRUE when succesful. Baudrate is set
+-- to 1 stop bit, no parity.
+-- Note: The baudrate changes after a new power up of the module. Make sure
+--       that the baudrate of the PIC is also changed to this new baudrate 
+--       after power up.
+function bluetooth_hc05_set_baudrate(byte in baudrate) return bit is  
+   
+   case baudrate of
+         
+      BLUETOOTH_HC05_BAUDRATE_4800:
+      block
+         _bluetooth_hc05_send_string("AT+UART=4800,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_9600:
+      block
+         _bluetooth_hc05_send_string("AT+UART=9600,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_19200:
+      block
+         _bluetooth_hc05_send_string("AT+UART=19200,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_38400:
+      block
+         _bluetooth_hc05_send_string("AT+UART=38400,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_57600:
+      block
+         _bluetooth_hc05_send_string("AT+UART=57600,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_115200:
+      block
+         _bluetooth_hc05_send_string("AT+UART=115200,0,0\r\n")
+      end block
+      
+      BLUETOOTH_HC05_BAUDRATE_230400:
+      block
+         _bluetooth_hc05_send_string("AT+UART=230400,0,0\r\n")
+      end block
+
+      BLUETOOTH_HC05_BAUDRATE_460800:
+      block
+         _bluetooth_hc05_send_string("AT+UART=460800,0,0\r\n")
+      end block
+
+      BLUETOOTH_HC05_BAUDRATE_921600:
+      block
+         _bluetooth_hc05_send_string("AT+UART=921600,0,0\r\n")
+      end block
+
+      BLUETOOTH_HC05_BAUDRATE_1382400:
+      block
+         _bluetooth_hc05_send_string("AT+UART=1382400,0,0\r\n")
+      end block
+      
+   end case
+
+   -- The device will return an OK stil using the previous set baudrate. After a
+   -- new power up of the device the baudrate is changed to the new set baudrate.
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+
+-- Get the connection mode. Returns TRUE when succesful.
+function bluetooth_hc05_get_connection_mode(byte out connection_mode) return bit is
+ 
+   _bluetooth_hc05_send_string("AT+CMODE?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+CMODE:") then
+      -- Get Inquire Access Mode.
+      connection_mode = _bluetooth_hc05_hex_char_to_value(bluetooth_hc05_receive_buffer[0])
+      return TRUE
+   else
+      return FALSE
+   end if
+
+end function
+
+
+ -- Set the connection mode. If the mode BLUETOOTH_HC05_CONNECTION_MODE_SPECIFIC
+ -- is used, the actual Bleutooth device address must be set by the function 
+ -- bluetooth_hc05_set_binding_bluetooth_address(). Returns TRUE when succesful.
+function bluetooth_hc05_set_connection_mode(byte in connection_mode) return bit is
+ 
+   _bluetooth_hc05_flush_serial_receive_buffer()  
+   _bluetooth_hc05_send_string("AT+CMODE=")
+   -- Send inquire access mode as character.
+   _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(connection_mode)
+   _bluetooth_hc05_send_crlf()
+
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+-- Pair with the remote Bluetooth device using the given address.The address 
+-- of the remote module is given in de NAP:UAP:LAP format.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_pair_with_device(word in nap, byte in uap,
+                                         dword in lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+PAIR=")
+   _bluetooth_hc05_send_bluetooth_address(nap, uap, lap)
+   _bluetooth_hc05_send_crlf()
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function 
+
+
+-- Get the binding Bluetooth address of the connected device. The address 
+-- of the remote module is given in de NAP:UAP:LAP format.
+-- Returns TRUE when succesful.
+function bluetooth_hc05_get_binding_address(word out nap, byte out uap,
+                                            dword out lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+BIND?\r\n")
+   if _bluetooth_hc05_wait_and_find_token("+BIND:") then
+     _bluetooth_hc05_parse_bluetooth_address(nap, uap, lap)
+      return TRUE
+   else
+      return FALSE
+   end if
+
+
+end function 
+
+
+-- Set the binding Bluetooth address of the device to connect to.
+-- The address is given in de NAP:UAP:LAP format. Returns TRUE when succesful.
+function bluetooth_hc05_set_binding_address(word in nap, byte in uap,
+                                            dword in lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+BIND=")
+   _bluetooth_hc05_send_bluetooth_address(nap, uap, lap)
+   _bluetooth_hc05_send_crlf()
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function 
+
+
+-- Connect to the device with the given  Bluetooth address.
+-- The address is given in de NAP:UAP:LAP format. Returns TRUE when succesful.
+function bluetooth_hc05_connect_to_device(word in nap, byte in uap,
+                                          dword in lap) return bit is
+
+   _bluetooth_hc05_send_string("AT+LINK=")
+   _bluetooth_hc05_send_bluetooth_address(nap, uap, lap)
+   _bluetooth_hc05_send_crlf()
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function 
+
+
+-- Deletes all authenticated devices in the pair list.
+function bluetooth_hc05_clear_all_paired_devices() return bit is
+
+   _bluetooth_hc05_send_string("AT+RMAAD\r\n")
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok() 
+
+end function
+
+
+-- Initialize the SSP profile.
+function bluetooth_hc05_initialize_ssp_profile() return bit is
+
+   _bluetooth_hc05_send_string("AT+INIT\r\n")
+ 
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+
+-- Get the bluetooth addres of the device with the given name. This function handles
+-- at most BLUETOOTH_HC05_MAX_INQUIRED_DEVICES responses. Returns TRUE when found.
+-- The address is given in de NAP:UAP:LAP format. 
+function bluetooth_hc05_get_device_address(byte in name[], word out nap, 
+                                           byte out uap, dword out lap) return bit is
+   var word nap_array[BLUETOOTH_HC05_MAX_INQUIRED_DEVICES]
+   var byte uap_array[BLUETOOTH_HC05_MAX_INQUIRED_DEVICES]
+   var dword lap_array[BLUETOOTH_HC05_MAX_INQUIRED_DEVICES]
+   var byte index = 0
+   var bit  done = FALSE
+
+   nap = 0
+   uap = 0
+   lap = 0
+   -- Start with an inquiry. 
+   _bluetooth_hc05_send_string("AT+INQ\r\n")
+   if _bluetooth_hc05_wait_and_get_data_ok() then   
+      while !done & (index < BLUETOOTH_HC05_MAX_INQUIRED_DEVICES) loop
+         if _bluetooth_hc05_find_token("+INQ:") then
+            _bluetooth_hc05_parse_bluetooth_address(nap_array[index], uap_array[index], 
+                                                    lap_array[index])
+            -- Skip the rest until the next +INQ.
+            index = index + 1
+         else
+           done = TRUE
+         end if
+      end loop
+      -- We now should have some addresses. Find the address of the one with the
+      -- given name.
+      done = FALSE
+      while (index > 0) & !done loop 
+         index = index - 1
+         _bluetooth_hc05_send_string("AT+RNAME?")
+         _bluetooth_hc05_send_bluetooth_address(nap_array[index], uap_array[index], 
+                                                lap_array[index])  
+         _bluetooth_hc05_send_crlf() 
+         if _bluetooth_hc05_wait_and_find_token("+RNAME:") then 
+            -- Name found, check if it is the same.
+            if _bluetooth_hc05_find_token(name) then
+               nap = nap_array[index]
+               uap = uap_array[index]
+               lap = lap_array[index]
+               done = TRUE
+            end if 
+         end if                                            
+      end loop
+   end if
+
+   return done
+
+end function 
+
+-- Returns TRUE if data is received from the module. Data can then be obtained 
+-- by reading from the variable 'bluetooth_hc05_data'.
+function bluetooth_hc05_data_available() return bit is
+
+   return _bluetooth_hc05_serial_data_available()
+
+end function
+
+
+-- Returns TRUE when data can be sent to the module. The data can then be sent 
+-- by writing to the variable 'bluetooth_hc05_data'.                 
+function bluetooth_hc05_data_ready() return bit is
+
+   return _bluetooth_hc05_serial_data_ready()
+
+end function
+
+
+-- Pseudo variable to send data to the module. Wait for the serial interface to 
+-- be ready and send a data byte. Note that this is a blocking call until the 
+-- previous byte is transmitted. 
+procedure bluetooth_hc05_data'put(byte in data) is
+
+   while !_bluetooth_hc05_serial_data_ready() loop
+      -- Empty body, wait for serial port to be ready.
+   end loop
+   _bluetooth_hc05_serial_data = data
+
+end procedure
+
+
+-- Pseudo variable to receive data from the module. Wait for a data byte from 
+-- the module and return it. Note that this is a blocking call until data is 
+-- received. 
+function bluetooth_hc05_data'get() return byte is
+
+   while !_bluetooth_hc05_serial_data_available() loop
+      -- Emtpy body, wait for data to be available.
+   end loop
+
+   return _bluetooth_hc05_serial_data
+
+end function
+
+
+
+-- Send a command to the module and return TRUE when succesful. This function
+-- can be used if the firmware of the module uses commands not supported by
+-- this library.
+function bluetooth_hc05_send_command(byte in command[]) return bit is
+
+   _bluetooth_hc05_send_string(command)
+
+   return _bluetooth_hc05_wait_and_get_data_ok()
+
+end function
+
+  
+-- -----------------------------------------------------------------------------
+-- ----------------- PRIVATE PROCEDURES AND FUNCTIONS --------------------------
+-- -----------------------------------------------------------------------------
+
+-- Sends a carriage returen + linefeed over the serial interface. 
+procedure _bluetooth_hc05_send_crlf() is
+
+   _bluetooth_hc05_serial_data = "\r"
+   _bluetooth_hc05_serial_data = "\n"
+ 
+end procedure
+
+-- Sends the given string to the module over the serial interface. We will also
+-- clear the receive buffer to be prepared for the response.
+procedure _bluetooth_hc05_send_string(byte in string[]) is
+
+   var byte index
+   
+   _bluetooth_hc05_flush_serial_receive_buffer()  
+   for count(string) using index loop
+      _bluetooth_hc05_serial_data = string[index]
+   end loop
+
+end procedure
+
+
+-- Flush the serial receive buffer. Also reset the read pointer and 
+-- the number of bytes received.
+procedure _bluetooth_hc05_flush_serial_receive_buffer() is
+
+   var byte dummy
+   
+   while _bluetooth_hc05_serial_read(dummy) loop 
+      -- Nothing, just flushing the input buffer.
+   end loop 
+   _bluetooth_hc05_read_pointer = 0
+   bluetooth_hc05_bytes_received = 0
+  
+end procedure
+
+
+-- Get a byte from the bluetooth receive buffer. Returs TRUE if a byte is available.
+-- The read pointer is advanced to the next byte in the buffer.
+function _bluetooth_hc05_get_received_byte(byte out character) return bit is
+    
+   if _bluetooth_hc05_read_pointer < bluetooth_hc05_bytes_received then
+      character = bluetooth_hc05_receive_buffer[_bluetooth_hc05_read_pointer]
+      _bluetooth_hc05_read_pointer = _bluetooth_hc05_read_pointer + 1
+      return TRUE
+   else
+      return FALSE
+   end if 
+
+end function
+
+-- Strip carriage return and linefeed from the end of the receive buffer
+procedure _bluetooth_hc05_strip_crlf_from_receive_buffer() is
+   var byte index
+
+   for 2 loop
+      if bluetooth_hc05_bytes_received > 0 then
+         index = bluetooth_hc05_bytes_received - 1
+         if (bluetooth_hc05_receive_buffer[index] == "\r") |
+            (bluetooth_hc05_receive_buffer[index] == "\n") then
+            bluetooth_hc05_bytes_received = bluetooth_hc05_bytes_received - 1
+         end if
+      end if
+   end loop
+
+end procedure
+
+-- Purge the receive buffer, that is move all data starting at the read pointer
+-- to the first location of the receive buffer, removing stuff that we no
+-- longer need. The number of bytes in the receive buffer is adjusted and the
+-- read pointer is reset.
+procedure _bluetooth_hc05_purge_receive_buffer() is
+
+   var byte index = 0
+   var byte character
+   
+   while _bluetooth_hc05_get_received_byte(character) loop
+     bluetooth_hc05_receive_buffer[index] = character
+     index = index + 1 
+   end loop
+   bluetooth_hc05_bytes_received = index
+   _bluetooth_hc05_read_pointer = 0
+
+end procedure
+
+
+-- Find the given token in the receive buffer. Returns TRUE if the given  
+-- token if found. The read pointer is adjusted until the end of the token
+-- by the call the the get received byte function.
+function _bluetooth_hc05_find_token(byte in token[]) return bit is
+
+   var byte index = 0
+   var byte character
+   var bit stop = FALSE
+   
+   while !stop & (index != count(token)) loop
+      -- This call advances the read pointer so cannot be combined with the loop.
+      if _bluetooth_hc05_get_received_byte(character) then 
+         if (character == token[index]) then
+            index = index + 1
+         else
+            -- No match (yet), try again.
+            index = 0
+         end if
+      else
+         stop = TRUE
+      end if   
+   end loop
+
+   return (index == count(token))
+   
+end function
+
+
+-- Wait for data and find the given token in the receive buffer. Returns TRUE 
+-- if the given token if found. The receive buffer is purged to remove the
+-- token from the buffer but the rest of the buffer remains.
+function _bluetooth_hc05_wait_and_find_token(byte in token[]) return bit is
+
+   var bit all_ok = FALSE
+
+   if _bluetooth_hc05_wait_and_get_data_ok() then   
+      if _bluetooth_hc05_find_token(token) then
+         -- Clean up the buffer so only the content remains.
+         _bluetooth_hc05_purge_receive_buffer() 
+         all_ok = TRUE
+      end if
+   end if
+                                      
+   return all_ok
+
+end function
+
+
+-- Wait for data from the module and copy all data to the bluetooth receive
+-- buffer until 'OK' is found. If 'OK' is found the function returns TRUE.
+-- The number of bytes in the receive buffer is stored in the global variable
+-- bluetooth_hc05_bytes_received and the read pointer is reset.
+-- Note that 'OK' is not stored in bluetooth_hc05_bytes_received but the
+-- carriage return and line feed are. 
+function _bluetooth_hc05_wait_and_get_data_ok() return bit is
+
+   var dword timeout = 0
+   var byte index = 0
+   var byte character
+   var bit found_o  = FALSE
+   var bit found_ok = FALSE
+   
+   bluetooth_hc05_bytes_received = 0
+   _bluetooth_hc05_read_pointer = 0
+   while (index < BLUETOOTH_HC05_RECEIVE_BUFFER_SIZE) & !found_ok &
+         (timeout < _bluetooth_hc05_wait_time) loop
+
+      if _bluetooth_hc05_serial_read(character) then
+         bluetooth_hc05_receive_buffer[index] = character
+         index = index + 1
+         timeout = 0
+         if (character == "O") then
+            found_o = TRUE
+         elsif (character == "K") & found_o then
+            found_ok = TRUE
+            -- Bytes received is everything except for 'OK'.
+            bluetooth_hc05_bytes_received = index - 2 
+        else
+            -- It was not 'OK', reset.
+            found_o  = FALSE
+            found_ok = FALSE
+         end if 
+      end if
+
+      timeout = timeout + 1
+      _usec_delay(100)
+   end loop
+
+   return found_ok
+
+end function
+
+
+-- Convert a hexadecimal ascii character to a value.
+function _bluetooth_hc05_hex_char_to_value(byte in character) return byte is
+
+   var byte value = 0
+
+   if (character >= "a") & (character <= "f") then
+      value = (character - "a") + 10
+   elsif (character >= "A") & (character <= "F") then 
+      value = (character - "A") + 10
+   elsif (character >= "0") & (character <= "9") then
+      value = (character - "0")
+   end if
+
+   return value 
+
+end function
+
+
+-- Convert a value to a hexadecimal ascii character.
+function _bluetooth_hc05_value_to_hex_char(byte in value) return byte is
+
+   var byte ascii
+
+   if value > 9 then
+      ascii = value + ("A" - 10)
+   else
+      ascii = value + "0"
+   end if
+
+   return ascii 
+
+end function
+
+
+-- Check if the given byte is a valid hexdeximal ascii character. 
+-- Returns TRUE when OK.
+function _bluetooth_hc05_is_valid_ascii_hex(byte in character) return bit is
+   if ((character >= "a") & (character <= "f")) |
+      ((character >= "A") & (character <= "F")) | 
+      ((character >= "0") & (character <= "9")) then
+      return TRUE
+   else
+      return FALSE
+   end if 
+end function
+
+
+-- Convert the ascii string in the bluetooth_hc05_receive_buffer to a binary number.
+function _bluetooth_hc05_ascii_to_binary() return dword is
+
+   var dword result = 0
+   var byte character
+   
+   while _bluetooth_hc05_get_received_byte(character) loop
+      if _bluetooth_hc05_is_valid_ascii_hex(character) then
+         result = (result * 16) + _bluetooth_hc05_hex_char_to_value(character)
+      end if 
+   end loop
+   
+   return result
+   
+end function
+
+
+-- Get a part of the Bluetooth adress from the receive buffer. The receive
+-- buffer calculates the part of the address until ':' is received. The
+-- received data is hexadecimal.
+function _bluetooth_hc05_get_bluetooth_address_part() return dword is
+
+   var dword value = 0
+   var byte character
+   var bit stop = FALSE
+
+   while !stop loop
+      -- This call advances the read pointer so cannot be combined with the loop.
+      if _bluetooth_hc05_get_received_byte(character) then
+         -- The character must be hexadecimal ascii.
+      if _bluetooth_hc05_is_valid_ascii_hex(character) then
+            value = value * 16
+            value = value + _bluetooth_hc05_hex_char_to_value(character)
+         else
+            stop = TRUE
+         end if
+      else
+        stop = TRUE
+      end if  
+   end loop
+
+   return value
+
+end function
+
+
+-- Parse the bluetooth address that is given in the bluetooth_hc05_receive buffer.
+procedure _bluetooth_hc05_parse_bluetooth_address(word out nap, byte out uap,
+                                                  dword out lap) is
+
+   -- Parse the response and split over nap, uap and lap.
+   nap = word(_bluetooth_hc05_get_bluetooth_address_part())
+   uap = byte(_bluetooth_hc05_get_bluetooth_address_part())
+   lap = _bluetooth_hc05_get_bluetooth_address_part()
+
+end procedure
+
+
+-- Send on byte in ascii hex format to the module.
+procedure _bluetooth_hc05_send_byte_hex(byte in value) is
+
+   _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(value>>4)
+   _bluetooth_hc05_serial_data = _bluetooth_hc05_value_to_hex_char(value & 0x0F)
+
+end procedure
+
+
+-- Convert to ASCII and send the bluetooth address that is given in the parameters.
+procedure _bluetooth_hc05_send_bluetooth_address(word in nap, byte in uap,
+                                                 dword in lap) is
+   
+   var byte napmap[2] at nap
+   var byte lapmap[4] at lap
+
+   _bluetooth_hc05_send_byte_hex(napmap[1])
+   _bluetooth_hc05_send_byte_hex(napmap[0])
+   _bluetooth_hc05_serial_data = ","
+   _bluetooth_hc05_send_byte_hex(uap)
+   _bluetooth_hc05_serial_data = ","
+   -- Only 24 bits of dword, not 32.
+   _bluetooth_hc05_send_byte_hex(lapmap[2])
+   _bluetooth_hc05_send_byte_hex(lapmap[1])
+   _bluetooth_hc05_send_byte_hex(lapmap[0])
+
+end procedure
+
+
+
