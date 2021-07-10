@@ -1,0 +1,139 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample showing how to use adc_library
+-- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r5
+-- Revision: $Revision$
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this program shows how to use adc library. It regurlarly performs an
+-- Analog-to-Digital Conversion, on pin RB3/ANB3 and sends the result through serial.
+--
+-- Notes: as output, this sample produces characters on a serial link, and uses delay library.
+-- First be sure you're able to run serial and delay tests.
+--
+-- Few words about diagram: this program performs ADC on channel ANB3, so you can measure
+-- any voltage source connected to these channels (no more than 5V please).
+-- To test the whole, you can use a voltage divider:
+--
+--     5V
+--     |
+--     Z
+--     Z R1        -----------
+--     Z           |
+--     |------ ANB3-|   PIC
+--     Z           |
+--     Z R2        |
+--     Z
+--     |
+--    GND
+--
+--
+-- - R1=1K, R2=1K: you should get ~127/~512 as ADC value (low/high)
+-- - R1=1K, R2=2.2K: you should get ~175/~704 as ADC value (low/high)
+--
+-- Actual output with the above given resistor values (10% tolerance on resistors):
+-- 1k/1k: Result in high resolution: 509
+-- 1k/1k: Result in low  resolution: 127
+-- 1k/2k2: Result in high resolution: 706
+-- 1k/2k2: Result in low  resolution: 176
+--
+-- This file is based on the ADC sample programs made by Sebastien Lelong and is manually 
+-- maintained.
+--
+-- Sources:
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+--
+
+include 16f18857                     -- target PICmicro
+--
+-- This program uses the internal oscillator at 4 MHz.
+pragma target clock    4_000_000       -- oscillator frequency
+--
+pragma target OSC      OFF                       -- internal oscillator
+pragma target RSTOSC   HFINT32                   -- select 32 MHz
+pragma target CLKOUTEN DISABLED                  -- no clock output
+pragma target WDT      DISABLED                  -- watchdog
+pragma target BROWNOUT DISABLED                  -- no brownout reset
+pragma target FCMEN    DISABLED                  -- no clock monitoring
+pragma target CSWEN    ENABLED                   -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED                   -- low voltage programming
+pragma target MCLR     EXTERNAL                  -- external reset
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz
+--
+enable_digital_io()                 -- make all pins digital I/O
+--
+
+-- Set the pinning for the hardware pins of serial interface. This is default but 
+-- still needed for this chip.
+include pps
+pps_control_lock(FALSE)                
+RC6PPS = PPS_TX  -- TX assigned to C6  (default)            
+pps_control_lock(TRUE)                 
+
+include print
+include delay
+
+-- ok, now setup serial, we'll use this
+-- to get ADC measures
+alias pin_rx_direction is pin_c7_direction
+alias pin_tx_direction is pin_c6_direction
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+-- Configure ADC
+-- Step 1: ADC analog input pin setup we wil use channel 11. The reason for
+--         using B3 is that this is not a PPS remappable pin.
+pin_B3_direction = input 
+ANSELB_ANSB3 = TRUE 
+const byte channel = 11
+-- Step 2: Set VDD and VSS as Vref
+ADREF_ADPREF = 0b00
+ADREF_ADNREF = FALSE
+-- Step 3: Use Fosc/8 as ADC clock for 4 MHz see datasheet
+ADCLK_ADCCS = 0b000011 
+-- Now we can include the library
+include adc
+-- And initialize the whole with our parameters
+adc_init()
+
+-- will periodically send those chars
+var word wmeasure
+var byte bmeasure
+const byte wprefix[] = "Result in high resolution: "
+const byte bprefix[] = "Result in low  resolution: "
+
+forever loop
+   -- get ADC result, on channel 11
+   -- this means we're currently reading on pin RB3 !
+
+   -- access results in high resolution
+   wmeasure = adc_read_high_res(channel)
+   -- wmeasure contains the result, as a word (byte*2)
+   print_string(serial_hw_data,wprefix)
+   print_word_dec(serial_hw_data,wmeasure)
+   print_crlf(serial_hw_data)
+
+   -- though we are in high resolution mode,
+   -- we can still get a result as a byte, as though
+   -- it were in low resolution.
+   bmeasure = adc_read_low_res(channel)
+   print_string(serial_hw_data,bprefix)
+   print_byte_dec(serial_hw_data,bmeasure)
+   print_crlf(serial_hw_data)
+
+   -- and sleep a little to prevent flooding serial...
+   delay_1ms(200)
+
+end loop
+

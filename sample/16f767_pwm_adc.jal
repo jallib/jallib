@@ -1,15 +1,15 @@
--- ------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Title: Test program for testing a combination of PWM and ADC (2 channels both)
 --
--- Author: Rob Hamerling, Copyright (c) 2009..2012, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2009..2021, all rights reserved.
 --
--- Adapted-by:
+-- Adapted-by: Rob Jansen
 --
--- Compiler: 2.4l
+-- Compiler: 2.5r5
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description:
 -- Using a combination of 2 ADC and PWM channels.
@@ -23,7 +23,8 @@
 --
 -- Notes:
 --
--- ------------------------------------------------------
+-- -----------------------------------------------------------------------------
+--
 
 include 16f767
 
@@ -49,19 +50,36 @@ pragma target BORSEN   disabled                 -- no software bor
 OSCCON_IRCF = 0b110                             -- 4 MHz
 OSCCON_SCS  = 0b00                              -- oscillator determined by config bits
 
--- -------- ADC setup -----------
-const ADC_CHANNEL_A           = 11              -- AN11 (pin_B4)
-const ADC_CHANNEL_B           = 13              -- AN13 (pin_B5)
-const byte ADC_NCHANNEL       = 11              -- max, for use of AN11 and AN13
-const byte ADC_NVREF          = ADC_NO_EXT_VREF -- no external Vref
-const word ADC_RSOURCE        = 5_000           -- 5K potmeters
-const bit ADC_HIGH_RESOLUTION = false          -- low resolution
-include adc                                     -- include ADC library
-adc_init()                                      -- init ADC library
+-- Include the serial library for testing purposes.
+include print
+const serial_hw_baudrate = 19200
+include serial_hardware
+serial_hw_init()
 
--- ---- PWM setup -------
-pin_CCP1_direction     = output                 -- ) set PWM-pins output!
-pin_CCP2_RC1_direction = output                 -- )
+-- -------- ADC setup -----------
+const ADC_CHANNEL_A = 11                        -- AN11 (pin_B4)
+const ADC_CHANNEL_B = 13                        -- AN13 (pin_B5)
+-- Step 1: ADC input pin setup 
+pin_AN11_direction = input                      
+pin_AN13_direction = input                      
+ADCON1_PCFG = 0b0000                            -- Pins are analog
+-- Step 2: Set VDD and VSS as Vref
+ADCON1_VCFG0 = FALSE                            -- Vref+ is VDD
+ADCON1_VCFG1 = FALSE                            -- Vref- is VSS
+-- Step 3: Use Frc as ADC clock 
+ADCON1_ADCS2 = FALSE 
+ADCON0_ADCS = 0b011 
+-- The maximum resistance while measuring ADC is... (unit: ohms)
+-- Being accurate helps speeding up ADC acquisition
+const word ADC_RSOURCE = 5_000
+-- Now we can include the library
+include adc
+-- And initialize the whole with our parameters
+adc_init()
+
+-- ---- PWM setup set PWM-pins output! -------
+pin_CCP1_direction     = output                 -- ) Pin 13 for 28 pin PDIP
+pin_CCP2_RC1_direction = output                 -- ) Pin 12 for 28 pin PDIP
 include pwm_hardware
 
 var byte measure_a                              -- ADC channel A
@@ -74,6 +92,11 @@ forever loop
    measure_a = adc_read_low_res(ADC_CHANNEL_A)  -- read potmeter 1
    measure_b = adc_read_low_res(ADC_CHANNEL_B)  -- read potmeter 2
 
+   -- Print the measured values (for testing purposes only)
+   print_byte_dec(serial_hw_data, measure_a)
+   print_string(serial_hw_data, " ")
+   print_byte_dec(serial_hw_data, measure_b)
+   print_crlf(serial_hw_data)
 
    pwm1_set_dutycycle_ratio(4 * measure_a)
    pwm2_set_dutycycle_ratio(4 * measure_b)

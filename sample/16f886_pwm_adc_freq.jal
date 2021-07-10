@@ -1,15 +1,15 @@
--- ------------------------------------------------------
+-- -----------------------------------------------------------------------------
 -- Title: Test program for testing a combination of PWM and ADC (2 channels both)
 --
--- Author: Rob Hamerling, Copyright (c) 2009..2019, all rights reserved.
+-- Author: Rob Hamerling, Copyright (c) 2009..2021, all rights reserved.
 --
 -- Adapted-by: Rob Jansen
 --
--- Compiler: 2.5r2
+-- Compiler: 2.5r5
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description:
 -- Using a combination of 2 ADC and PWM channels.
@@ -28,7 +28,8 @@
 -- 1. HD44780 compatible display, used in 4-bit mode.
 --    The LCD backlight is controlled directly (not with the backlight library)
 --
--- ------------------------------------------------------
+-- -----------------------------------------------------------------------------
+--
 
 include 16f886
 
@@ -65,15 +66,21 @@ lcd_init()                                      -- initialize LCD
 -- -------- ADC setup -----------
 const ADC_CHANNEL_A           = 11              -- AN11 (pin_B4)
 const ADC_CHANNEL_B           = 13              -- AN13 (pin_B5)
-const byte ADC_NVREF          = ADC_NO_EXT_VREF -- no external Vref
-const word ADC_RSOURCE        = 5_000           -- 5K potmeter
-const bit ADC_HIGH_RESOLUTION = TRUE            -- high resolution
-include adc                                     -- include ADC library
-adc_init()                                      -- init library
-ANSELH_ANS11 = TRUE                              -- init used ADC channel 11 
-pin_AN11_direction = input
-ANSELH_ANS13 = TRUE                              -- init used ADC channel 13  
-pin_AN13_direction = input
+-- Step 1: ADC input pin setup 
+pin_AN11_direction = input                      
+pin_AN13_direction = input                      
+ANSELH_ANS11 = TRUE                             -- analog input
+ANSELH_ANS13 = TRUE                             -- analog input 
+-- Step 2: Set VDD and VSS as Vref
+ADCON1_VCFG0 = FALSE                            -- Vref+ is VDD
+ADCON1_VCFG1 = FALSE                            -- Vref- is VSS
+-- Step 3: Use Frc as ADC clock 
+ADCON0_ADCS = 0b11 
+const word ADC_RSOURCE = 5_000                  -- 5K potmeter
+-- Now we can include the library
+include adc
+-- And initialize the whole with our parameters
+adc_init()
 
 -- ---- PWM setup -------
 pin_CCP1_direction = output                     -- set PWM-pins output!
