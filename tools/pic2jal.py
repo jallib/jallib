@@ -62,7 +62,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.0"     # script version
+scriptversion = "1.5.1"     # script version
 compilerversion = "2.5r5"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -1882,6 +1882,12 @@ def list_multi_module_register_alias(fp, sfr):
         alias = "BAUDCON"  # remove "1"
     elif (sfrname == "BAUD2CON"):  # 2nd USART: sfrname with suffix
         alias = "BAUDCON2"  # make index "2" a suffix
+    elif (sfrname == "BAUD3CON"):  # 3rd USART: sfrname with suffix
+        alias = "BAUDCON3"  # make index "3" a suffix
+    elif (sfrname == "BAUD4CON"):  # 4th USART: sfrname with suffix
+        alias = "BAUDCON4"  # make index "4" a suffix
+    elif (sfrname == "BAUD5CON"):  # 5th USART: sfrname with suffix
+        alias = "BAUDCON5"  # make index "5" a suffix
     elif (sfrname in ("BAUDCON1", "BAUDCTL1", "RCREG1", "RCSTA1",
                       "SPBRG1", "SPBRGH1", "SPBRGL1", "TXREG1", "TXSTA1")):
         alias = sfrname[0:-1]  # remove trailing "1" index
@@ -1891,6 +1897,15 @@ def list_multi_module_register_alias(fp, sfr):
     elif (sfrname in ("RC2REG", "RC2STA", "SP2BRG", "SP2BRGH",
                       "SP2BRGL", "TX2REG", "TX2STA")):
         alias = sfrname[0:2] + sfrname[3:] + "2"  # make index "2" a suffix
+    elif (sfrname in ("RC3REG", "RC3STA", "SP3BRG", "SP3BRGH",
+                      "SP3BRGL", "TX3REG", "TX3STA")):
+        alias = sfrname[0:2] + sfrname[3:] + "3"  # make index "3" a suffix
+    elif (sfrname in ("RC4REG", "RC4STA", "SP4BRG", "SP4BRGH",
+                      "SP4BRGL", "TX4REG", "TX4STA")):
+        alias = sfrname[0:2] + sfrname[3:] + "4"  # make index "4" a suffix
+    elif (sfrname in ("RC5REG", "RC5STA", "SP5BRG", "SP5BRGH",
+                      "SP5BRGL", "TX5REG", "TX5STA")):
+        alias = sfrname[0:2] + sfrname[3:] + "5"  # make index "5" a suffix
     elif (sfrname in ("SSPCON", "SSP2CON")):
         alias = sfrname + "1"  # add suffix "1"
     elif ((sfrname.startswith("SSP")) & (sfrname[3] == "1")):  # first or only MSSP module
