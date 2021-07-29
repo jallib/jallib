@@ -62,7 +62,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.1"     # script version
+scriptversion = "1.5.2"     # script version
 compilerversion = "2.5r5"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -954,6 +954,7 @@ def list_sfr_subfield(fp, child, sfrname, offset):
 
         elif (child.nodeName == "edc:SFRFieldDef"):
             width = eval(child.getAttribute("edc:nzwidth"))
+
             if (subfields_wanted(sfrname)):  # exclude subfields of some registers
                 adcssplitpics = ("16f737", "16f747", "16f767", "16f777",
                                  "16f818", "16f819", "16f88",
@@ -1033,6 +1034,9 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                 elif (sfrname.startswith("LAT") & (sfrname != "LATVP") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
                     if not (((fieldname == "LATA3") & (cfgvar["lata3_out"] == False)) |
                             ((fieldname == "LATA5") & (cfgvar["lata5_out"] == False)) |
+                            # PICs with USB pins (C4 and C5) are only input.
+                            ((fieldname == "LATC4") & (cfgvar["latc4_out"] == False)) |
+                            ((fieldname == "LATC5") & (cfgvar["latc5_out"] == False)) |
                             ((fieldname == "LATE3") & (cfgvar["late3_out"] == False))):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                         pin = "pin_" + portletter + pinnumber
@@ -1072,6 +1076,18 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
                         list_bitfield(fp, pin, 1, sfrname, offset)
                         list_pin_alias(fp, portletter + pinnumber, sfrname)
+                    elif ((sfrname == "PORTC") & (fieldname == "RC4") &
+                          (cfgvar["haslat"] == True) & (cfgvar["latc4_out"] == False)):
+                        # PICs with USB pins (C4) are only input.
+                        list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+                        list_bitfield(fp, pin, 1, sfrname, offset)
+                        list_pin_alias(fp, portletter + pinnumber, sfrname)
+                    elif ((sfrname == "PORTC") & (fieldname == "RC5") &
+                          (cfgvar["haslat"] == True) & (cfgvar["latc5_out"] == False)):
+                        # PICs with USB pins (C5) are only input.
+                        list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
+                        list_bitfield(fp, pin, 1, sfrname, offset)
+                        list_pin_alias(fp, portletter + pinnumber, sfrname)
                     elif ((sfrname == "PORTE") & (fieldname == "RE3") &
                           (cfgvar["haslat"] == True) & (cfgvar["late3_out"] == False)):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname, offset)
@@ -1099,6 +1115,8 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                             "   " + sfrname + "_ = " + sfrname + "_shadow_\n" +
                             "end procedure\n" +
                             "--\n")
+
+
                 elif ((sfrname.startswith("PORT")) & (sfrname != "PORTVP")):
                     if (cfgvar["haslat"] == False):
                         list_bitfield(fp, sfrname + "_" + fieldname, width, sfrname + "_", offset)
@@ -3416,13 +3434,14 @@ def collect_config_info(root, picname):
     cfgvar["ircf_bits"] = 3  # ircf bits in OSCCON
     cfgvar["lata3_out"] = False  # True: LATA_RA3 bit output capable
     cfgvar["lata5_out"] = False  # LATA_RA5  "    "       "
+    cfgvar["latc4_out"] = False  # LATC_RC4  "    "       " For PICs with USB pins (C4) that are only input.
+    cfgvar["latc5_out"] = False  # LATC_RC5  "    "       " For PICs with USB pins (C5) that are only input.
     cfgvar["late3_out"] = False  # LATE_RE3  "    "       "
     cfgvar["numbanks"] = 1  # RAM banks
     cfgvar["instructionset"] = 0  # Not yet defined
     cfgvar["instructionset_name"] = "-"  # Not yet defined
     cfgvar["osccal"] = 0  # no OSCCAL
     cfgvar["wdtcon_adshr"] = (0, 0)  # no WDTCON_ADSHR (address,offset)
-
     cfgvar["arch"] = pic[0].getAttribute("edc:arch")
     if (cfgvar["arch"] == "16c5x"):  # baseline (12-bits)
         cfgvar["core"] = "12"
@@ -3569,7 +3588,7 @@ def collect_config_info(root, picname):
                               ("A" <= childname[-1] <= "L")):
                             cfgvar["haslat"] = True
                             access = child.getAttribute("edc:access")
-                            if (childname in ("LATA", "LATE")):
+                            if (childname in ("LATA", "LATC", "LATE")):
                                 fields = child.getElementsByTagName("edc:SFRFieldDef")
                                 for field in fields:
                                     fieldname = field.getAttribute("edc:cname").upper()
@@ -3577,6 +3596,10 @@ def collect_config_info(root, picname):
                                         cfgvar["lata3_out"] = True
                                     if ((fieldname == "LATA5") & (access[2] != "r")):
                                         cfgvar["lata5_out"] = True
+                                    if ((fieldname == "LATC4") & (access[3] != "r")):
+                                        cfgvar["latc4_out"] = True # Check for PICs with USB pin C4 that are only input
+                                    if ((fieldname == "LATC5") & (access[4] != "r")):
+                                        cfgvar["latc5_out"] = True # Check for PICs with USB pin C5 that are only input
                                     if ((fieldname == "LATE3") & (access[4] != "r")):
                                         cfgvar["late3_out"] = True
                         elif (childname == "WDTCON"):
