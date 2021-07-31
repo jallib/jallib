@@ -1034,7 +1034,7 @@ def list_sfr_subfield(fp, child, sfrname, offset):
                 elif (sfrname.startswith("LAT") & (sfrname != "LATVP") & (width == 1) & ("0" <= fieldname[-1] <= "7")):
                     if not (((fieldname == "LATA3") & (cfgvar["lata3_out"] == False)) |
                             ((fieldname == "LATA5") & (cfgvar["lata5_out"] == False)) |
-                            # PICs with USB pins (C4 and C5) are only input.
+                            # 18F PICs with USB pins (C4 and C5) are only input.
                             ((fieldname == "LATC4") & (cfgvar["latc4_out"] == False)) |
                             ((fieldname == "LATC5") & (cfgvar["latc5_out"] == False)) |
                             ((fieldname == "LATE3") & (cfgvar["late3_out"] == False))):
@@ -3434,8 +3434,8 @@ def collect_config_info(root, picname):
     cfgvar["ircf_bits"] = 3  # ircf bits in OSCCON
     cfgvar["lata3_out"] = False  # True: LATA_RA3 bit output capable
     cfgvar["lata5_out"] = False  # LATA_RA5  "    "       "
-    cfgvar["latc4_out"] = False  # LATC_RC4  "    "       " For PICs with USB pins (C4) that are only input.
-    cfgvar["latc5_out"] = False  # LATC_RC5  "    "       " For PICs with USB pins (C5) that are only input.
+    cfgvar["latc4_out"] = False  # LATC_RC4  "    "       " For 18F PICs with USB pins (C4) that are only input.
+    cfgvar["latc5_out"] = False  # LATC_RC5  "    "       " For 18F PICs with USB pins (C5) that are only input.
     cfgvar["late3_out"] = False  # LATE_RE3  "    "       "
     cfgvar["numbanks"] = 1  # RAM banks
     cfgvar["instructionset"] = 0  # Not yet defined
@@ -3591,15 +3591,17 @@ def collect_config_info(root, picname):
                             if (childname in ("LATA", "LATC", "LATE")):
                                 fields = child.getElementsByTagName("edc:SFRFieldDef")
                                 for field in fields:
+                                    # Note: Pin numbers and offsets go in opposite direction so the value for LATA3
+                                    #       can be found at access[4].
                                     fieldname = field.getAttribute("edc:cname").upper()
                                     if ((fieldname == "LATA3") & (access[4] != "r")):
                                         cfgvar["lata3_out"] = True
                                     if ((fieldname == "LATA5") & (access[2] != "r")):
                                         cfgvar["lata5_out"] = True
                                     if ((fieldname == "LATC4") & (access[3] != "r")):
-                                        cfgvar["latc4_out"] = True # Check for PICs with USB pin C4 that are only input
-                                    if ((fieldname == "LATC5") & (access[4] != "r")):
-                                        cfgvar["latc5_out"] = True # Check for PICs with USB pin C5 that are only input
+                                        cfgvar["latc4_out"] = True # Check for 18F PICs with USB pin C4 that are only input
+                                    if ((fieldname == "LATC5") & (access[2] != "r")):
+                                        cfgvar["latc5_out"] = True # Check for 18F PICs with USB pin C5 that are only input
                                     if ((fieldname == "LATE3") & (access[4] != "r")):
                                         cfgvar["late3_out"] = True
                         elif (childname == "WDTCON"):
