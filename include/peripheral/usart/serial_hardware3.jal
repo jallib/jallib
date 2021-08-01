@@ -1,0 +1,318 @@
+-- -----------------------------------------------------------------------------
+-- Title: UART hardware control for USART 3
+-- Author: Rob Jansen, Copyright (c) 2021..2021 all rights reserved.
+-- Adapted-by:
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: USART3 hardware control.
+--              Routines for sending and receiving through the second [E]USART3.
+--
+-- Notes: - See also the notes in serial_hardware library.
+--          Tested for baudrates from 1200 baud to 115200 baud.
+--        - When the physical locations of pin_TX and pin_RX are configurable for
+--          a specific PIC, the device file will probably contain names like
+--          pin_TX2_RC3 and pin_RX3_RC1 and another pair with other pin suffixes.
+--          Depending for which pair of pins the USART is configured aliases
+--          without suffixes have to be specified, like:
+--              alias  pin_TX3_direction is pin_TX3_RC2_direction
+--              alias  pin_RX3_direction is pin_RX3_RC1_direction
+--
+-- Sources: Based on the serial_hardware2.jal library by Stef Mientki.
+--
+-- -----------------------------------------------------------------------------
+--
+
+-- Aliases to get things working for future PIC with different type of usarts.
+if defined(U3CON0) then
+   -- Aliases to support newer USART types.
+   alias SPBRGL3      is U3BRGL            -- Baud rate generator low byte.
+   alias SPBRGH3      is U3BRGH            -- Baud rate generator high byte.
+   alias SERIAL3_TXIE is PIE9_U3TXIE       -- Transmit interrrupt enable.
+   alias SERIAL3_RCIE is PIE9_U3RXIE       -- Receive interrupt enable.
+   alias SERIAL3_TXIF is U3FIFO_TXBE       -- Transmit buffer empty flag. 
+   alias SERIAL3_RCIF is U3FIFO_RXBE       -- Receive buffer empty flag.
+   alias SERIAL3_TXEN is U3CON0_TXEN       -- Transmitter enable.
+   alias SERIAL3_RXEN is U3CON0_RXEN       -- Receiver enable
+   alias SERIAL3_SPEN is U3CON1_ON         -- Serial port enable.
+   alias TXREG3       is U3TXB             -- Transmit buffer.
+   alias RCREG3       is U3RXB             -- Receive buffer.
+elsif defined(PIE6_RC3IE) then
+   -- Aliases to support other PICs with classic USART, PIE6/PIR6
+   alias SPBRGL3      is SPBRG3            -- Baud rate generator low byte.
+   alias SERIAL3_TXIE is PIE6_TXIE3        -- Transmit interrrupt enable
+   alias SERIAL3_TXIF is TXSTA3_TRMT       -- Transmit buffer empty flag. 
+   alias SERIAL3_RCIE is PIE6_RCIE3        -- Receive interrupt enable.  
+   alias SERIAL3_RCIF is PIR6_RCIF3        -- Receive buffer empty flag.  
+   alias SERIAL3_TXEN is TXSTA3_TXEN       -- Transmitter enable.
+   alias SERIAL3_SPEN is RCSTA3_SPEN       -- Serial port enable.
+elsif defined(PIE4_RC3IE) then
+   -- Aliases to support other PICs with classic USART, PIE4/PIR4
+   alias SERIAL3_TXEN  is TXSTA3_TXEN      -- Transmitter enable.
+   alias SERIAL3_SPEN  is RCSTA3_SPEN      -- Serial port enable.
+   alias SERIAL3_TXIE  is PIE4_TXIE3       -- Transmit interrrupt enable
+   alias SERIAL3_TXIF  is TXSTA3_TRMT      -- Transmit buffer empty flag. 
+   alias SERIAL3_RCIE  is PIE4_RCIE3       -- Receive interrupt enable.  
+   alias SERIAL3_RCIF  is PIR4_RCIF3       -- Receive buffer empty flag.  
+else
+   _error "This serial 3 library does not support this PIC, please report)"
+end if
+
+include usart3_common
+
+-- -----------------------------------------------------------------------
+-- Title:     Initialize third serial port
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- -----------------------------------------------------------------------
+procedure serial_hw3_init() is
+
+   --Note: The order in which USART is set is important for a correct operation.
+
+   if defined(U3CON0) then
+      -- New USART type. 
+      U3CON0  = 0b0000_0000            -- disable , 8 databits, async
+      U3CON1  = 0b0000_0000            -- disable, normal operation
+      U3CON2  = 0b0000_0000            -- one stop bit, flow control is off, no polarity
+
+      _calculate_and_set_baudrate3()   -- transmit and receive speed
+
+      SERIAL3_TXIE = DISABLED          -- Disable all USART interrupts,
+      SERIAL3_RCIE = DISABLED        
+      U3ERRIR = 0b0000_0000            -- no errors
+      U3ERRIE = 0b0000_0000            -- error interrupts disabled
+      U3UIR   = 0b0000_0000            -- no auto baud
+
+      pin_RX3_direction = INPUT           
+      pin_TX3_direction = OUTPUT          
+
+      SERIAL3_SPEN = TRUE              -- enable serial port
+      SERIAL3_TXEN = TRUE              -- enable transmitter
+      SERIAL3_RXEN = TRUE              -- enable receive
+
+     else
+      -- Classic USART type
+      TXSTA3 = 0b0000_0000             -- reset (8 bit, async)
+      RCSTA3 = 0b0000_0000             -- reset (8 bit, async)
+
+      _calculate_and_set_baudrate3()   -- transmit and receive speed
+
+      SERIAL3_TXIE = DISABLED          -- disable all USART interrupts,
+      SERIAL3_RCIE = DISABLED        
+  
+      pin_RX3_direction = INPUT           
+      pin_TX3_direction = OUTPUT          
+      
+      SERIAL3_SPEN = TRUE              -- enable serial port
+      SERIAL3_TXEN = TRUE              -- enable transmitter
+      RCSTA3_CREN  = ENABLED           -- continuous receive
+   
+   end if
+
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Disable USART3
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Allows pins to be used (temporary) for other purposes.
+--            USART can be enabled again by calling serial_hw3_enable()
+-- -----------------------------------------------------------------------
+procedure serial_hw3_disable() is
+
+   while !SERIAL3_TXIF loop 
+      -- wait while transmission pending
+   end loop     
+   SERIAL3_SPEN = FALSE                  -- disable serial port
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Enable USART3
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Title:     Re-enable USART after use of serial_hw3_disable()
+-- -----------------------------------------------------------------------
+procedure serial_hw3_enable() is
+
+   SERIAL3_SPEN = TRUE                   -- enable serial port
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit character
+-- Arguments: Data (byte) to transmit
+-- Returns:   (nothing)
+-- Notes:     Hardware transmit buffer must be empty, wait if necessary
+-- -----------------------------------------------------------------------
+procedure serial_hw3_write(byte in data) is
+
+   while !SERIAL3_TXIF loop
+      -- wait while transmission pending 
+   end loop   
+   TXREG3 = data                        -- transfer data
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit word
+-- Arguments: Data (word) to transmit
+-- Returns:   (nothing)
+-- Notes:     Send word as 2 bytes, Most Significant Byte first.
+--            See also serial_hw_write()
+-- -----------------------------------------------------------------------
+procedure serial_hw3_write_word(word in data) is
+
+   var byte dx[2] at data                
+   serial_hw3_write(dx[1])
+   serial_hw3_write(dx[0])
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
+-- Notes:     Using this inline function for serial_hw_data'get saves a stack level
+--            With overrun error the USART is reset (error(?)byte is returned!)
+-- -----------------------------------------------------------------------
+function _serial_hw3_read(byte out data) return bit is
+
+var bit return_value = FALSE
+
+    if defined(U3CON0) then
+      -- New USART type
+      if !SERIAL3_RCIF then           -- check if data available
+         data = RCREG3                -- pass received byte to caller
+         return_value = TRUE
+      elsif U3ERRIR_FERIF | U3ERRIR_RXFOIF | U3ERRIR_RXBKIF | U3ERRIR_PERIF then
+         -- reset framing and/or overflow errors
+         U3ERRIR_FERIF  = FALSE
+         U3ERRIR_RXFOIF = FALSE
+         U3ERRIR_RXBKIF = FALSE
+         U3ERRIR_PERIF  = FALSE
+         U3FIFO_RXBE    = TRUE         -- clear receive bufer
+      end if
+
+   else
+      -- Classic USART type
+      if SERIAL3_RCIF then            -- check if data available
+         data = RCREG3                -- pass received byte to caller
+         SERIAL3_RCIF = FALSE         
+         return_value = TRUE
+      elsif RCSTA3_OERR then          -- reset USART after overrun
+         RCSTA3_CREN = FALSE
+         RCSTA3_CREN = TRUE
+      end if
+
+   end if
+
+   return return_value
+   
+end function
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   bit:
+--            -  TRUE data available
+--            -  FALSE no data available
+-- -----------------------------------------------------------------------
+function serial_hw3_read(byte out data) return bit is
+
+   return _serial_hw3_read(data)
+
+end function
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Transmit byte
+-- Arguments: Data (byte) to be transmitted
+-- Returns:   (nothing)
+-- Notes:     This pseudo variable allows a language construct like
+--              serial_hw3_data = <byte>
+--            to transmit a byte to the seial port
+-- -----------------------------------------------------------------------
+procedure serial_hw3_data'put(byte in data) is
+
+   serial_hw3_write(data)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------
+-- Title:     Receive byte
+-- Arguments: (none)
+-- Returns:   Data (byte) received
+-- Notes:     This pseudo variable allows a language construct like
+--               databyte = serial_hw3_data
+--            to receive a byte from the serial port into variable 'databyte'
+-- -----------------------------------------------------------------------
+function serial_hw3_data'get() return byte is
+
+   var byte data
+
+   while !_serial_hw3_read(data) loop  
+      --  Empty loop.
+   end loop
+   
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------
+-- raw interface
+-- -----------------------------------------------------------------------
+
+-- generic (pic-independent) variable to check if a byte is received
+function serial_hw3_data_available() return bit is
+
+   if defined(U3CON0) then
+      -- New USART type
+      return !SERIAL3_RCIF  
+   else
+      -- Classic USART type
+      return SERIAL3_RCIF
+   end if
+
+end function
+
+
+-- generic (pic-independent) variable to check if transmit buffer is empty
+function serial_hw3_data_ready() return bit is
+
+   return SERIAL3_TXIF
+
+end function
+
+
+-- These are real raw procedures, declared as pseudo variables
+-- the user is totally responsible for testing the transmit/receive
+-- flag before using these functions
+procedure serial_hw3_data_raw'put(byte in data) is
+ 
+   TXREG3 = data
+
+end procedure
+
+
+function serial_hw3_data_raw'get() return byte is
+
+   return RCREG3
+
+end function
+

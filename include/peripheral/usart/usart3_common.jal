@@ -1,0 +1,98 @@
+-- -----------------------------------------------------------------------------
+-- Title: UART3 common.
+-- Author: Rob Jansen, Copyright (c) 2021..2021 all rights reserved.
+-- Adapted-by:
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: USART3 common functions.
+--              This file provides common functions to other libraries.
+--
+-- Notes: Baudrate can simply be set through a constant in the application 
+--        program, because the baudrate depending registers are calculated by 
+--        this unit. Baudrate is calculated, starting at the high baudrate flag,
+--        which will ensure the highest possible accuracy.
+--
+--        The 8-bit baudrate generator is not supported by this library since 
+--        it is assumed that for these newer USARTS this is no longer used.
+--
+-- Sources: Based on the uart2_common.jal llibrary by Stef Mientki.
+--
+-- -----------------------------------------------------------------------------
+--
+
+if (defined(usart_hw3_serial) == FALSE) then
+   const bit usart_hw3_serial = TRUE    -- default is async mode (not sync)
+end if
+
+-- ------------------------------------------------------------------------------
+-- Title:     Calculate and set baudrate
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     - Uses externally defined constant 'serial_hw_baudrate' to
+--              set baudrate registers and corresponding control bits
+--            - Uses bit-constant 'usart_hw_serial' to determine mode of operation:
+--              * TRUE:  Asynchronous communications (default)
+--              * FALSE: Synchronous communications
+-- ------------------------------------------------------------------------------
+procedure _calculate_and_set_baudrate3() is
+
+   const max_deviation = 5                -- maximum % deviation of the desired baudrate
+
+   if usart_hw3_serial then               -- USART in asynchronous mode
+
+      if defined(BAUDCON3_BRG16) then    
+         BAUDCON3_BRG16 = TRUE            -- use 16 bits baudrate register
+         TXSTA3_BRGH = TRUE               -- use high speed
+      elsif defined(U3CON0_BRGS) then     
+         U3CON0_BRGS = TRUE               -- use high speed
+      end if
+ 
+      const usart_div = ((5 + ( ( 10 * target_clock ) / ( 4 * serial_hw3_baudrate ))  ) / 10 ) - 1
+      const real_baud = target_clock / 4 / ((usart_div & 0xffff) + 1)
+      if (real_baud > serial_hw3_baudrate) then
+         if (100 * (real_baud - serial_hw3_baudrate) / serial_hw3_baudrate >= max_deviation) then
+            _error "asynchronous baudrate deviation is too large"
+         end if
+      else
+         if (100 * (serial_hw3_baudrate - real_baud) / serial_hw3_baudrate >= max_deviation) then
+            _error "asynchronous baudrate deviation is too large"
+         end if
+      end if
+
+      SPBRGL3 = byte(usart_div)           -- LSB
+      SPBRGH3 = byte(usart_div >> 8)      -- MSB
+
+   else                                   -- USART in synchronous mode
+
+      const usart_div_sync = ( target_clock / ( 4 * serial_hw3_baudrate )) - 1
+
+      -- special case if divider is 0 or negative
+      -- test if baudrate is a little bit too high
+      if usart_div_sync <= 0 then
+         if (100 * (serial_hw3_baudrate - (target_clock / 4 ) )) / serial_hw3_baudrate >= max_deviation then
+            _error "Synchronous baudrate is too high"
+         end if
+      end if
+
+      -- special case to consider, if baudrate is just a little too high
+      if (usart_div_sync > 255) & (100 * ((target_clock / (4 * 256)  ) - serial_hw3_baudrate)) / serial_hw3_baudrate < max_deviation then
+         SPBRGL3 = byte(255)
+      elsif (usart_div_sync <= 255) then
+         if (usart_div_sync >= 0) then
+            SPBRGL3 = byte(usart_div_sync)
+         else
+            SPBRGL3 = byte(0)
+         end if
+      else
+         _error "Synchronous baudrate is too low"
+      end if
+
+   end if
+
+end procedure
+

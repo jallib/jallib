@@ -1,0 +1,513 @@
+-- --------------------------------------------------------------------------
+-- Title: Interrupt driven buffered serial interface for USART3 with flow control.
+-- Author: Rob Jansen Copyright (c) 2021..2021, all rights reserved.
+-- Adapted-by: 
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib  (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Serial communications for the third USART:
+--   - receive and transmit data transfer is interrupt driven
+--   - receive and transmit data transfer is buffered (circular buffers)
+--   - provides automatic CTS flow control with spare free space for FiFo buffer
+-- .
+-- This library supports:
+--   - Data format: 8 bits data, 1 start-bit, 1 stop bit
+--   - Acceptable baud rate depends on the oscillator frequency
+--     (see BAUD RATES tables in the datasheet).
+--   - Interrupt bits used: TXIE, RCIE, PEIE and GIE.
+-- .
+-- Available procedures/functions for application programs:
+--   - serial_hw3_init()                         -- initialise communications
+--   - serial_send3_byte(byte out <byte>)        -- send byte
+--                                               -- returns the transmitted byte
+--   - serial_hw3_read(byte out <byte>) return bit  -- receive byte
+--                                               -- returns TRUE with data,
+--                                               -- FALSE when no data available
+--   - serial_hw3_write(byte in <byte>)          -- send byte (wait if queue full)
+--   - serial_hw3_data = <byte>                  -- send byte, wait if queue full
+--   - serial_hw3_tx_buffer_free()               -- get free bytes in transmit buffer
+--                                               -- returns number of free bytes
+--   - <byte> = serial_hw3_data                  -- receive byte, wait if queue empty
+-- .
+-- Directions for use of this library in application programs (in this sequence):
+-- 1. Declare the following constants:
+--      const  serial_hw3_baudrate = 115200        -- line speed must be declared (no default)
+--      const bit serial3_overflow_discard = FALSE -- Transmit buffer overflow:
+--                                                 -- -) FALSE: wait for free space (blocking)
+--                                                 -- -) TRUE: discard data (non-blocking)
+--                                                 -- This flag may be dynamically changed
+--                                                 -- but must then be declared as 'var bit'
+--
+--                                                 -- Receive buffer overflow data is
+--                                                 -- prevented by CTS flow control, provided
+--                                                 -- the sender has flow control enabled.
+--                                                 -- Otherwise data discarded without notification!
+--    and an alias:
+--      alias serial3_ctsinv is pin_B4             -- Incoming data flow control signal
+--                                                 -- Optional, if no CTS flow control needed
+--                                                 -- no dummy needs to be declared.
+--
+--    And optionally you could define one or more of the constants below.
+--    You should do so if you want different values than shown (= defaults).
+--    If not defined, the following values are used:
+-- 
+--      const   SERIAL3_XMTBUFSIZE  = 32           -- size of transmit buffer
+--      const   SERIAL3_RCVBUFSIZE  = 64           -- size of receive buffer
+--      const   SERIAL3_DELTA       = 17           -- spare space receive buffer
+--                                                 -- if possible keep SERIAL2_DELTA = 17!
+--
+--    When the physical locations of pin_TX2 and pin_RX2 are configurable for a specific
+--    PIC, the device file will probably contain names like pin_TX2_RC2 and pin_RX2_RC1
+--    and another pair with other pin suffixes.
+--    Depending for which pair of pins the USART is configured aliases
+--    without suffixes have to be specified, like:
+--         alias  pin_TX3            is  pin_TX3_RC2
+--         alias  pin_RX3            is  pin_RX3_RC1
+--         alias  pin_TX3_direction  is  pin_TX3_RC2_direction
+--         alias  pin_RX3_direction  is  pin_RX3_RC1_direction
+-- 
+-- 2. Include this library.
+-- 
+-- and somewhere before actually using serial communications:
+-- 
+-- 3. Prepare pins
+--       pin_B4_direction = OUTPUT              -- incoming data flow control
+--    Notes: - pin_TX3 and pin_RX3 are selected automatically
+--           - direction settings of these pins are taken care of by the library
+-- .
+-- 4. Call serial_hw3_init() to initialize serial communications.
+--
+-- Notes: See serial_hw_int_cts library for background information.
+--
+-- Sources: Based on the serial_hw_int_cts2.jal library by Rob Hamerling.
+--
+-- ----------------------------------------------------------------------
+--
+-- Setup defaults when no value is specified before:
+--
+if (defined(SERIAL3_XMTBUFSIZE) == FALSE) then
+   const   SERIAL3_XMTBUFSIZE  = 32                -- default size of transmit buffer
+end if
+
+if (defined(SERIAL3_RCVBUFSIZE) == FALSE) then
+   const   SERIAL3_RCVBUFSIZE  = 64                -- default size of receive buffer
+end if
+
+if (defined(SERIAL3_DELTA) == FALSE) then
+   const   SERIAL3_DELTA   = 17                    -- default spare space receive buffer
+end if
+
+if (defined(serial_hw3_baudrate) == FALSE) then
+   _error "no baudrate defined"
+end if
+
+if (defined(serial3_overflow_discard) == FALSE) then
+   const bit serial3_overflow_discard = FALSE      -- no transmit overflow
+end if
+
+-- Aliases to get things working for future PIC with different type of usarts.
+if defined(U3CON0) then
+   -- Aliases to support newer USART types.
+   alias SPBRGL3      is U3BRGL            -- Baud rate generator low byte.
+   alias SPBRGH3      is U3BRGH            -- Baud rate generator high byte.
+   alias SERIAL3_TXIE is PIE9_U3TXIE       -- Transmit interrrupt enable.
+   alias SERIAL3_RCIE is PIE9_U3RXIE       -- Receive interrupt enable.
+   alias SERIAL3_TXIF is PIR9_U3TXIF       -- Tranmit interrupt flag.
+   alias SERIAL3_RCIF is PIR9_U3RXIF       -- Receive interrupt flag.
+   alias SERIAL3_TXEN is U3CON0_TXEN       -- Transmitter enable.
+   alias SERIAL3_RXEN is U3CON0_RXEN       -- Receiver enable
+   alias SERIAL3_SPEN is U3CON1_ON         -- Serial port enable.
+   alias TXREG3       is U3TXB             -- Transmit buffer.
+   alias RCREG3       is U3RXB             -- Receive buffer.
+elsif defined(PIE6_RC3IE) then
+   -- Aliases to support other PICs with classic USART, PIE6/PIR6
+   alias SPBRGL3      is SPBRG3            -- Baud rate generator low byte.
+   alias SERIAL3_TXIE is PIE6_TXIE3        -- Transmit interrrupt enable
+   alias SERIAL3_TXIF is PIR6_TXIF3        -- Tranmit interrupt flag.
+   alias SERIAL3_RCIE is PIE6_RCIE3        -- Receive interrupt enable.  
+   alias SERIAL3_RCIF is PIR6_RCIF3        -- Receive interrupt flag.  
+   alias SERIAL3_TXEN is TXSTA3_TXEN       -- Transmitter enable.
+   alias SERIAL3_SPEN is RCSTA3_SPEN       -- Serial port enable.
+elsif defined(PIE4_RC3IE) then
+   -- Aliases to support other PICs with classic USART, PIE4/PIR4
+   alias SERIAL3_TXEN  is TXSTA3_TXEN      -- Transmitter enable.
+   alias SERIAL3_SPEN  is RCSTA3_SPEN      -- Serial port enable.
+   alias SERIAL3_TXIE  is PIE4_TXIE3       -- Transmit interrrupt enable
+   alias SERIAL3_TXIF  is PIR4_TXIF3       -- Transmit interupt flag. 
+   alias SERIAL3_RCIE  is PIE4_RCIE3       -- Receive interrupt enable.  
+   alias SERIAL3_RCIF  is PIR4_RCIF3       -- Receive interrupt flag. 
+else
+   _error "This serial 3 int cts library does not support this PIC, please report."
+end if
+
+include usart3_common                              -- common serial functions/procedures
+
+-- Local circular transmit buffer
+var byte  _serial3_xmtbuf[SERIAL3_XMTBUFSIZE]      -- circular output buffer
+
+-- Local circular receive buffer
+var byte  _serial3_rcvbuf[SERIAL3_RCVBUFSIZE]      -- circular input buffer
+
+-- Declaration of local offsets in circular buffers:
+
+-- variable keeping track of next free position in transmit buffer
+var volatile byte  _serial3_offsetxmthead          -- offset next byte from appl
+
+-- variable keeping track of next byte to be transmitted by interrupt handler
+var volatile byte  _serial3_offsetxmttail          -- offset next byte to port
+
+-- variable keeping track of next free byte in receive buffer
+var volatile byte  _serial3_offsetrcvhead          -- offset next byte from port
+
+-- variable keeping track of next byte available to application program
+var volatile byte  _serial3_offsetrcvtail          -- offset next byte to appl
+
+-- ----------------------------------------------------------------------
+-- Title:     USART serial transmit interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- ----------------------------------------------------------------------
+procedure  _serial3_transmit_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte  x
+
+   if ((SERIAL3_TXIF == TRUE) & (SERIAL3_TXIE == ENABLED)) then   -- UART3 xmit interrupt
+      if (_serial3_offsetxmttail != _serial3_offsetxmthead) then  -- data in xmit buffer
+         x = _serial3_xmtbuf[_serial3_offsetxmttail]              -- next byte to xmit
+         _serial3_offsetxmttail = _serial3_offsetxmttail + 1      -- next position
+         if (_serial3_offsetxmttail >= SERIAL3_XMTBUFSIZE) then   -- end of buffer reached
+            _serial3_offsetxmttail = 0                            -- wrap
+         end if
+         TXREG3 = x                                               -- actually xmit byte
+      else                                                        -- xmit buffer empty
+         SERIAL3_TXIE = DISABLED                                  -- disable xmit interrupts
+      end if
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     USART serial receive interrupt handler
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- Notes:     Sets CTS low when receive buffer has less than
+--            <SERIAL3_DELTA> bytes free space.
+-- ----------------------------------------------------------------------
+procedure  _serial3_receive_interrupt_handler() is
+
+   pragma interrupt
+
+   var  byte x
+   var  bit  usart3_error
+
+   if SERIAL3_RCIF  then      -- UART3 receive interrupt
+      usart3_error = FALSE
+      
+      if defined(U3CON0) then
+         -- New USART type
+         if U3ERRIR_FERIF | U3ERRIR_RXFOIF | U3ERRIR_RXBKIF | U3ERRIR_PERIF then
+            -- reset framing and/or overflow errors
+            U3ERRIR_FERIF  = FALSE
+            U3ERRIR_RXFOIF = FALSE
+            U3ERRIR_RXBKIF = FALSE
+            U3ERRIR_PERIF  = FALSE
+            U3FIFO_RXBE    = TRUE         -- clear receive bufer
+            usart3_error   = TRUE
+         end if
+      else
+         -- Classic USART type
+         if ((RCSTA3_OERR == TRUE) | (RCSTA3_FERR == TRUE)) then  -- frame/overr error
+            x = RCREG3                             -- flush hardware buffer
+            while RCSTA3_OERR == TRUE loop         -- overrun state
+               RCSTA3_CREN = DISABLED              -- disable UART
+               RCSTA3_CREN = ENABLED               -- re-enable UART
+               x = RCREG3                          -- \  flush hardware buffers
+               x = RCREG3                          -- /
+            end loop                               -- until no more overrun
+            usart3_error = TRUE
+         end if
+      end if
+       
+      if usart3_error then
+         _serial3_offsetrcvtail = 0             -- \  flush circular buffer
+         _serial3_offsetrcvhead = 0             -- /
+         if defined(serial3_ctsinv) then
+            serial3_ctsinv = FALSE              -- ensure CTS true
+         end if
+      else                                      -- data without errors
+         _serial3_rcvbuf[_serial3_offsetrcvhead] = RCREG3      
+
+         if defined(serial3_receive_wedge) then
+            -- receive wedge - a user program can define this procedure.
+            --
+            --    procedure serial_receive_wedge(byte in char)
+            --
+            -- If this procedure exisits, it will be called from the
+            -- isr, each time a char is received and put into the rx queue.
+            --
+            -- serial_receive_wedge is used in test_queue_isr.jal
+            -- In general it can be usefull to detect ctrl-c or alike when they
+            -- arive at the pic (and not when you are ready to process them).
+            --
+            -- CAUTION: the wedge is part of the ISR and should be designed
+            -- to behave accordingly (fast, minimal stack use and nonblocking).
+            -- If you are not sure you need this, you probably don't!
+            serial3_receive_wedge(_serial3_rcvbuf[_serial3_offsetrcvhead])
+         end if
+
+         x = _serial3_offsetrcvhead + 1         -- update offset
+         if x >= SERIAL3_RCVBUFSIZE then        -- end of buffer reached
+            x = 0                               -- wrap
+         end if
+         if (x != _serial3_offsetrcvtail) then  -- buffer not yet full
+            _serial3_offsetrcvhead = x          -- update offset
+         end if                                 -- (else discard byte,
+ 
+         --  CTS flow control has failed)
+         if defined(serial3_ctsinv) then
+            if (serial3_ctsinv == FALSE) then   -- CTS is TRUE
+               if _serial3_offsetrcvhead > _serial3_offsetrcvtail then  -- offset difference
+                  x = SERIAL3_RCVBUFSIZE - _serial3_offsetrcvhead + _serial3_offsetrcvtail
+               else
+                  x = _serial3_offsetrcvtail - _serial3_offsetrcvhead
+               end if
+               if (x < SERIAL3_DELTA) then      -- circular buffer almost full
+                  serial3_ctsinv = TRUE         -- set CTS FALSE
+               end if
+            end if
+         end if
+
+      end if
+
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Return byte (if any) from circular receive buffer of USART
+-- Arguments: received byte (if any)
+-- Returns:   - TRUE  when byte returned
+--            - FALSE if no byte available
+-- Notes:     Sets CTS high when receive buffer has more than <SERIAL3_DELTA>
+--            bytes free space after delivering byte to caller.
+-- ----------------------------------------------------------------------
+function serial_hw3_read(byte out data) return bit is
+
+   var  byte  x                                 -- for buffer management
+
+   if (_serial3_offsetrcvtail == _serial3_offsetrcvhead) then  -- receive buffer empty
+      return FALSE                                             -- no data available
+   end if
+
+   data = _serial3_rcvbuf[_serial3_offsetrcvtail]              -- first available byte
+   _serial3_offsetrcvtail = _serial3_offsetrcvtail + 1
+   if (_serial3_offsetrcvtail >= SERIAL3_RCVBUFSIZE) then      -- end of buffer reached
+      _serial3_offsetrcvtail = 0                               -- wrap
+   end if
+
+   if defined(serial3_ctsinv) then
+      if (serial3_ctsinv == TRUE) then           -- CTS is FALSE
+         if (_serial3_offsetrcvhead > _serial3_offsetrcvtail) then
+            x = SERIAL3_RCVBUFSIZE - _serial3_offsetrcvhead + _serial3_offsetrcvtail
+         else
+            x = _serial3_offsetrcvtail - _serial3_offsetrcvhead -- offset difference
+         end if
+         if (x >= SERIAL3_DELTA) then            -- enough free space now
+            serial3_ctsinv = FALSE               -- make CTS TRUE
+         end if
+      end if
+   end if
+
+   return TRUE                                  -- byte available
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns:   transmitted byte (or 0x00 when data discarded)
+-- Notes:     - Activates transmit interrupt handler when data buffered
+--            - When buffer full act as indicated in 'serial3_overflow_discard'
+--              * TRUE:  discard data (and return 0x00 as data byte)
+--              * FALSE: wait for free buffer space
+--                       (returns only after data has been stored in buffer)
+-- ----------------------------------------------------------------------
+function  serial3_send_byte(byte in data) return byte is
+
+   var  byte  newxmthead                        -- offset in circular buffer
+
+    if ((_serial3_offsetxmthead == _serial3_offsetxmttail) & -- nothing buffered
+        (SERIAL3_TXIF == TRUE)) then                        -- and UART not busy
+      SERIAL3_TXIE = DISABLED                   -- disable xmt interrupt
+      TXREG3 = data                             -- transmit byte immediately
+   else                                         -- use circular buffer
+      _serial3_xmtbuf[_serial3_offsetxmthead] = data  -- put byte in buffer
+      newxmthead = _serial3_offsetxmthead + 1         -- offset next char
+      if (newxmthead >= SERIAL3_XMTBUFSIZE) then      -- end of buffer reached
+         newxmthead = 0                               -- wrap
+      end if
+      if (newxmthead != _serial3_offsetxmttail) then  -- buffer not full
+         _serial3_offsetxmthead = newxmthead          -- update offset
+      else                                            -- buffer full!
+         -- Check if data may be discarded, if not wait for byte from buffer
+         -- to be transmitted, else discard the data.
+         if (serial3_overflow_discard == FALSE) then  -- do not discard data!
+            while (newxmthead == _serial3_offsetxmttail) loop   
+               -- wait until something xmit'd from the transmit buffer
+            end loop
+            _serial3_offsetxmthead = newxmthead -- update offset
+         else
+            data = 0x00                         -- indicate byte discarded
+         end if
+      end if
+      SERIAL3_TXIE = ENABLED                   -- (re-)enable xmit interrupts
+   end if
+
+   return data                                  -- transmitted byte!
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Get free space in transmit buffer
+-- Arguments: (none)
+-- Returns:   Number of free bytes in transmit buffer
+-- Notes:     - Useful to check in advance if a string will fit in the buffer
+--              or if transmitting the string will block.
+--            - Never returns zero. If "1" is returned, regard buffer as full.
+-- ----------------------------------------------------------------------
+function  serial_hw3_tx_buffer_free() return byte is
+
+   var  byte  buffer_free
+
+   buffer_free = _serial3_offsetxmttail - _serial3_offsetxmthead    -- difference
+   -- between head and tail pointers
+      if (_serial3_offsetxmttail <= _serial3_offsetxmthead) then  -- adjust when free
+         -- space crosses end-of-buffer boundary
+         buffer_free = buffer_free + SERIAL3_XMTBUFSIZE           -- or buffer is empty
+      end if
+
+   return buffer_free
+
+end function
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Put a single byte in transmit buffer
+-- Arguments: Data (byte) to transmit
+-- Returns    (nothing)
+-- Notes:     - This is a variant of serial2_send_byte() compatible with
+--              the procedure in the serial_hardware3 library.
+--            - Spins when byte cannot be put in transmit buffer
+--              (buffer full condition).
+-- ----------------------------------------------------------------------
+procedure serial_hw3_write(byte in data) is
+   var byte dummy
+   dummy = serial3_send_byte(data)
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- Title:     Initialize second serial port
+-- Arguments: (none)
+-- Returns:   (nothing)
+-- ----------------------------------------------------------------------
+procedure serial_hw3_init() is
+
+   _serial3_offsetxmthead  = 0          -- offset next byte from appl
+   _serial3_offsetxmttail  = 0          -- offset next byte to port
+   _serial3_offsetrcvhead  = 0          -- offset next byte from port
+   _serial3_offsetrcvtail  = 0          -- offset next byte to appl
+
+   if defined(U3CON0) then
+      -- New USART type
+
+   -- New USART type. 
+      U3CON0  = 0b0000_0000            -- disable , 8 databits, async
+      U3CON1  = 0b0000_0000            -- disable, normal operation
+      U3CON2  = 0b0000_0000            -- one stop bit, flow control is off, no polarity
+
+      _calculate_and_set_baudrate3()   -- transmit and receive speed
+
+      U3ERRIR = 0b0000_0000            -- no errors
+      U3ERRIE = 0b0000_0000            -- error interrupts disabled
+      U3UIR   = 0b0000_0000            -- no auto baud
+
+      pin_RX3_direction = INPUT           
+      pin_TX3_direction = OUTPUT          
+
+      SERIAL3_SPEN = TRUE              -- enable serial port
+      SERIAL3_TXEN = TRUE              -- enable transmitter
+      SERIAL3_RXEN = TRUE              -- enable receive
+
+      INTCON0_GIE  = ENABLED            -- general interrupts
+
+   else
+      -- Classic USART type
+      TXSTA3 = 0b0000_0000              -- reset (8 databits, asyn)
+      RCSTA3 = 0b0000_0000              -- reset (8 databits, asyn)
+
+     _calculate_and_set_baudrate3()     -- transmit and receive speed
+
+      pin_RX3_direction = INPUT         -- make receive pin input
+      pin_TX3_direction = INPUT         -- make transmit pin input!
+      
+      TXSTA3_TXEN = ENABLED             -- enable transmit (makes TX2 pin output)
+
+      RCSTA3_SPEN = ENABLED             -- activate serial port
+      RCSTA3_CREN = ENABLED             -- continuous receive enable
+
+      INTCON_PEIE = ENABLED             -- peripheral interrupts
+      INTCON_GIE  = ENABLED             -- general interrupts
+   end if
+
+   SERIAL3_RCIE = ENABLED              -- USART receive int. enable
+   -- (SERIAL3_TXIE handled dynamically)
+
+   if defined(serial3_ctsinv) then
+      serial3_ctsinv = FALSE            -- CTS true: accept PC data
+   end if
+
+end procedure
+
+
+-- ----------------------------------------------------------------------
+-- serial3_hardware compatible interface
+-- ----------------------------------------------------------------------
+
+-- Put byte in transmit buffer as pseudo variable
+procedure serial_hw3_data'put(byte in data) is
+   var byte dummy
+   dummy = serial3_send_byte(data)              -- send data
+end procedure
+
+
+-- Return next byte from receive buffer as pseudo variable
+-- Spin as long as no data available (buffer empty)
+function serial_hw3_data'get() return byte is
+   var byte data
+   while !serial_hw3_read(data) loop
+      -- nothing
+   end loop
+   return data                                  -- return received data
+end function
+
+-- generic function to check if a byte is received
+function serial_hw3_data_available() return bit is
+   return _serial3_offsetrcvtail != _serial3_offsetrcvhead
+end function
+
+-- generic function to check if transmit buffer is empty
+function serial_hw3_data_ready() return bit is
+   return _serial3_offsetxmthead == _serial3_offsetxmttail
+end function
+
