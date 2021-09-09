@@ -1,13 +1,9 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for GLCD using the SSD1306 display controller.
---
--- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
---
+-- Author: Rob Jansen, Copyright (c) 2020..2021, all rights reserved.
 -- Adapted-by:
---
 -- Revision: $Revision$
---
--- Compiler: 2.5r4
+-- Compiler: 2.5r5
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -98,7 +94,11 @@ procedure ssd1306_init()
 -- Set the current position for the data to be written, x = 0->127, y = 0->7.
 procedure ssd1306_goto(byte in x, byte in y)
 
+-- Clear the cache; glcd_cache_update() must be called next.
+procedure glcd_clear_cache()
+
 -- Clear the screen and move the cursor to position 0,0.
+-- Alias is glcd_clear_screen()
 procedure ssd1306_clear_screen()
 
 -- Set display contrast, value from 0x00 to 0xFF.
@@ -156,8 +156,16 @@ procedure ssd1306_update_display()
 -- coordinates. Variable 'glcd_pen_color' should be set before calling, to plot 
 -- appropriate pixel colors. This display is not updated with the changed
 -- pixel so make sure to call ssd1306_update_display() after all pixels are done. 
--- Not available in text only mode.
+-- Alias is glcd_write_pixel()
 procedure ssd1306_write_pixel(byte in x, byte in y)
+
+-- Draw an bitmap image from a byte array. Draws in vertical mode, 1 bit per pixel. 
+-- This procedure only fills the cache with the image. To send the contents of the cache
+-- to the screen call ssd1306_update_display()
+-- Alias is glcd_draw_image()
+procedure ssd1306_draw_image(byte in image[],
+                             byte in x, byte in y,
+                             byte in width, byte in height)
 
 -- ---------------------- Advanced procedures ----------------------------------
 
@@ -180,7 +188,8 @@ end if
 
 -- Define some glcd aliases for the available procedures. See glcd_common.
 alias glcd_clear_screen is ssd1306_clear_screen  
-alias glcd_write_pixel  is ssd1306_write_pixel   
+alias glcd_write_pixel is ssd1306_write_pixel   
+alias glcd_draw_image  is ssd1306_draw_image  
 
 -- GLCD specifications.
 const byte GLCD_X_PIXELS   = SSD1306_MAX_X_PIXELS
@@ -316,12 +325,12 @@ else
 end if 
 
 
-if defined(SSD1306_SOFTWARE_SPI) then 
+if defined(SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
 -- SPI interface done in software using same the function name as hardware SPI.
 -- Note: There is no data in used in this SPI variant, only data out.
   function spi_master_hw_exchange(byte in data) return byte is
 
-  var bit data_bit_out at data:7
+     var bit data_bit_out at data:7
 
      for 8 loop
         ssd1306_sdo = data_bit_out
@@ -329,10 +338,10 @@ if defined(SSD1306_SOFTWARE_SPI) then
         ssd1306_sck = HIGH
         _usec_delay(1)
         ssd1306_sck = LOW
-    end loop
-    ssd1306_sdo = LOW -- Not needed but nicer to keep output low when done.
+     end loop
+     ssd1306_sdo = LOW -- Not needed but nicer to keep output low when done.
 
-    return data        
+     return data  -- Nothing to return so return the data sent.      
 
   end function
 end if 
@@ -410,7 +419,7 @@ procedure ssd1306_init() is
    _ssd1306_write_byte(_SSD1306_DISPLAY_NORMAL)
    _ssd1306_stop_transmission()     
 
-   ; First clear screen before putting the display on again.
+   -- First clear screen before putting the display on again.
    ssd1306_clear_screen()
 
    _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
@@ -442,10 +451,23 @@ procedure ssd1306_goto(byte in x, byte in y) is
 end procedure
 
 
--- Copy the changed area of the cache to the lcd. This procedure is to be
--- used when using graphics features like pixes, lines, circles, etc. and is 
--- not available in text only mode.
 if !defined(SSD1306_TEXT_ONLY) then 
+   -- Clear the cache; glcd_cache_update() must be called next.
+   procedure glcd_clear_cache() is
+      var word i
+      for CACHE_SIZE using i loop
+         glcd_cache[i] = 0x00
+      end loop
+      -- reset watermark pointers
+      glcd_hi_watermark = CACHE_SIZE - 1
+      glcd_lo_watermark = 0
+ 
+      glcd_cache_changed = TRUE
+   end procedure
+
+   -- Copy the changed area of the cache to the lcd. This procedure is to be
+   -- used when using graphics features like pixes, lines, circles, etc. and is 
+   -- not available in text only mode.
    procedure ssd1306_update_display() is
       -- Graphics implementation, using cache.
       var word y_address, x_address, index
@@ -485,7 +507,7 @@ if !defined(SSD1306_TEXT_ONLY) then
       
    end procedure
 end if
-  
+
 
 -- Clear the screen and move the cursor to position 0,0.
 procedure ssd1306_clear_screen() is
@@ -525,8 +547,11 @@ end procedure
 -- coordinates. Variable 'glcd_pen_color' should be set before calling, to plot 
 -- appropriate pixel colors. This display is not updated with the changed
 -- pixel so make sure to call ssd1306_update_display() after all pixels are done. 
--- Not available in text only mode.
-if !defined(SSD1306_TEXT_ONLY) then 
+-- Not implement in text only mode.
+if defined(SSD1306_TEXT_ONLY) then
+   procedure ssd1306_write_pixel(byte in x, byte in y) is
+   end procedure 
+else
    procedure ssd1306_write_pixel(byte in x, byte in y) is
 
       -- Graphics implementation, using cache.
@@ -561,7 +586,44 @@ if !defined(SSD1306_TEXT_ONLY) then
       end if
       
    end procedure
-end if
+
+
+-- Draw an bitmap image from a byte array. Draws in vertical mode, 1 bit per pixel. 
+-- This procedure only fills the cache with the image. To send the contents of the cache
+-- to the screen call ssd1306_update_display()
+procedure ssd1306_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height) is
+
+   var word image_index
+   var byte x_coord, y_coord, pixel_mask, data, pen_color
+
+   -- We have to write the image in the selected pen color.
+   pen_color = glcd_pen_color
+   for height using y_coord loop
+      pixel_mask = y_coord % 8
+      for width using x_coord loop
+         -- Calculate location of the data in the image array.
+         image_index = word(x_coord) + (word(y_coord/8) * word(width))
+         data = image[image_index]
+         -- Always write a pixel but clearing the pixel depends on
+         -- the chosen pen color.
+         if (data & (1<<pixel_mask)) == 0 then
+            -- Write in the inverted pen color (clear pixel).
+            if (pen_color == GLCD_BLACK) then
+               glcd_pen_color = GLCD_WHITE
+            elsif (pen_color == GLCD_WHITE) then
+               glcd_pen_color = GLCD_BLACK
+            end if 
+         end if
+         -- Always write the pixel (nice for animations).
+         glcd_write_pixel(x + x_coord, y + y_coord)
+         -- Restore pen color.
+         glcd_pen_color = pen_color
+     end loop
+   end loop
+ end procedure
+end if -- SSD1306_TEXT_ONLY
  
 
 -- Set display contrast, value from 0x00 to 0xFF.
@@ -801,7 +863,7 @@ end procedure
 
 -- ----------------------------- Private functions ---------------------------
 
--- Start an IIC or SPI data or command transmission.
+-- Start an IIC or SPI data or command transmission. SPI uses 4 wires.
 procedure _ssd1306_start_transmission(bit in data_transmission) is
 
    if defined(SSD1306_SPI_CONTROL) then 
@@ -831,7 +893,6 @@ procedure _ssd1306_stop_transmission() is
    end if
     
 end procedure
-
 
 
 -- Write a byte to the SSD1306.

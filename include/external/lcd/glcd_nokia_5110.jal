@@ -1,7 +1,7 @@
 -- Title: library for GLCD with pcd8544 controller used in Nokia 3310/5110
--- Author: Andre Miller Copyright (c) 2008..2019, all rights reserved.
+-- Author: Andre Miller Copyright (c) 2008..2021, all rights reserved.
 -- Adapted-by: Richard Zengerink, Sebastien Lelong, Paul D'haene, Rob Jansen
--- Compiler:  2.5r3
+-- Compiler:  2.5r5
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -213,7 +213,7 @@ procedure glcd_write_char(byte in x, byte in y, byte in char) is
 end procedure
 end if
 
--- Clear the display. glcd_cache_update must be called next.
+-- Clear the cache; glcd_cache_update must be called next.
 procedure glcd_clear_cache() is
    var word i
    for CACHE_SIZE using i loop
@@ -316,4 +316,46 @@ procedure glcd_write_pixel(byte in x, byte in y) is
  
    glcd_cache_changed = true
 end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Purpose:   Draw an bitmap image from a byte array.
+-- Arguments: - bitmap image (byte array)
+--            - x- and y-coordinates in pixels of upper left corner of the image
+--            - width and height in pixels of the image
+-- Notes:     Draws in vertical mode, 1 bit per pixel.
+-- -----------------------------------------------------------------------------
+procedure glcd_draw_image(byte in image[],
+                          byte in x, byte in y,
+                          byte in width, byte in height) is
+
+   var word image_index
+   var byte x_coord, y_coord, pixel_mask, data, pen_color
+
+   -- We have to write the image in the selected pen color.
+   pen_color = glcd_pen_color
+   for height using y_coord loop
+      pixel_mask = y_coord % 8
+      for width using x_coord loop
+         -- Calculate location of the data in the image array.
+         image_index = word(x_coord) + (word(y_coord/8) * word(width))
+         data = image[image_index]
+         -- Always write a pixel but clearing the pixel depends on
+         -- the chosen pen color.
+         if (data & (1<<pixel_mask)) == 0 then
+            -- Write in the inverted pen color (clear pixel).
+            if (pen_color == GLCD_BLACK) then
+               glcd_pen_color = GLCD_WHITE
+            elsif (pen_color == GLCD_WHITE) then
+               glcd_pen_color = GLCD_BLACK
+            end if 
+         end if
+         -- Always write the pixel (nice for animations).
+         glcd_write_pixel(x + x_coord, y + y_coord)
+         -- Restore pen color.
+         glcd_pen_color = pen_color
+     end loop
+   end loop
+   
+ end procedure
 
