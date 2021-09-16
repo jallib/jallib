@@ -18,6 +18,7 @@
 -- Sources:
 -- SanDisk Secure Digital Card - http://www.cs.ucr.edu/~amitra/sdcard/ProdManualSDCardv1.9.pdf
 -- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
+-- http://www.rjhcoding.com/avrc-sd-interface-3.php
 --
 
 -- fix a compatibility issue. compiler bug has been reported.
@@ -93,7 +94,7 @@ const byte SD_SD_APP_OP_COND = 41
 const byte SD_SET_CLR_CARD_DETECT = 42
 const byte SD_SEND_SCR = 51
 
--- R1 RESPONCE BITS
+-- R1 RESPONSE BITS
 const byte SD_IN_IDLE_STATE = 0
 const byte SD_ERASE_RESET = 1
 const byte SD_ILLEGAL_COMMAND = 2
@@ -166,14 +167,35 @@ procedure sd_get_number_of_sectors() -- procedure prototype
 procedure sd_init()
 
 
+
 --------------------------------------------------------------------------------
--- read sd card error (resets error status)
+-- Enable the sd card
 --------------------------------------------------------------------------------
-;function sd_error'get() return word is
-;   var word return_val = sd_error_details
-;   sd_error_details = 0
-;   return return_val
-;end function
+procedure sd_enable() is
+   pragma inline
+   spi_master = 0xFF
+   sd_chip_select = low
+   spi_master = 0xFF
+end procedure
+
+--------------------------------------------------------------------------------
+-- Disable the sd card
+--------------------------------------------------------------------------------
+procedure sd_disable() is
+   pragma inline
+   sd_chip_select = high
+   spi_master = 0xFF
+end procedure
+
+--------------------------------------------------------------------------------
+-- Disable then enable the sd card
+--------------------------------------------------------------------------------
+procedure sd_toggle() is
+   pragma inline
+   sd_chip_select = high
+   spi_master = 0xFF
+   sd_chip_select = low
+end procedure
 
 --------------------------------------------------------------------------------
 -- set sd_card error
@@ -183,6 +205,15 @@ procedure sd_error'put(word in error) is
    sd_error_details = sd_error_details | error_bit
    sd_has_error = 1
 end procedure
+
+--------------------------------------------------------------------------------
+-- read sd card error (resets error status)
+--------------------------------------------------------------------------------
+;function sd_error'get() return word is
+;   var word return_val = sd_error_details
+;   sd_error_details = 0
+;   return return_val
+;end function
 
 --------------------------------------------------------------------------------
 -- Report sd card error (does NOT reset error status)
@@ -239,11 +270,88 @@ procedure sd_print_error(volatile byte out device) is
 end procedure
 
 --------------------------------------------------------------------------------
+-- Print R1 Response
+--------------------------------------------------------------------------------
+procedure sd_print_response(volatile byte out device,byte in response) is
+   -- R1 RESPONSE BITS
+   var bit IN_IDLE_STATE        at response : SD_IN_IDLE_STATE
+   var bit ERASE_RESET          at response : SD_ERASE_RESET
+   var bit ILLEGAL_COMMAND      at response : SD_ILLEGAL_COMMAND
+   var bit COM_CRC_ERROR        at response : SD_COM_CRC_ERROR
+   var bit ERASE_SEQUENCE_ERROR at response : SD_ERASE_SEQUENCE_ERROR
+   var bit ADDRESS_ERROR        at response : SD_ADDRESS_ERROR
+   var bit PARAMETER_ERROR      at response : SD_PARAMETER_ERROR
+
+   if response == 0xFF then
+      const byte str8[] = "Not a Repsonse(0xFF)"
+      print_string(serial_data, str8)
+      print_crlf(serial_data)
+      return
+   end if
+
+   if response == 0xFE then
+      const byte str9[] = "Not a Repsonse(0xFE)"
+      print_string(serial_data, str9)
+      print_crlf(serial_data)
+   end if
+
+   if response == 0 then
+      const byte str0[] = "CARD_READY"
+      print_string(serial_data, str0)
+      print_crlf(serial_data)
+   end if
+
+   if IN_IDLE_STATE == TRUE then
+      const byte str1[] = "IN_IDLE_STATE"
+      print_string(serial_data, str1)
+      print_crlf(serial_data)
+   end if
+
+   if ERASE_RESET == TRUE then
+      const byte str2[] = "ERASE_RESET"
+      print_string(serial_data, str2)
+      print_crlf(serial_data)
+   end if
+
+   if ILLEGAL_COMMAND == TRUE then
+      const byte str3[] = "ILLEGAL_COMMAND"
+      print_string(serial_data, str3)
+      print_crlf(serial_data)
+   end if
+
+   if COM_CRC_ERROR == TRUE then
+      const byte str4[] = "COM_CRC_ERROR"
+      print_string(serial_data, str4)
+      print_crlf(serial_data)
+   end if
+
+   if ERASE_SEQUENCE_ERROR == TRUE then
+      const byte str5[] = "ERASE_SEQUENCE_ERROR"
+      print_string(serial_data, str5)
+      print_crlf(serial_data)
+   end if
+
+   if ADDRESS_ERROR == TRUE then
+      const byte str6[] = "ADDRESS_ERROR"
+      print_string(serial_data, str6)
+      print_crlf(serial_data)
+   end if
+
+   if PARAMETER_ERROR == TRUE then
+      const byte str7[] = "PARAMETER_ERROR"
+      print_string(serial_data, str7)
+      print_crlf(serial_data)
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
 -- send a command to the sd card (commands with 1 response only)
 --------------------------------------------------------------------------------
 procedure send_command(byte in command,dword in data, byte out response) is
    var byte parameters[4] at data
    var byte x
+   
+   sd_toggle()
 
    -- send a valid CRC byte only for set idle command
    -- right bit must always be 1 (stop bit)
@@ -255,7 +363,7 @@ procedure send_command(byte in command,dword in data, byte out response) is
       x = 0xFF
    end if
 
-   command = command + 64          -- left bits must be 01 (start bits)
+   command = command | 64          -- left bits must be 01 (start bits)
 
    spi_master = 0xFF            -- send 8 clock pulses
 
@@ -268,10 +376,17 @@ procedure send_command(byte in command,dword in data, byte out response) is
    -- CRC data byte, crc disabled in this lib, but required for SD_GO_IDLE_STATE & SD_SEND_IF_COND commands.
    spi_master = x
 
-   -- Get a responce from the card after each command
-   for 100 loop
+   -- Get a response from the card after each command
+   var word step = 0
+   forever loop
       response = spi_master
       if response != 0xFF then
+         exit loop
+      end if
+
+      -- can take up to 100ms
+      step = step + 1
+      if step == 5000 then
          exit loop
       end if
    end loop
@@ -302,7 +417,7 @@ end function
 ;   -- send SD_READ_IF_COND command
 ;   --------------------------------------------------------------------------------
 ;   function sd_read_if_cond() return byte is
-;      sd_chip_select = low   -- enable the sd card
+;      sd_enable()   -- enable the sd card
 ;
 ;      var byte response,x
 ;      send_command(SD_SEND_IF_COND, 0x1AA, response)
@@ -320,7 +435,7 @@ end function
 ;
 ;      spi_master = 0xFF            -- send 8 clock pulses
 ;
-;      sd_chip_select = high   -- disable the sd card
+;      sd_disable   -- disable the sd card
 ;
 ;      return response
 ;   end function
@@ -343,7 +458,7 @@ function sd_is_inserted() return bit is
 
    -- steps to set sd card to use SPI
    _usec_delay(1_000)        -- delay
-   sd_chip_select = high     -- chip select high
+   sd_disable     -- chip select high
 
    for 11 loop
       spi_master = 0xFF    -- send clock pulses (0xFF 10 times)
@@ -353,10 +468,10 @@ function sd_is_inserted() return bit is
    var byte count1 = 0
    while (response == 0) loop -- try 100 times
       _usec_delay(1000)      -- delay 1ms
-      sd_chip_select = low   -- enable the sd card
+      sd_enable()   -- enable the sd card
       _usec_delay(255)      -- delay 255us
       send_command(SD_GO_IDLE_STATE,0,response) -- command 0, Resets card to idle state, get a response
-      sd_chip_select = high  -- disable the sd card
+      sd_disable  -- disable the sd card
       count1 = count1 + 1    -- increment count
       if count1 == 100 then
          sd_error = SD_INIT_FAILURE
@@ -374,7 +489,7 @@ function sd_is_inserted() return bit is
       pin_sdo = low
       pin_sdi = low
       pin_sck = low
-      sd_chip_select = high
+      sd_disable
 
       return 0
    else
@@ -407,7 +522,7 @@ procedure sd_init() is
    sd_number_of_sectors = 0
 
    -- send SD_SEND_IF_COND command
-   sd_chip_select = low   -- enable the sd card
+   sd_enable()   -- enable the sd card
    send_command(SD_SEND_IF_COND, 0x1AA, response)
    ;print_byte_hex(serial_data,response)
 
@@ -416,14 +531,14 @@ procedure sd_init() is
       ;print_string(serial_data, "STANDARD CAPACITY\r\n")
       sd_card_type = SD_STANDARD_CAPACITY
 
-      sd_chip_select = low  -- enable the sd card
+      sd_enable()  -- enable the sd card
 
       if !sd_ready() == 0 then            -- wait till sd card is ready
          sd_error = SD_INIT_FAILURE
          return
       end if
 
-      sd_chip_select = high -- disable the sd card
+      sd_disable -- disable the sd card
       sd_get_number_of_sectors()
 
       return
@@ -436,10 +551,10 @@ procedure sd_init() is
       response = spi_master
       response = spi_master  ;0x01
       response = spi_master  ;0xAA
-      sd_chip_select = high    -- disable the sd card
+      sd_disable    -- disable the sd card
 
       if response == 0xAA then
-         sd_chip_select = low  -- enable the sd card
+         sd_enable()  -- enable the sd card
 
          -- check if it has completed init
          forever loop
@@ -471,10 +586,10 @@ procedure sd_init() is
             sd_error = SD_TIMED_OUT
          end if
 
-         sd_chip_select = high  -- disable the sd card
+         sd_disable  -- disable the sd card
       else
          sd_has_error = TRUE
-         sd_chip_select = high  -- disable the sd card
+         sd_disable  -- disable the sd card
          sd_get_number_of_sectors()
          return
       end if
@@ -486,7 +601,7 @@ end procedure
 -- set the sd card to idle state
 --------------------------------------------------------------------------------
 procedure sd_set_idle() is
-   sd_chip_select = low  -- enable the sd card
+   sd_enable()  -- enable the sd card
    var byte response = 0
    send_command(SD_STOP_TRANSMISSION,0,response) -- stop current transmission
    send_command(SD_STOP_TRANSMISSION,0,response) -- stop current transmission
@@ -504,7 +619,7 @@ procedure sd_set_idle() is
    send_command(SD_STOP_TRANSMISSION,0,response) -- stop current transmission
    send_command(SD_STOP_TRANSMISSION,0,response) -- stop current transmission
    send_command(SD_STOP_TRANSMISSION,0,response) -- stop current transmission
-   sd_chip_select = high  -- disable the sd card
+   sd_disable  -- disable the sd card
 end procedure
 
 --------------------------------------------------------------------------------
@@ -520,7 +635,7 @@ procedure  sd_start_read(dword in address) is
    end if
 
    var byte response
-   sd_chip_select = low  -- enable the sd card
+   sd_enable()  -- enable the sd card
    if sd_card_type == SD_STANDARD_CAPACITY then
       address = address * SD_BYTE_PER_SECTOR -- make sd card sector addressable, sd cards are normally byte addressable.
    end if
@@ -533,9 +648,9 @@ end procedure
 
 function sd_read_write_next_ready(byte in read_write) return byte is
    if sd_byte_count == 0 then            -- beginning of sector read
-      var byte count1 = 0
+      var word count1 = 0
       while spi_master != 0xFE loop      -- wait till data is ready to read
-         if count1 == 100 then
+         if count1 == 10000 then
             if read_write == SD_READ then
                sd_error = SD_READ_ERROR
             else
@@ -578,7 +693,7 @@ end function
 --------------------------------------------------------------------------------
 procedure sd_stop_read() is
    sd_set_idle()
-   sd_chip_select = high  -- disable the sd card
+   sd_disable  -- disable the sd card
 end procedure
 
 --------------------------------------------------------------------------------
@@ -603,12 +718,15 @@ procedure sd_start_write(dword in address) is
       sd_force_spi_mode()
    end if
 
-   sd_chip_select = LOW  -- enable the sd card
-   var byte response
+   sd_toggle()
+   
    if sd_card_type == SD_STANDARD_CAPACITY then
       address = address * SD_BYTE_PER_SECTOR -- make sd card sector addressable, sd cards are normally byte addressable.
    end if
+   
+   var byte response
    send_command(SD_WRITE_MULTIPLE_BLOCK,address,response) -- send read multi block command, ignore response.
+
    sd_byte_count = 0       -- reset count
    sd_sector_count = 0     -- reset count
 
@@ -706,7 +824,7 @@ procedure sd_stop_write() is
          end if
       end loop
    end if
-   sd_chip_select = high  -- disable the sd card
+   sd_disable  -- disable the sd card
 end procedure
 
 ;--------------------------------------------------------------------------------
@@ -1904,7 +2022,7 @@ procedure sd_write_sector() is
 
    spi_master = 0xFC       -- send "stop transmission token" write multiple command
 
-   -- get sector data
+   -- send sector data
    if defined(SD_WRITE_EXTRA_SPEED) == TRUE then
       if SD_WRITE_EXTRA_SPEED == TRUE then
          _sd_write_512()
@@ -1938,7 +2056,7 @@ procedure sd_write_sector() is
    -- response = 101 = crc error
    -- response = 110 = write error
 
-   x = spi_master   -- wait for sd card to become ready
+   x = spi_master   -- wait for sd card to become ready.
    while x != 0xFF loop
       x = spi_master
    end loop
@@ -2031,7 +2149,7 @@ end procedure
 ;   -- sd_read_csd_cid(SD_SEND_CSD)
 ;   --------------------------------------------------------------------------------
 ;   procedure sd_read_csd_cid(byte in command) is
-;      sd_chip_select = low  -- enable the sd card
+;      sd_enable()  -- enable the sd card
 ;
 ;      var byte response,data, step
 ;      send_command(command,0,response)
@@ -2051,7 +2169,7 @@ end procedure
 ;      data = spi_master
 ;      data = spi_master
 ;
-;      sd_chip_select = high  -- enable the sd card
+;      sd_disable  -- enable the sd card
 ;   end procedure
 
 --------------------------------------------------------------------------------
@@ -2059,7 +2177,7 @@ end procedure
 -- Total size in bytes = sd_number_of_sectors * 512
 --------------------------------------------------------------------------------
 procedure sd_get_number_of_sectors() is
-   sd_chip_select = low  -- enable the sd card
+   sd_enable()  -- enable the sd card
 
    var byte x
    var byte*4 c_size = 0
@@ -2070,9 +2188,9 @@ procedure sd_get_number_of_sectors() is
    send_command(SD_SEND_CSD,0,x)
 
    -- wait till ready
-   var byte step = 0
+   var word step = 0
    while spi_master != 0xFE loop      -- wait till data is ready to read
-      if step == 100 then
+      if step == 10000 then
          sd_error = SD_COMMAND_TIME_OUT
          return
       end if
@@ -2108,7 +2226,7 @@ procedure sd_get_number_of_sectors() is
       x = spi_master
       x = spi_master
 
-      sd_chip_select = high  -- disable the sd card
+      sd_disable  -- disable the sd card
 
       sd_number_of_sectors = (c_size << (c_size_mult + 2))
    else
@@ -2130,7 +2248,7 @@ procedure sd_get_number_of_sectors() is
       x = spi_master
       x = spi_master
 
-      sd_chip_select = high  -- disable the sd card
+      sd_disable  -- disable the sd card
       sd_number_of_sectors = (dword(c_size)+1) * 1024
 
    end if
