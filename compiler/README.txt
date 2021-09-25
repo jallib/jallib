@@ -19,6 +19,12 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
+2.5r5 -- 23 september 2021
+         * Fixed issue#19: Compiler generates an assert when an inline procedure is called frequently.
+         * Fixed issue#20: Compiler does not accept single character constants.
+         * Fixed issue#23: Error in calculation using sdword type.
+		 * Fixed issue#24: Error in if condition depending on the order of variable declaration.
+		 
 2.5r4 -- 26 December 2020 
 		 * Fixed Issue#10: JAL Compiler does not process hexadecimal ASCII constant escaping correctly
 		 * Fixed Issue#14: Compiler does not handle access to data area correct for some PICs
