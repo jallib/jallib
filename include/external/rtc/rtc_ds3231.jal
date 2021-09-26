@@ -394,7 +394,12 @@ end function
 -- ----------------------------------------------------------------------------
 procedure rtc_write_month(byte in month) is
 
-   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (month & 0b0001_1111))   
+   var byte data
+
+   -- The month also holds the century flag. We have to keep that.
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, data)
+   month = (month & 0b0001_1111) | (data & 0b1000_0000)
+   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, month)   
 
 end procedure
 
@@ -440,6 +445,9 @@ function ds3231_read_full_year() return word is
    if century then
       -- We are in the year 0x20xx (bcd notation)
       year = year + 0x2000
+   else      
+     -- We are in the year 0x19xx (bcd notation)
+      year = year + 0x1900
    end if
    return year
 
@@ -453,18 +461,19 @@ end function
 -- ----------------------------------------------------------------------------
 procedure ds3231_write_full_year(word in year) is
 
-   var byte value
-   var bit  century at value:7
+   var byte data
 
-   value = byte(year)
-   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, value) 
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, value)
+   -- First check if we need to set the century flag.
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, data)
    if (year > 0x1999) 
    then
-      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, value | 0b1000_0000)
+      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (data | 0b1000_0000))
    else
-      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, value & 0b0111_1111)
+      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (data & 0b0111_1111))
    end if  
+   -- Save the tens of the years.
+   data = byte(year)
+   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, data) 
 
 end procedure
 
