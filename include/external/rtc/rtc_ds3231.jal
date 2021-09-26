@@ -1,0 +1,507 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for DS3231 Real Time Clock.
+-- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
+-- Adapted-by:
+-- Revision: $Revision$
+-- Compiler: 2.5r5
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for controlling the SD3231 Real Time Clock. 
+--              The chip uses an IIC interface. The library provides all 
+--              functions and procedures to support the rtc_common.jal library.
+--              For all available procedures and functions see rtc_common.jal.
+--
+-- Sources: Maxim datasheet DS3231. 19-5170; Rev 10; 3/15
+--
+-- Notes: This library supports the control of the DS3231 via IIC.
+--        The default is hardware IIC control but this can be overruled using 
+--        software IIC control by defining the following constant:
+--        -) const DS3231_SOFTWARE_IIC = TRUE 
+--
+--        The following pins must be defined by the main program before 
+--        including this library. Common pins for using IIC:
+--        -) alias ds3231_sck             -- IIC to sck of DS3231
+--        -) alias ds3231_sck_direction    
+--        -) alias ds3231_sdo             -- IIC to sda of DS3231  
+--        -) alias ds3231_sdo_direction  
+-- 
+--        Only time, year and date setting and retrieving has been implemented.
+--        No functions are - yet - provided that support the alarm functionality
+--        of the DS3221.
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+; Address constants of the RTC DS3231 chip
+const byte DS3231_TIME_SECONDS_ADDRESS     = 0x00
+const byte DS3231_TIME_MINUTES_ADDRESS     = 0x01
+const byte DS3231_TIME_HOURS_ADDRESS       = 0x02
+const byte DS3231_TIME_DAY_ADDRESS         = 0x03
+const byte DS3231_TIME_DATE_ADDRESS        = 0x04
+const byte DS3231_TIME_MONTH_ADDRESS       = 0x05
+const byte DS3231_TIME_YEAR_ADDRESS        = 0x06
+const byte DS3231_ALARM_1_SECONDS_ADDRESS  = 0x07
+const byte DS3231_ALARM_1_MINUTES_ADDRESS  = 0x08
+const byte DS3231_ALARM_1_HOURS_ADDRESS    = 0x09
+const byte DS3231_ALARM_1_DAY_DATE_ADDRESS = 0x0A
+const byte DS3231_ALARM_2_MINUTES_ADDRESS  = 0x0B
+const byte DS3231_ALARM_2_HOURS_ADDRESS    = 0x0C
+const byte DS3231_ALARM_2_DAY_DATE_ADDRESS = 0x0D
+const byte DS3231_CONTROL_ADDRESS          = 0x0E
+const byte DS3231_STATUS_ADDRESS           = 0x0F
+const byte DS3231_AGING_ADDRESS            = 0x10
+const byte DS3231_TEMP_MSB_ADDRESS         = 0x11
+const byte DS3231_TEMP_LSB_ADDRESS         = 0x12
+
+-- -------------------------- Public API ---------------------------------------
+
+-- Realtime clock hardware identification needed for the rtc_common.jal library,
+const RTC_HW = 3231    -- DS3231 module
+include rtc_common     -- Common rtc functions and procedures
+
+-- Mandatory functions and procedure supported as defined by rtc_common.jal:
+-- -------------------------------------------------------------------------
+-- function  rtc_read_second() return byte
+-- function  rtc_read_minute() return byte
+-- function  rtc_read_hour() return byte
+-- function  rtc_read_dayofmonth() return byte
+-- function  rtc_read_month() return byte
+-- function  rtc_read_year() return byte
+-- procedure rtc_write_second(byte in second)
+-- procedure rtc_write_minute(byte in minute) 
+-- procedure rtc_write_hour(byte in hour) 
+-- procedure rtc_write_dayofmonth(byte in dayofmonth)
+-- procedure rtc_write_month(byte in month)
+-- procedure rtc_write_year(byte in year) 
+
+-- --- Aliases and additional functions and procedures provided by this library ---
+
+-- Intialize the DS3231 by initializing the IIC interface and setting the 
+-- clock to 24-hour mode and setting the year above the year 2000.
+procedure rtc_init()
+alias ds3231_init is rtc_init
+
+-- Stop the rtc.
+procedure rtc_stop()
+alias ds3231_stop is rtc_stop
+
+-- Start the rtc.
+procedure rtc_start() 
+alias ds3231_start is rtc_start
+
+-- Read second value from rtc in bcd notation.
+alias ds3231_read_second is rtc_read_second 
+
+-- Write second value in bcd notation to the rtc.
+alias ds3231_write_second is rtc_write_second 
+
+-- Read minute value from rtc in bcd notation.
+alias ds3231_read_minute is rtc_read_minute
+
+-- Write minute value in bcd notation to the rtc.
+alias ds3231_write_minute is rtc_write_minute
+
+-- Read hour value from rtc in 24-hour bcd notation.
+alias ds3231_read_hour is rtc_read_hour
+
+-- Write 24-hour value in bcd notation to the rtc.
+alias ds3231_write_hour is rtc_write_hour
+
+-- Read day of week value from rtc.
+-- Note: In rct_common.jal this is calculated using rtc_calc_dayofweek()
+function rtc_read_dayofweek() return byte -- This one is not 
+alias ds3231_read_dayofweek is rtc_read_dayofweek
+
+-- Write day of week value to the rtc.
+procedure rtc_write_dayofweek(byte in dayofweek)
+alias ds3231_write_dayofweek is rtc_write_dayofweek
+
+-- Read day of month value from rtc in bcd notation.
+alias ds3231_read_dayofmonth is rtc_read_dayofmonth
+
+-- Write day of month value in bcd notation to the rtc.
+alias ds3231_write_dayofmonth is rtc_write_dayofmonth
+
+-- Read month value from rtc in bcd notation.
+alias ds3231_read_month is rtc_read_month
+
+-- Write month value in bcd notation to the rtc.
+alias ds3231_write_month is rtc_write_month
+
+-- Read year value from rtc in bcd notation.
+alias ds3231_read_year is rtc_read_year
+
+-- Write year value in bcd notation to the rtc.
+alias ds3231_write_year is rtc_write_year
+
+-- Read the full year value from rtc in bcd notation. The high byte of the 
+-- return value contains the year hunderds in bcd, the low byte the tens years 
+-- in bcd.
+function ds3231_read_full_year() return word
+alias rtc_read_full_year is ds3231_read_full_year
+
+-- Write year full value in bcd notation to the rtc. The high byte of the
+-- parameter contains the year hunderds in bcd, the low byte the tens years 
+-- in bcd.
+procedure ds3231_write_full_year(word in year) 
+alias rtc_write_full_year is ds3231_write_full_year
+
+
+-- ---------------------- Advanced procedures ----------------------------------
+
+-- Write a byte to the given register of the SSD1306.
+procedure ds3231_write_register(byte in register, byte in data) 
+
+-- Read a byte from the given register of the SSD1306.
+procedure ds3231_read_register(byte in register, byte out data) 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- -------------- Private constants and function prototypes ---------------------
+
+-- IIC address, read and write
+const byte _DS3231_IIC_WR_ADDRESS = 0b1101_0000
+const byte _DS3231_IIC_RD_ADDRESS = 0b1101_0001
+
+-- ------------------------------- Final implemenation -------------------------
+
+-- Use IIC control. Set the clock speed to 400kHz which is the absolute 
+-- maximum for this chip. 
+const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz clock speed) 
+if defined(DS3231_SOFTWARE_IIC) then 
+   alias i2c_scl is ds3231_sck
+   alias i2c_sda is ds3231_sdo
+   alias i2c_scl_direction is ds3231_sck_direction
+   alias i2c_sda_direction is ds3231_sdo_direction
+   include i2c_software
+else
+   -- Hardware IIC. In some device files, the IIC pins are already defined 
+   -- and assigned to a specific hardware pin (see datasheet of your PIC).
+   if !defined(pin_scl_direction) then
+      alias pin_scl_direction  is ds3231_sck_direction
+   end if
+   if !defined(pin_sda_direction) then
+      alias pin_sda_direction is ds3231_sdo_direction
+   end if
+   -- I2C level setting. For SMB levels use: const bit _i2c_level = FALSE
+   if !defined(_i2c_level) then 
+      const bit _i2c_level = TRUE -- i2c levels (not SMB)
+   end if
+   include i2c_hardware
+end if
+
+
+-- ----------------------------------------------------------------------------
+-- Intialize the DS3231 by initializing the IIC interface and setting the 
+-- clock to 24-hour mode and setting the year above the year 2000.
+-- ----------------------------------------------------------------------------
+procedure rtc_init() is
+
+   var byte month                        
+   var byte hourbcd                                
+   var byte hourbin                                
+   var bit  mode12h at hourbcd : 6                 -- 12/24 hour mode flag
+   var bit  modepm  at hourbcd : 5                 -- AM/PM flag
+
+   -- Initialize the IIC interface, can be hardware IIC or software IIC.
+   i2c_initialize()
+
+   hourbcd = rtc_read_hour()                       -- actual bcd value
+   -- If in 12-hour mode set hour in 24-hour mode.
+   if mode12h then                                 -- 12 hour mode
+      hourbin = rtc_bcd2bin(hourbcd & 0b0001_1111) -- hour value binary   
+      if (hourbin == 12) then                      -- just after midnight or midday
+         hourbin = 0                               -- 12 -> 0  in 24-hour notation
+      end if
+      if modepm then                               -- post meridiem
+         hourbin = hourbin + 12                    -- to 24-hour value
+      end if
+      rtc_write_hour(rtc_bin2bcd(hourbin))         -- init hour in 24-hour mode
+   end if
+
+   -- We assume that we live in the year > 2000, so set the century bit.
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, month)
+   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (month | 0b1000_0000))
+
+   -- Start the real time clock.
+   rtc_start()
+ 
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Stop the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_stop() is
+
+   var byte value
+   
+   ds3231_read_register(DS3231_CONTROL_ADDRESS, value)
+   ds3231_write_register(DS3231_CONTROL_ADDRESS, (value | 0b1000_0000)) 
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Start the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_start() is
+
+   var byte value
+   
+   ds3231_read_register(DS3231_CONTROL_ADDRESS, value)
+   ds3231_write_register(DS3231_CONTROL_ADDRESS, (value & 0b0111_1111)) 
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read second value from rtc in bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_second() return byte is
+
+   var byte second 
+
+   ds3231_read_register(DS3231_TIME_SECONDS_ADDRESS, second)
+   return second
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write second value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_second(byte in second) is
+
+   ds3231_write_register(DS3231_TIME_SECONDS_ADDRESS, second)   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read minute value from rtc in bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_minute() return byte is
+
+   var byte minute 
+
+   ds3231_read_register(DS3231_TIME_MINUTES_ADDRESS, minute)
+   return minute
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write minute value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_minute(byte in minute) is
+
+   ds3231_write_register(DS3231_TIME_MINUTES_ADDRESS, minute)   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read hour value from rtc in 24-hour bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_hour() return byte is
+
+   var byte hour 
+
+   ds3231_read_register(DS3231_TIME_HOURS_ADDRESS, hour)
+   return (hour & 0b0011_1111) 
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write 24-hour value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_hour(byte in hour) is
+
+   ds3231_write_register(DS3231_TIME_HOURS_ADDRESS, (hour & 0b0011_1111))  
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read day of week value from rtc.
+-- ----------------------------------------------------------------------------
+function rtc_read_dayofweek() return byte is
+
+   var byte dayofweek 
+
+   ds3231_read_register(DS3231_TIME_DAY_ADDRESS, dayofweek)
+   return (dayofweek & 0b0000_0111)
+ 
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write day of week value to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_dayofweek(byte in dayofweek) is
+
+   ds3231_write_register(DS3231_TIME_DAY_ADDRESS, (dayofweek & 0b0000_0111))   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read day of month value from rtc in bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_dayofmonth() return byte is
+
+   var byte dayofmonth 
+
+   ds3231_read_register(DS3231_TIME_DATE_ADDRESS, dayofmonth)
+   return (dayofmonth & 0b0011_1111)
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write day of month value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_dayofmonth(byte in dayofmonth) is
+
+   ds3231_write_register(DS3231_TIME_DATE_ADDRESS, (dayofmonth & 0b0011_1111))   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read month value from rtc in bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_month() return byte is
+
+   var byte month 
+
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, month)
+   return (month & 0b0001_1111)
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write month value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_month(byte in month) is
+
+   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (month & 0b0001_1111))   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read year value from rtc in bcd notation.
+-- ----------------------------------------------------------------------------
+function rtc_read_year() return byte is
+
+   var byte year 
+
+   ds3231_read_register(DS3231_TIME_YEAR_ADDRESS, year)
+   return year
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write year value in bcd notation to the rtc.
+-- ----------------------------------------------------------------------------
+procedure rtc_write_year(byte in year) is
+
+   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, year)   
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read the full year value from rtc in bcd notation. The high byte of the 
+-- return value contains the year hunderds in bcd, the low byte the tens years 
+-- in bcd.
+-- ----------------------------------------------------------------------------
+function ds3231_read_full_year() return word is
+
+   var word year 
+   var byte value
+   var bit  century at value:7
+
+   ds3231_read_register(DS3231_TIME_YEAR_ADDRESS, value)
+   year = word(value)
+   -- The century bit determines if we are above 19xx or below 19xx.
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, value)
+   if century then
+      -- We are in the year 0x20xx (bcd notation)
+      year = year + 0x2000
+   end if
+   return year
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Write year full value in bcd notation to the rtc. The high byte of the
+-- parameter contains the year hunderds in bcd, the low byte the tens years 
+-- in bcd.
+-- ----------------------------------------------------------------------------
+procedure ds3231_write_full_year(word in year) is
+
+   var byte value
+   var bit  century at value:7
+
+   value = byte(year)
+   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, value) 
+   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, value)
+   if (year > 0x1999) 
+   then
+      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, value | 0b1000_0000)
+   else
+      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, value & 0b0111_1111)
+   end if  
+
+end procedure
+
+
+-- ----------------------------- Advanced functions ---------------------------
+
+-- Write a byte to the given register of the SSD1306.
+procedure ds3231_write_register(byte in register, byte in data) is
+
+   var bit _trash 
+
+   i2c_start()
+   _trash = i2c_transmit_byte(_DS3231_IIC_WR_ADDRESS)
+   _trash = i2c_transmit_byte(register)
+   _trash = i2c_transmit_byte(data)
+   i2c_stop()
+
+end procedure
+
+
+-- Read a byte from the given register of the SSD1306.
+procedure ds3231_read_register(byte in register, byte out data) is
+
+   var bit _trash 
+
+   i2c_start()
+   _trash = i2c_transmit_byte(_DS3231_IIC_WR_ADDRESS)
+   _trash = i2c_transmit_byte(register)
+   i2c_restart()
+   _trash = i2c_transmit_byte(_DS3231_IIC_RD_ADDRESS)
+   -- Read only one byte so no acknowledge.
+   data =  i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+end procedure
+
+
+ 
+
+
