@@ -1,5 +1,5 @@
 -- -----------------------------------------------------------------------------
--- Title: Library for DS3231 Real Time Clock.
+-- Title: Library for the DS3231 Real Time Clock IC.
 -- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
 -- Adapted-by:
 -- Revision: $Revision$
@@ -8,60 +8,76 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Library for controlling the SD3231 Real Time Clock. 
+-- Description: Library for controlling the SD3231 Real Time Clock IC. 
 --              The chip uses an IIC interface. The library provides all 
---              functions and procedures to support the rtc_common.jal library.
---              For all available procedures and functions see rtc_common.jal.
+--              functions and procedures to support the rtc_common.jal library and
+--              includes extra functions and procedures specific for the DS3231.
+--              For all common rtc procedures and functions see rtc_common.jal.
 --
--- Sources: Maxim datasheet DS3231. 19-5170; Rev 10; 3/15
+-- Sources: Maxim datasheet rtc. 19-5170; Rev 10; 3/15
 --
 -- Notes: This library supports the control of the DS3231 via IIC.
 --        The default is hardware IIC control but this can be overruled using 
 --        software IIC control by defining the following constant:
---        -) const DS3231_SOFTWARE_IIC = TRUE 
+--        -) const RTC_SOFTWARE_IIC = TRUE 
 --
 --        The following pins must be defined by the main program before 
 --        including this library. Common pins for using IIC:
---        -) alias ds3231_sck             -- IIC to sck of DS3231
---        -) alias ds3231_sck_direction    
---        -) alias ds3231_sdo             -- IIC to sda of DS3231  
---        -) alias ds3231_sdo_direction  
+--        -) alias rtc_sck             -- IIC to sck of rtc
+--        -) alias rtc_sck_direction    
+--        -) alias rtc_sdo             -- IIC to sda of rtc  
+--        -) alias rtc_sdo_direction  
 -- 
---        Only time, year and date setting and retrieving has been implemented.
---        No functions are - yet - provided that support the alarm functionality
---        of the DS3221.
 --
 
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
 -- -----------------------------------------------------------------------------
 
-; Address constants of the RTC DS3231 chip
-const byte DS3231_TIME_SECONDS_ADDRESS     = 0x00
-const byte DS3231_TIME_MINUTES_ADDRESS     = 0x01
-const byte DS3231_TIME_HOURS_ADDRESS       = 0x02
-const byte DS3231_TIME_DAY_ADDRESS         = 0x03
-const byte DS3231_TIME_DATE_ADDRESS        = 0x04
-const byte DS3231_TIME_MONTH_ADDRESS       = 0x05
-const byte DS3231_TIME_YEAR_ADDRESS        = 0x06
-const byte DS3231_ALARM_1_SECONDS_ADDRESS  = 0x07
-const byte DS3231_ALARM_1_MINUTES_ADDRESS  = 0x08
-const byte DS3231_ALARM_1_HOURS_ADDRESS    = 0x09
-const byte DS3231_ALARM_1_DAY_DATE_ADDRESS = 0x0A
-const byte DS3231_ALARM_2_MINUTES_ADDRESS  = 0x0B
-const byte DS3231_ALARM_2_HOURS_ADDRESS    = 0x0C
-const byte DS3231_ALARM_2_DAY_DATE_ADDRESS = 0x0D
-const byte DS3231_CONTROL_ADDRESS          = 0x0E
-const byte DS3231_STATUS_ADDRESS           = 0x0F
-const byte DS3231_AGING_ADDRESS            = 0x10
-const byte DS3231_TEMP_MSB_ADDRESS         = 0x11
-const byte DS3231_TEMP_LSB_ADDRESS         = 0x12
+-- Alarm rates of alarm 1.
+const byte RTC_ALARM_1_ONCE_PER_SEC             = 0
+const byte RTC_ALARM_1_SEC_MATCH                = 1
+const byte RTC_ALARM_1_MIN_SEC_MATCH            = 2
+const byte RTC_ALARM_1_HOUR_MIN_SEC_MATCH       = 3
+const byte RTC_ALARM_1_DATE_HOUR_MIN_SEC_MATCH  = 4
+const byte RTC_ALARM_1_DAY_HOUR_MIN_SEC_MATCH   = 5
+
+-- Alarm rates of alarm 2.
+const byte RTC_ALARM_2_ONCE_PER_MIN        = 0
+const byte RTC_ALARM_2_MIN_MATCH           = 1
+const byte RTC_ALARM_2_HOUR_MIN_MATCH      = 2
+const byte RTC_ALARM_2_DATE_HOUR_MIN_MATCH = 3
+const byte RTC_ALARM_2_DAY_HOUR_MIN_MATCH  = 4
+
+-- Sqare wave frequency definitions.
+const byte RTC_SQUARE_WAVE_1_HZ  = 0b0000_0000
+const byte RTC_SQUARE_WAVE_1_KHZ = 0b0000_1000
+const byte RTC_SQUARE_WAVE_4_KHZ = 0b0001_0000
+const byte RTC_SQUARE_WAVE_8_KHZ = 0b0001_1000
+
+-- Address constants of the RTC rtc chip. Shown here in case the user wants to
+-- write the register using the advanced procedures to control the registers.
+const byte RTC_TIME_SECONDS_ADDRESS     = 0x00
+const byte RTC_TIME_MINUTES_ADDRESS     = 0x01
+const byte RTC_TIME_HOUR_ADDRESS        = 0x02
+const byte RTC_TIME_DAY_ADDRESS         = 0x03
+const byte RTC_TIME_DATE_ADDRESS        = 0x04
+const byte RTC_TIME_MONTH_ADDRESS       = 0x05
+const byte RTC_TIME_YEAR_ADDRESS        = 0x06
+const byte RTC_ALARM_1_SECONDS_ADDRESS  = 0x07
+const byte RTC_ALARM_1_MINUTES_ADDRESS  = 0x08
+const byte RTC_ALARM_1_HOUR_ADDRESS     = 0x09
+const byte RTC_ALARM_1_DAY_DATE_ADDRESS = 0x0A
+const byte RTC_ALARM_2_MINUTES_ADDRESS  = 0x0B
+const byte RTC_ALARM_2_HOUR_ADDRESS     = 0x0C
+const byte RTC_ALARM_2_DAY_DATE_ADDRESS = 0x0D
+const byte RTC_CONTROL_ADDRESS          = 0x0E
+const byte RTC_STATUS_ADDRESS           = 0x0F
+const byte RTC_AGING_ADDRESS            = 0x10
+const byte RTC_TEMP_MSB_ADDRESS         = 0x11
+const byte RTC_TEMP_LSB_ADDRESS         = 0x12
 
 -- -------------------------- Public API ---------------------------------------
-
--- Realtime clock hardware identification needed for the rtc_common.jal library,
-const RTC_HW = 3231    -- DS3231 module
-include rtc_common     -- Common rtc functions and procedures
 
 -- Mandatory functions and procedure supported as defined by rtc_common.jal:
 -- -------------------------------------------------------------------------
@@ -78,116 +94,203 @@ include rtc_common     -- Common rtc functions and procedures
 -- procedure rtc_write_month(byte in month)
 -- procedure rtc_write_year(byte in year) 
 
--- --- Aliases and additional functions and procedures provided by this library ---
+-- --- Additioanal functions and procedures provided by this rtc library ---
 
--- Intialize the DS3231 by initializing the IIC interface and setting the 
+-- ----------------------------------------------------------------------------
+-- Intialize the rtc by initializing the IIC interface and setting the 
 -- clock to 24-hour mode and setting the year above the year 2000.
+-- All the device interrupts will be disabled.
+-- ----------------------------------------------------------------------------
 procedure rtc_init()
-alias ds3231_init is rtc_init
 
+-- ----------------------------------------------------------------------------
 -- Stop the rtc.
+-- ----------------------------------------------------------------------------
 procedure rtc_stop()
-alias ds3231_stop is rtc_stop
 
+-- ----------------------------------------------------------------------------
 -- Start the rtc.
+-- ----------------------------------------------------------------------------
 procedure rtc_start() 
-alias ds3231_start is rtc_start
 
--- Read second value from rtc in bcd notation.
-alias ds3231_read_second is rtc_read_second 
-
--- Write second value in bcd notation to the rtc.
-alias ds3231_write_second is rtc_write_second 
-
--- Read minute value from rtc in bcd notation.
-alias ds3231_read_minute is rtc_read_minute
-
--- Write minute value in bcd notation to the rtc.
-alias ds3231_write_minute is rtc_write_minute
-
--- Read hour value from rtc in 24-hour bcd notation.
-alias ds3231_read_hour is rtc_read_hour
-
--- Write 24-hour value in bcd notation to the rtc.
-alias ds3231_write_hour is rtc_write_hour
-
+-- ----------------------------------------------------------------------------
 -- Read day of week value from rtc.
--- Note: In rct_common.jal this is calculated using rtc_calc_dayofweek()
-function rtc_read_dayofweek() return byte -- This one is not 
-alias ds3231_read_dayofweek is rtc_read_dayofweek
+-- ----------------------------------------------------------------------------
+function rtc_read_dayofweek() return byte 
 
+-- ----------------------------------------------------------------------------
 -- Write day of week value to the rtc.
+-- ----------------------------------------------------------------------------
 procedure rtc_write_dayofweek(byte in dayofweek)
-alias ds3231_write_dayofweek is rtc_write_dayofweek
 
--- Read day of month value from rtc in bcd notation.
-alias ds3231_read_dayofmonth is rtc_read_dayofmonth
-
--- Write day of month value in bcd notation to the rtc.
-alias ds3231_write_dayofmonth is rtc_write_dayofmonth
-
--- Read month value from rtc in bcd notation.
-alias ds3231_read_month is rtc_read_month
-
--- Write month value in bcd notation to the rtc.
-alias ds3231_write_month is rtc_write_month
-
--- Read year value from rtc in bcd notation.
-alias ds3231_read_year is rtc_read_year
-
--- Write year value in bcd notation to the rtc.
-alias ds3231_write_year is rtc_write_year
-
+-- ----------------------------------------------------------------------------
 -- Read the full year value from rtc in bcd notation. The high byte of the 
 -- return value contains the year hunderds in bcd, the low byte the tens years 
 -- in bcd.
-function ds3231_read_full_year() return word
-alias rtc_read_full_year is ds3231_read_full_year
+-- ----------------------------------------------------------------------------
+function rtc_read_full_year() return word
 
+-- ----------------------------------------------------------------------------
 -- Write year full value in bcd notation to the rtc. The high byte of the
 -- parameter contains the year hunderds in bcd, the low byte the tens years 
 -- in bcd.
-procedure ds3231_write_full_year(word in year) 
-alias rtc_write_full_year is ds3231_write_full_year
+-- ----------------------------------------------------------------------------
+procedure rtc_write_full_year(word in year) 
 
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 time in hours, minutes and seconds in bcd notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_1_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_time_bcd(byte in hour, byte in minutes, byte in seconds) 
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 time in hours, minutes and seconds in binary notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_1_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_time_bin(byte in hour, byte in minutes, byte in seconds) 
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 day (day of the week) in bcd notation. 
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_day(byte in day)
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 date (day of the month) in bcd notation. 
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_date(byte in date)
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 rate according to the given parameter.
+-- Note: When using RTC_ALARM_1_DATE_HOUR_MIN_SEC_MATCH or
+--       RTC_ALARM_1_DAY_HOUR_MIN_SEC_MATCH make sure to have set the
+--       alarm date or alarm day accordingly.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_rate(byte in rate) 
+
+-- ----------------------------------------------------------------------------
+-- Enable alarm 1 interrupt.
+-- Note: This will disable the square wave output on the INT/SQW pin.
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_alarm_1_interrupt() 
+
+-- ----------------------------------------------------------------------------
+-- Disable alarm 1 interrupt.
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_alarm_1_interrupt()
+
+-- ----------------------------------------------------------------------------
+-- Alarm 1 flag pseudo variables
+-- ----------------------------------------------------------------------------
+function rtc_alarm_1_flag'get() return bit 
+procedure rtc_alarm_1_flag'put(bit in set_flag)
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 time in hours and minutes in bcd notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_2_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_time_bcd(byte in hour, byte in minutes)
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 time in hours and minutes in binary notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_2_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_time_bin(byte in hour, byte in minutes)
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 rate according to the given parameter.
+-- Note: When using RTC_ALARM_2_DATE_HOUR_MIN_MATCH or
+--       RTC_ALARM_2_DAY_HOUR_MIN_MATCH make sure to have set the
+--       alarm date or alarm day accordingly.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_rate(byte in rate)
+
+-- ----------------------------------------------------------------------------
+-- Enable alarm 2 interrupt.
+-- Note: This will disable the square wave output on the INT/SQW pin.
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_alarm_2_interrupt()
+
+-- ----------------------------------------------------------------------------
+-- Disable alarm 2 interrupt.
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_alarm_2_interrupt() 
+
+-- ----------------------------------------------------------------------------
+-- Alarm 2 flag pseudo variables
+-- ----------------------------------------------------------------------------
+function rtc_alarm_2_flag'get() return bit 
+procedure rtc_alarm_2_flag'put(bit in set_flag)
+
+-- ----------------------------------------------------------------------------
+-- Enable the 32 kHz output pin. 
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_32_khz()
+
+-- ----------------------------------------------------------------------------
+-- Disable the 32 kHz output pin. Note, this output is open drain.
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_32_khz()
+
+-- ----------------------------------------------------------------------------
+-- Set the square wave frequency and output. 
+-- Note: This will disable the interrupt functionality on the INT/SQW pin.
+--       The M version of the DS3231 can only generate the 1 Hz signal.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_square_wave(byte in frequency)
 
 -- ---------------------- Advanced procedures ----------------------------------
 
+-- ----------------------------------------------------------------------------
 -- Write a byte to the given register of the SSD1306.
-procedure ds3231_write_register(byte in register, byte in data) 
+-- ----------------------------------------------------------------------------
+procedure rtc_write_register(byte in register, byte in data) 
 
+-- ----------------------------------------------------------------------------
 -- Read a byte from the given register of the SSD1306.
-procedure ds3231_read_register(byte in register, byte out data) 
+-- ----------------------------------------------------------------------------
+procedure rtc_read_register(byte in register, byte out data) 
 
 -- -----------------------------------------------------------------------------
 -- ---------------------------- Implementation ---------------------------------
 -- -----------------------------------------------------------------------------
 
+-- Realtime clock hardware identification needed for the rtc_common.jal library,
+const RTC_HW = 3231    -- rtc module
+include rtc_common     -- Common rtc functions and procedures
+
 -- -------------- Private constants and function prototypes ---------------------
 
 -- IIC address, read and write
-const byte _DS3231_IIC_WR_ADDRESS = 0b1101_0000
-const byte _DS3231_IIC_RD_ADDRESS = 0b1101_0001
+const byte RTC_IIC_WR_ADDRESS = 0b1101_0000
+const byte RTC_IIC_RD_ADDRESS = 0b1101_0001
 
 -- ------------------------------- Final implemenation -------------------------
 
 -- Use IIC control. Set the clock speed to 400kHz which is the absolute 
 -- maximum for this chip. 
 const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz clock speed) 
-if defined(DS3231_SOFTWARE_IIC) then 
-   alias i2c_scl is ds3231_sck
-   alias i2c_sda is ds3231_sdo
-   alias i2c_scl_direction is ds3231_sck_direction
-   alias i2c_sda_direction is ds3231_sdo_direction
+if defined(RTC_SOFTWARE_IIC) then 
+   alias i2c_scl is rtc__sck
+   alias i2c_sda is rtc__sdo
+   alias i2c_scl_direction is rtc_sck_direction
+   alias i2c_sda_direction is rtc_sdo_direction
    include i2c_software
 else
    -- Hardware IIC. In some device files, the IIC pins are already defined 
    -- and assigned to a specific hardware pin (see datasheet of your PIC).
    if !defined(pin_scl_direction) then
-      alias pin_scl_direction  is ds3231_sck_direction
+      alias pin_scl_direction  is rtc_sck_direction
    end if
    if !defined(pin_sda_direction) then
-      alias pin_sda_direction is ds3231_sdo_direction
+      alias pin_sda_direction is rtc_sdo_direction
    end if
    -- I2C level setting. For SMB levels use: const bit _i2c_level = FALSE
    if !defined(_i2c_level) then 
@@ -198,8 +301,9 @@ end if
 
 
 -- ----------------------------------------------------------------------------
--- Intialize the DS3231 by initializing the IIC interface and setting the 
+-- Intialize the rtc by initializing the IIC interface and setting the 
 -- clock to 24-hour mode and setting the year above the year 2000.
+-- All the device interrupts will be disabled.
 -- ----------------------------------------------------------------------------
 procedure rtc_init() is
 
@@ -226,40 +330,43 @@ procedure rtc_init() is
    end if
 
    -- We assume that we live in the year > 2000, so set the century bit.
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, month)
-   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (month | 0b1000_0000))
+   rtc_read_register(RTC_TIME_MONTH_ADDRESS, month)
+   rtc_write_register(RTC_TIME_MONTH_ADDRESS, (month | 0b1000_0000))
+   
+   -- Clear any interrupts and flags
+   rtc_disable_alarm_1_interrupt()
+   rtc_disable_alarm_2_interrupt()
+   rtc_alarm_1_flag = FALSE
+   rtc_alarm_2_flag = FALSE
 
    -- Start the real time clock.
    rtc_start()
  
 end procedure
 
-
 -- ----------------------------------------------------------------------------
 -- Stop the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_stop() is
 
-   var byte value
+   var byte data
    
-   ds3231_read_register(DS3231_CONTROL_ADDRESS, value)
-   ds3231_write_register(DS3231_CONTROL_ADDRESS, (value | 0b1000_0000)) 
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data | 0b1000_0000)) 
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Start the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_start() is
 
-   var byte value
+   var byte data
    
-   ds3231_read_register(DS3231_CONTROL_ADDRESS, value)
-   ds3231_write_register(DS3231_CONTROL_ADDRESS, (value & 0b0111_1111)) 
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data & 0b0111_1111)) 
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read second value from rtc in bcd notation.
@@ -268,21 +375,19 @@ function rtc_read_second() return byte is
 
    var byte second 
 
-   ds3231_read_register(DS3231_TIME_SECONDS_ADDRESS, second)
+   rtc_read_register(RTC_TIME_SECONDS_ADDRESS, second)
    return second
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write second value in bcd notation to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_second(byte in second) is
 
-   ds3231_write_register(DS3231_TIME_SECONDS_ADDRESS, second)   
+   rtc_write_register(RTC_TIME_SECONDS_ADDRESS, second)   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read minute value from rtc in bcd notation.
@@ -291,21 +396,19 @@ function rtc_read_minute() return byte is
 
    var byte minute 
 
-   ds3231_read_register(DS3231_TIME_MINUTES_ADDRESS, minute)
+   rtc_read_register(RTC_TIME_MINUTES_ADDRESS, minute)
    return minute
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write minute value in bcd notation to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_minute(byte in minute) is
 
-   ds3231_write_register(DS3231_TIME_MINUTES_ADDRESS, minute)   
+   rtc_write_register(RTC_TIME_MINUTES_ADDRESS, minute)   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read hour value from rtc in 24-hour bcd notation.
@@ -314,44 +417,41 @@ function rtc_read_hour() return byte is
 
    var byte hour 
 
-   ds3231_read_register(DS3231_TIME_HOURS_ADDRESS, hour)
+   rtc_read_register(RTC_TIME_HOUR_ADDRESS, hour)
    return (hour & 0b0011_1111) 
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write 24-hour value in bcd notation to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_hour(byte in hour) is
 
-   ds3231_write_register(DS3231_TIME_HOURS_ADDRESS, (hour & 0b0011_1111))  
+   rtc_write_register(RTC_TIME_HOUR_ADDRESS, (hour & 0b0011_1111))  
 
 end procedure
 
-
 -- ----------------------------------------------------------------------------
 -- Read day of week value from rtc.
+-- Note: In rct_common.jal this is calculated using rtc_calc_dayofweek()
 -- ----------------------------------------------------------------------------
 function rtc_read_dayofweek() return byte is
 
    var byte dayofweek 
 
-   ds3231_read_register(DS3231_TIME_DAY_ADDRESS, dayofweek)
+   rtc_read_register(RTC_TIME_DAY_ADDRESS, dayofweek)
    return (dayofweek & 0b0000_0111)
  
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write day of week value to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_dayofweek(byte in dayofweek) is
 
-   ds3231_write_register(DS3231_TIME_DAY_ADDRESS, (dayofweek & 0b0000_0111))   
+   rtc_write_register(RTC_TIME_DAY_ADDRESS, (dayofweek & 0b0000_0111))   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read day of month value from rtc in bcd notation.
@@ -360,21 +460,19 @@ function rtc_read_dayofmonth() return byte is
 
    var byte dayofmonth 
 
-   ds3231_read_register(DS3231_TIME_DATE_ADDRESS, dayofmonth)
+   rtc_read_register(RTC_TIME_DATE_ADDRESS, dayofmonth)
    return (dayofmonth & 0b0011_1111)
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write day of month value in bcd notation to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_dayofmonth(byte in dayofmonth) is
 
-   ds3231_write_register(DS3231_TIME_DATE_ADDRESS, (dayofmonth & 0b0011_1111))   
+   rtc_write_register(RTC_TIME_DATE_ADDRESS, (dayofmonth & 0b0011_1111))   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read month value from rtc in bcd notation.
@@ -383,11 +481,10 @@ function rtc_read_month() return byte is
 
    var byte month 
 
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, month)
+   rtc_read_register(RTC_TIME_MONTH_ADDRESS, month)
    return (month & 0b0001_1111)
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write month value in bcd notation to the rtc.
@@ -397,12 +494,11 @@ procedure rtc_write_month(byte in month) is
    var byte data
 
    -- The month also holds the century flag. We have to keep that.
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, data)
+   rtc_read_register(RTC_TIME_MONTH_ADDRESS, data)
    month = (month & 0b0001_1111) | (data & 0b1000_0000)
-   ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, month)   
+   rtc_write_register(RTC_TIME_MONTH_ADDRESS, month)   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read year value from rtc in bcd notation.
@@ -411,37 +507,35 @@ function rtc_read_year() return byte is
 
    var byte year 
 
-   ds3231_read_register(DS3231_TIME_YEAR_ADDRESS, year)
+   rtc_read_register(RTC_TIME_YEAR_ADDRESS, year)
    return year
 
 end function
-
 
 -- ----------------------------------------------------------------------------
 -- Write year value in bcd notation to the rtc.
 -- ----------------------------------------------------------------------------
 procedure rtc_write_year(byte in year) is
 
-   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, year)   
+   rtc_write_register(RTC_TIME_YEAR_ADDRESS, year)   
 
 end procedure
-
 
 -- ----------------------------------------------------------------------------
 -- Read the full year value from rtc in bcd notation. The high byte of the 
 -- return value contains the year hunderds in bcd, the low byte the tens years 
 -- in bcd.
 -- ----------------------------------------------------------------------------
-function ds3231_read_full_year() return word is
+function rtc_read_full_year() return word is
 
    var word year 
-   var byte value
-   var bit  century at value:7
+   var byte data
+   var bit  century at data:7
 
-   ds3231_read_register(DS3231_TIME_YEAR_ADDRESS, value)
-   year = word(value)
+   rtc_read_register(RTC_TIME_YEAR_ADDRESS, data)
+   year = word(data)
    -- The century bit determines if we are above 19xx or below 19xx.
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, value)
+   rtc_read_register(RTC_TIME_MONTH_ADDRESS, data)
    if century then
       -- We are in the year 0x20xx (bcd notation)
       year = year + 0x2000
@@ -453,57 +547,420 @@ function ds3231_read_full_year() return word is
 
 end function
 
-
 -- ----------------------------------------------------------------------------
 -- Write year full value in bcd notation to the rtc. The high byte of the
 -- parameter contains the year hunderds in bcd, the low byte the tens years 
 -- in bcd.
 -- ----------------------------------------------------------------------------
-procedure ds3231_write_full_year(word in year) is
+procedure rtc_write_full_year(word in year) is
 
    var byte data
 
    -- First check if we need to set the century flag.
-   ds3231_read_register(DS3231_TIME_MONTH_ADDRESS, data)
+   rtc_read_register(RTC_TIME_MONTH_ADDRESS, data)
    if (year > 0x1999) 
    then
-      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (data | 0b1000_0000))
+      rtc_write_register(RTC_TIME_MONTH_ADDRESS, (data | 0b1000_0000))
    else
-      ds3231_write_register(DS3231_TIME_MONTH_ADDRESS, (data & 0b0111_1111))
+      rtc_write_register(RTC_TIME_MONTH_ADDRESS, (data & 0b0111_1111))
    end if  
    -- Save the tens of the years.
    data = byte(year)
-   ds3231_write_register(DS3231_TIME_YEAR_ADDRESS, data) 
+   rtc_write_register(RTC_TIME_YEAR_ADDRESS, data) 
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 time in hours, minutes and seconds in bcd notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_1_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_time_bcd(byte in hour, byte in minutes, byte in seconds) is
+
+   var byte data 
+   
+   -- We have to keep the alarm bit settng stored in bit 7.
+   rtc_read_register(RTC_ALARM_1_SECONDS_ADDRESS, data)
+   data = data & 0b1000_0000
+   rtc_write_register(RTC_ALARM_1_SECONDS_ADDRESS, (data | seconds))
+   rtc_read_register(RTC_ALARM_1_MINUTES_ADDRESS, data)
+   data = data & 0b1000_0000
+   rtc_write_register(RTC_ALARM_1_MINUTES_ADDRESS, (data | minutes))
+   rtc_read_register(RTC_ALARM_1_HOUR_ADDRESS, data)
+   data = data & 0b1000_0000
+   -- Set to 24 hours.
+   hour = hour & 0b0011_1111
+   rtc_write_register(RTC_ALARM_1_HOUR_ADDRESS, (data | hour))
 
 end procedure
 
 
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 time in hours, minutes and seconds in binary notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_1_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_time_bin(byte in hour, byte in minutes, byte in seconds) is
+    rtc_set_alarm_1_time_bcd(rtc_bin2bcd(hour), rtc_bin2bcd(minutes), rtc_bin2bcd(seconds))
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 day (day of the week) in bcd notation. 
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_day(byte in day) is
+
+   var byte data 
+   
+   -- Mask off day.
+   day = day & 0b0000_0111 
+   -- We have to keep the alarm bit settng stored in bit 7.
+   rtc_read_register(RTC_ALARM_1_DAY_DATE_ADDRESS, data)
+   data = (data & 0b1000_0000) | 0b01000_0000 -- Mode is day (bit 6 = 1)
+   rtc_write_register(RTC_ALARM_1_DAY_DATE_ADDRESS, (data | day))
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 date (day of the month) in bcd notation. 
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_date(byte in date) is
+
+   var byte data 
+   
+   -- Mask of date.
+   date = date & 0b0011_1111 
+   -- We have to keep the alarm bit settng stored in bit 7.
+   rtc_read_register(RTC_ALARM_1_DAY_DATE_ADDRESS, data)
+   data = data & 0b1000_0000 -- Mode is date (bit 6 = 0)
+   rtc_write_register(RTC_ALARM_1_DAY_DATE_ADDRESS, (data | date))
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 1 rate according to the given parameter.
+-- Note: When using RTC_ALARM_1_DATE_HOUR_MIN_SEC_MATCH or
+--       RTC_ALARM_1_DAY_HOUR_MIN_SEC_MATCH make sure to have set the
+--       alarm date or alarm day accordingly.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_1_rate(byte in rate) is
+
+   var byte mask_1, mask_2, mask_3, mask_4
+   
+   -- First read all masks
+   rtc_read_register(RTC_ALARM_1_SECONDS_ADDRESS, mask_1)
+   rtc_read_register(RTC_ALARM_1_MINUTES_ADDRESS, mask_2)
+   rtc_read_register(RTC_ALARM_1_HOUR_ADDRESS, mask_3)
+   rtc_read_register(RTC_ALARM_1_DAY_DATE_ADDRESS, mask_4)
+
+   case rate of
+
+      RTC_ALARM_1_ONCE_PER_SEC:
+      block
+         mask_1 = mask_1 | 0b1000_0000
+         mask_2 = mask_2 | 0b1000_0000
+         mask_3 = mask_3 | 0b1000_0000
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_1_SEC_MATCH:
+      block
+         mask_1 = mask_1 & 0b0111_1111
+         mask_2 = mask_2 | 0b1000_0000
+         mask_3 = mask_3 | 0b1000_0000
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_1_MIN_SEC_MATCH:
+      block
+         mask_1 = mask_1 & 0b0111_1111
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 | 0b1000_0000
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_1_HOUR_MIN_SEC_MATCH:
+      block
+         mask_1 = mask_1 & 0b0111_1111
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 & 0b0111_1111
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_1_DATE_HOUR_MIN_SEC_MATCH,
+      RTC_ALARM_1_DAY_HOUR_MIN_SEC_MATCH:
+      block
+         mask_1 = mask_1 & 0b0111_1111
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 & 0b0111_1111
+         mask_4 = mask_4 & 0b0111_1111
+      end block
+
+   end case
+
+   -- Write all masks back.
+   rtc_write_register(RTC_ALARM_1_SECONDS_ADDRESS, mask_1)
+   rtc_write_register(RTC_ALARM_1_MINUTES_ADDRESS, mask_2)
+   rtc_write_register(RTC_ALARM_1_HOUR_ADDRESS, mask_3)
+   rtc_write_register(RTC_ALARM_1_DAY_DATE_ADDRESS, mask_4)
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Enable alarm 1 interrupt.
+-- Note: This will disable the square wave output on the INT/SQW pin.
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_alarm_1_interrupt() is
+
+   var byte data
+
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data | 0b0000_0101))
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- Disable alarm 1 interrupt.
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_alarm_1_interrupt() is
+
+   var byte data
+
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data & 0b1111_1110))
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- Alarm 1 flag pseudo variables
+-- ----------------------------------------------------------------------------
+function rtc_alarm_1_flag'get() return bit is
+   var byte data
+
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   return  (data & 0b0000_0001) > 0
+
+ end function
+
+procedure rtc_alarm_1_flag'put(bit in set_flag) is
+   var byte data
+
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   if set_flag then
+      rtc_write_register(RTC_STATUS_ADDRESS, (data | 0b0000_0001))
+   else
+      rtc_write_register(RTC_STATUS_ADDRESS, (data & 0b1111_1110))
+   end if 
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 time in hours and minutes in bcd notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_2_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_time_bcd(byte in hour, byte in minutes) is
+
+   var byte data 
+   
+   -- We have to keep the alarm bit settng stored in bit 7.
+   rtc_read_register(RTC_ALARM_2_MINUTES_ADDRESS, data)
+   data = data & 0b1000_0000
+   rtc_write_register(RTC_ALARM_2_MINUTES_ADDRESS, (data | minutes))
+   rtc_read_register(RTC_ALARM_2_HOUR_ADDRESS, data)
+   data = data & 0b1000_0000
+   -- Set to 24 hours.
+   hour = hour & 0b0011_1111
+   rtc_write_register(RTC_ALARM_2_HOUR_ADDRESS, (data | hour))
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 time in hours and minutes in binary notation.
+-- Hours must be in 24-hours format.
+-- When the alarm time matches then rtc_alarm_2_flag will be set and must be
+-- cleared by the user.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_time_bin(byte in hour, byte in minutes) is
+    rtc_set_alarm_2_time_bcd(rtc_bin2bcd(hour), rtc_bin2bcd(minutes))
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set alarm 2 rate according to the given parameter.
+-- Note: When using RTC_ALARM_2_DATE_HOUR_MIN_MATCH or
+--       RTC_ALARM_2_DAY_HOUR_MIN_MATCH make sure to have set the
+--       alarm date or alarm day accordingly.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_alarm_2_rate(byte in rate) is
+
+   var byte mask_2, mask_3, mask_4
+   
+   -- First read all masks
+   rtc_read_register(RTC_ALARM_2_MINUTES_ADDRESS, mask_2)
+   rtc_read_register(RTC_ALARM_2_HOUR_ADDRESS, mask_3)
+   rtc_read_register(RTC_ALARM_2_DAY_DATE_ADDRESS, mask_4)
+
+   case rate of
+
+      RTC_ALARM_2_ONCE_PER_MIN:
+      block
+         mask_2 = mask_2 | 0b1000_0000
+         mask_3 = mask_3 | 0b1000_0000
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_2_MIN_MATCH:
+      block
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 | 0b1000_0000
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_2_HOUR_MIN_MATCH:
+      block
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 & 0b0111_1111
+         mask_4 = mask_4 | 0b1000_0000
+      end block
+
+      RTC_ALARM_2_DATE_HOUR_MIN_MATCH,
+      RTC_ALARM_2_DAY_HOUR_MIN_MATCH:
+      block
+         mask_2 = mask_2 & 0b0111_1111
+         mask_3 = mask_3 & 0b0111_1111
+         mask_4 = mask_4 & 0b0111_1111
+      end block
+
+   end case
+
+   -- Write all masks back.
+   rtc_write_register(RTC_ALARM_2_MINUTES_ADDRESS, mask_2)
+   rtc_write_register(RTC_ALARM_2_HOUR_ADDRESS, mask_3)
+   rtc_write_register(RTC_ALARM_2_DAY_DATE_ADDRESS, mask_4)
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Enable alarm 2 interrupt.
+-- Note: This will disable the square wave output on the INT/SQW pin.
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_alarm_2_interrupt() is
+
+   var byte data
+
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data | 0b0000_0110))
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- Disable alarm 2 interrupt.
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_alarm_2_interrupt() is
+
+   var byte data
+
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   rtc_write_register(RTC_CONTROL_ADDRESS, (data & 0b1111_1101))
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- Alarm 2 flag pseudo variables
+-- ----------------------------------------------------------------------------
+function rtc_alarm_2_flag'get() return bit is
+    var byte data
+
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   return  (data & 0b0000_0010) > 0
+
+ end function
+
+procedure rtc_alarm_2_flag'put(bit in set_flag) is
+   var byte data
+
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   if set_flag then
+      rtc_write_register(RTC_STATUS_ADDRESS, (data | 0b0000_0010))
+   else
+      rtc_write_register(RTC_STATUS_ADDRESS, (data & 0b1111_1101))
+   end if 
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Enable the 32 kHz output pin. 
+-- ----------------------------------------------------------------------------
+procedure rtc_enable_32_khz() is
+
+   var byte data
+   
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   rtc_write_register(RTC_STATUS_ADDRESS, (data | 0b0000_1000)) 
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Disable the 32 kHz output pin. 
+-- ----------------------------------------------------------------------------
+procedure rtc_disable_32_khz() is
+
+   var byte data
+   
+   rtc_read_register(RTC_STATUS_ADDRESS, data)
+   rtc_write_register(RTC_STATUS_ADDRESS, (data & 0b1111_0111)) 
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set the square wave frequency and output. 
+-- Note: This will disable the interrupt functionality on the INT/SQW pin.
+--       The M version of the DS3231 can only generate the 1 Hz signal.
+-- ----------------------------------------------------------------------------
+procedure rtc_set_square_wave(byte in frequency) is
+
+   var byte data
+   
+   rtc_read_register(RTC_CONTROL_ADDRESS, data)
+   -- Remove the square wave bits and clear the INTCN bit and set the new value.
+   -- Also set the BBSQW bit. 
+   data = (data & 0b1110_0000) | 0b0100_0000 | (frequency & 0b0001_1000)
+   rtc_write_register(RTC_CONTROL_ADDRESS, data) 
+
+end procedure
+
 -- ----------------------------- Advanced functions ---------------------------
 
+-- ----------------------------------------------------------------------------
 -- Write a byte to the given register of the SSD1306.
-procedure ds3231_write_register(byte in register, byte in data) is
+-- ----------------------------------------------------------------------------
+procedure rtc_write_register(byte in register, byte in data) is
 
    var bit _trash 
 
    i2c_start()
-   _trash = i2c_transmit_byte(_DS3231_IIC_WR_ADDRESS)
+   _trash = i2c_transmit_byte(RTC_IIC_WR_ADDRESS)
    _trash = i2c_transmit_byte(register)
    _trash = i2c_transmit_byte(data)
    i2c_stop()
 
 end procedure
 
-
+-- ----------------------------------------------------------------------------
 -- Read a byte from the given register of the SSD1306.
-procedure ds3231_read_register(byte in register, byte out data) is
+-- ----------------------------------------------------------------------------
+procedure rtc_read_register(byte in register, byte out data) is
 
    var bit _trash 
 
    i2c_start()
-   _trash = i2c_transmit_byte(_DS3231_IIC_WR_ADDRESS)
+   _trash = i2c_transmit_byte(RTC_IIC_WR_ADDRESS)
    _trash = i2c_transmit_byte(register)
    i2c_restart()
-   _trash = i2c_transmit_byte(_DS3231_IIC_RD_ADDRESS)
+   _trash = i2c_transmit_byte(RTC_IIC_RD_ADDRESS)
    -- Read only one byte so no acknowledge.
    data =  i2c_receive_byte(FALSE) 
    i2c_stop()
