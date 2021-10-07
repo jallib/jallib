@@ -1,9 +1,17 @@
-The original JAL compiler is released on Windows and Linux in 32-bit and 64-bit.
+The original JAL compiler is currently released on Windows and Linux for 32-bit and 64-bit OS-es.
 
-Versions for other OS-es can be found here but are not officially supported.
+Versions for other OS-es and older versions of the compiler can be found here but are no longer supported.
+For some older compilers, 32-bit and 64-bit versions for Windows and Linux are not always available.
 
-Note that the current version of the JAL compiler is v2.5 (jalv25) which supports 
-PICs with more than 32 banks using a new pragma 'numbanks'. Older versions of the
-JAL compiler which may be present in this directory will not support this new pragma. 
+Note that older versions of the compiler will not work with certain device files due to new pragmas.
 
-2018-09-25
+Compiler versions are indicated by the directory names.
+
+Always use the most recent version of the JAL compiler. Currently the following names are used:
+jalv2.exe        : Windows 32-bit binary 
+jalv2_64.exe     : Windows 64-bit binary 
+jalv2-i686       : Linux 32-bit binary
+jalv2-x86-64     : Linux 64-bit binary
+
+
+2021-10-07
