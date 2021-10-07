@@ -22,7 +22,7 @@
                - Check the compiler output for errors and warnings
                When all OK:
                - in PROD mode move the source of the sample to
-                 the jalib sample directory
+                 the jalLib sample directory
                - in TEST mode move the source to ./test
 
   Sources:
@@ -31,11 +31,8 @@
 
   Notes:
    - A blink-a-led sample is generated for every device file:
-     a HS sample if possible, otherwise an INTOSC sample.
+     a HS sample if possible and INTOSC sample if possible
    - For all PICs with USB support a sample is generated using HS_USB.
-   - For both HS and HS_USB an INTOSC sample may be created when
-     the PICname is in the corresponding table and the PIC supports
-     INTOSC and INTOSC for USB!
    - With a second commandline argument the generation of samples can be
      limited to a subset: specify a PICname (with wildcard characters).
 
@@ -93,59 +90,6 @@ devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties n
 var = {}
 fusedef = {}
 devspec = {}  # contents of devicespecific.json
-
-
-# List of PICs for which an extra INTOSC blink sample should
-# be generated beyond the standard default HS or HS_USB variant.
-# Note: An extra sample will only be generated if HS resp. HS_USB sample is OK
-#       and the PIC supports INTOSC at 4 MHZ, resp. USB with INTOSC
-
-# --- PICs for which a _BLINK_INTOSC sample is desired ---
-
-extra_intosc  =    [ "12f1840"  ,
-                     "12f635"   ,
-                     "12f675"   ,
-                     "12f683"   ,
-                     "16f1459"  ,
-                     "16f1516"  ,
-                     "16f1574"  ,
-                     "16f1575"  ,
-                     "16f1615"  ,
-                     "16f1765"  ,
-                     "16f1769"  ,
-                     "16lf1769" ,
-                     "16f1827"  ,
-                     "16f1934"  ,
-                     "16f648a"  ,
-                     "16f690"   ,
-                     "16f722"   ,
-                     "16f877a"  ,
-                     "16f88"    ,
-                     "18f1220"  ,
-                     "18f14k50" ,
-                     "18f24j10" ,
-                     "18f23k22" ,
-                     "18f24k10" ,
-                     "18f2553"  ,
-                     "18f26j53" ,
-                     "18f4550"  ,
-                     "18f4620"  ,
-                     "18f6310"  ,
-                     "18f66j55" ,
-                     "18f6722"  ,
-                     "18f67j50" ,
-                     "18f67k22" ]
-
-# --- PICs for which a _BLINK_INTOSC_USB sample is desired ---
-
-extra_intosc_usb = [ "16f1455"  ,
-                     "18f24j10" ,
-                     "18f2553"  ,
-                     "18f4550"  ,
-                     "18f66j55" ,
-                     "18f6722"  ,
-                     "18f67j50" ]
-
 
 # -----------------------------------------------------------
 def collect_fusedef(fp):
@@ -262,6 +206,13 @@ def scan_devfile(devfile):
                var["oscfrq_hffrq"] = True
             elif (ln.find(" OSCFRQ_FRQ ") >= 0):
                var["oscfrq_frq"] = True
+            # RJ: Fix issue with newer PICs with 4-bit OSCFRQ_HFFRQ3 register
+            elif (ln.find(" OSCFRQ_HFFRQ3 ") >= 0):
+               var["oscfrq_hffrq3"] = True
+            elif (ln.find(" OSCCON1_NOSC ") >= 0):
+               var["osccon1_nosc"] = True
+            elif (ln.find(" OSCCON1_NDIV ") >= 0):
+               var["osccon1_ndiv"] = True
             elif (ln.find(" OSCTUNE_PLLEN ") >= 0):
                var["osctune_pllen"] = True
       ln = fp.readline()
@@ -453,15 +404,17 @@ def build_sample(pic, pin, osctype, oscword):
       fp.write("-- This program uses the internal oscillator at 4 MHz.\n")
       fp.write("pragma target clock    4_000_000       -- oscillator frequency\n")
       fp.write("--\n")
-      if (oscword != ""):                             # PIC has fuse_def OSC
+      # For older versions without OSC, we skip the OSC when it has the value of F4MHZ.
+      # F4MHZ is written later (also for other PICs) at ioscfs.
+      if (oscword != "F4MHZ"):  # PIC has fuse_def OSC
          fp.write("pragma target OSC      %-25s " % (oscword) + "-- internal oscillator\n")
       fusedef_insert("fosc2", "OFF", "Internal Oscillator")
       fusedef_insert("ioscfs", "F4MHZ", "select 4 MHz")
       if ("oscfrq_frq3" in var):
          fusedef_insert("rstosc", "HFINTOSC_64MHZ", "select 64 MHz")
-      if ("oscfrq_hffrq" in var):
+      elif (("oscfrq" in var) | ("oscfrq_hffrq" in var)):
          fusedef_insert("rstosc", "HFINT32", "select 32 MHz")
-      if ("oscfrq_frq" in var):
+      elif ("oscfrq_frq" in var):
          fusedef_insert("rstosc", "HFINTOSC_32MHZ", "select 32 MHz")
    elif (osctype == "HS_USB"):                    # HS oscillator and USB
       fp.write("-- This program assumes that a 20 MHz resonator or crystal\n")
@@ -470,7 +423,6 @@ def build_sample(pic, pin, osctype, oscword):
       fp.write("pragma target clock 48_000_000      -- oscillator frequency\n")
       fp.write("--\n")
       fp.write("pragma target OSC      %-25s " % (oscword) + "-- HS osc + PLL\n")
-
    elif (osctype == "INTOSC_USB"):                   # internal oscillator + USB
       fp.write("-- This program uses the internal oscillator with PLL active.\n")
       fp.write("pragma target clock 48_000_000      -- oscillator frequency\n")
@@ -539,15 +491,22 @@ def build_sample(pic, pin, osctype, oscword):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
       if ("osctune_pllen" in var):
          fp.write("OSCTUNE_PLLEN = FALSE               -- no PLL\n")
-
    elif (osctype == "INTOSC"):                       # internal oscillator
       if ("osccon_scs" in var):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
-      # We must only check for one oscfrq since it is not exclusive. Note that for PICs with a clock of 64 MHz we need
-      #  to set 4 bits. Also the use of OSCFRQ_HFFRQ is inconsistent in the device file see for example 18f27q43.
       if ("oscfrq_frq3" in var):
          fp.write("OSCFRQ_HFFRQ = 0b0010               -- Fosc 64 -> 4 MHz\n")
+      elif ("oscfrq_hffrq3" in var):
+         # 4-bit HFFRQ register. For these PICs, check for OSCCON1_NOSC register is required
+         # to the the correct frequency. But first check if we can use OSSCON1_NDIV instead.
+         if ("osccon1_ndiv" in var):
+            fp.write("OSCCON1_NDIV = 0b0011               -- Fosc 32 / 8 -> 4 MHz\n")
+         else:
+            # Use the combination OSCFRQ_HFFRQ and OSCCON1_NOSC
+            fp.write("OSCFRQ_HFFRQ = 0b0011               -- Fosc 32 -> ...\n")
+            fp.write("OSCCON1_NOSC = 0b110                -- ... 4 MHz\n")
       elif ("oscfrq_hffrq" in var):
+         # 3-bit HFFRQ register.
          fp.write("OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz\n")
       elif ("oscfrq_frq" in var):
          fp.write("OSCFRQ_FRQ = 0b010                  -- Fosc 32 -> 4 MHz\n")
@@ -558,13 +517,11 @@ def build_sample(pic, pin, osctype, oscword):
          fp.write("OSCTUNE_PLLEN = FALSE               -- no PLL\n")
       if ("osccon_spllen" in var):
          fp.write("OSCCON_SPLLEN = FALSE               -- software PLL off\n")
-
    elif (osctype == "HS_USB"):                       # HS cryst./res. + USB
       if ("osccon_scs" in var):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
       if ("osctune_pllen" in var):
          fp.write("OSCTUNE_PLLEN = TRUE                -- PLL\n")
-
    elif (osctype == "INTOSC_USB"):                   # internal oscillator + USB
       if ("osccon_scs" in var):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
@@ -617,6 +574,46 @@ def main(runtype, devs):
                   devs: list of device files for which to build a blink sample
    """
    sample_count = 0
+
+   def create_sample():
+      counter = 0
+      picname = os.path.splitext(dev)[0]
+      # We generate samples for all possible types, HS, INTOSC, USB
+      if (osctype == "HS"):  # this was a HS type
+         if (build_validate_compile_sample(picname, blink_pin, osctype, oscword)):  # primary sample OK
+            counter += 1
+      elif (("ioscfs" in fusedef) & ("osc" not in fusedef)): # Older PICs
+         if ("F4MHZ" in fusedef["ioscfs"]):
+            if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "F4MHZ")):
+               counter += 1
+      elif ("osc" in fusedef):
+         # Build as most 2 internal oscillator variants, one without USB and one with (if present)
+         if ("INTOSC_NOCLKOUT" in fusedef["osc"]):  # no intosc + pll
+            if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT")):
+               counter += 1
+         elif ("INTOSC_NOCLKOUT_USB_HS" in fusedef["osc"]):  # intosc + pll
+            if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT_USB_HS")):
+               counter += 1
+         elif ("INTOSC_NOCLKOUT_PLL" in fusedef["osc"]):
+            if (build_validate_compile_sample(picname, blink_pin, "INTOSC_USB", "INTOSC_NOCLKOUT_PLL")):
+               counter += 1
+         elif ("OFF" in fusedef["osc"]):
+            if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "OFF")):
+               counter += 1
+         elif ("fosc2" in fusedef):
+            if ("ON" in fusedef["fosc2"]): # "implicit" fuse_def intosc
+               if ("EC_CLKOUT_PLL" in fusedef["osc"]):
+                  if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "EC_CLKOUT_PLL")):
+                     counter += 1
+               elif ("INTOSC_NOCLKOUT_PLL" in fusedef["osc"]):
+                  if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT")):
+                     counter += 1
+         # The USB variant.
+         if (("HS_PLL" in fusedef["osc"]) & ("usb_bdt" in var)):
+            if (build_validate_compile_sample(picname, blink_pin, "HS_USB", "HS_PLL")):
+               counter += 1
+      return counter
+
    for dev in devs:
       if (runtype == "PROD"):                         # production device file
          jalfile = os.path.join(devprod, dev)
@@ -627,63 +624,45 @@ def main(runtype, devs):
 
       var = scan_devfile(dev)                         # build list of selected device info
                                                       # builds also fusedef
-      if ("osc" not in fusedef):                      # no fusedef osc at all
-         osctype = "INTOSC"                           # must be internal oscillator
-         oscword = ""                                 # without fuse_def OSC
-      elif ("OFF" in fusedef["osc"]):                 # 16f19155, etc. Check moved upward to have internal oscillator ...
-         osctype = "INTOSC"                           # .. as preference before HS.
-         oscword = "OFF"
-      elif ("HSH" in fusedef["osc"]):
-         osctype = "HS"
-         oscword = "HSH"
-      elif ("PRI" in fusedef["osc"]):
-         osctype = "HS"
-         oscword = "PRI"
-      elif ("HS" in fusedef["osc"]):
-         osctype = "HS"
-         oscword = "HS"
-      elif ("INTOSC_NOCLKOUT" in fusedef["osc"]):
-         osctype = "INTOSC"
-         oscword = "INTOSC_NOCLKOUT"
-      else:
-         print("   Could not detect a suitable OSC keyword in", fusedef["osc"])
-         continue                                     # skip this PIC
-
       blink_pin = find_blinkpin(dev)
       if (blink_pin == ""):                           # no blink pin available
          continue
 
-      picname = os.path.splitext(dev)[0]
-      if (build_validate_compile_sample(picname, blink_pin, osctype, oscword)):    # primary sample OK
-         sample_count += 1
-         if (osctype == "HS"):                        # this was a HS type
-            if (picname in extra_intosc):             # INTOSC sample requested
-               if ("INTOSC_NOCLKOUT" in fusedef["osc"]):    # no intosc + pll
-                  if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT")):
-                     sample_count += 1
+      current_sample_count = sample_count
+      if ("osc" not in fusedef):                      # no fusedef osc at all
+         osctype = "INTOSC"                           # must be internal oscillator
+         if (("ioscfs" in fusedef) & ("f4mhz" in var)):
+            oscword = "f4mhz"
+         else:
+            oscword = "" # without fuse_def OSC
+         sample_count = sample_count + create_sample()
+      else:
+         if ("OFF" in fusedef["osc"]):                 # 16f19155, etc. Check moved upward to have internal oscillator ...
+            osctype = "INTOSC"                           # .. as preference before HS.
+            oscword = "OFF"
+            sample_count = sample_count + create_sample()
+         if ("INTOSC_NOCLKOUT" in fusedef["osc"]):     # First look for internal oscillator.
+            osctype = "INTOSC"
+            oscword = "INTOSC_NOCLKOUT"
+            sample_count = sample_count + create_sample()
+         if ("HSH" in fusedef["osc"]):
+            osctype = "HS"
+            oscword = "HSH"
+            sample_count = sample_count + create_sample()
+         if ("PRI" in fusedef["osc"]):
+            osctype = "HS"
+            oscword = "PRI"
+            sample_count = sample_count + create_sample()
+         if ("HS" in fusedef["osc"]):
+            osctype = "HS"
+            oscword = "HS"
+            sample_count = sample_count + create_sample()
+      if (current_sample_count == sample_count):
+         print("   Could not detect a suitable OSC keyword in for", dev)
+         continue                                     # skip this PIC
 
-               elif ("INTOSC_NOCLKOUT_USB_HS" in fusedef["osc"]):  # intosc + pll
-                  if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT_USB_HS")):
-                     sample_count += 1
-
-               elif ("fosc2" in fusedef):
-                  if ("ON" in fusedef["fosc2"]):      # "implicit" fuse_def intosc
-                     if (build_validate_compile_sample(picname, blink_pin, "INTOSC", "INTOSC_NOCLKOUT")):
-                        sample_count += 1
-               else:
-                  print("   INTOSC sample requested, but no INTOSC or 4 MHz not available")
-
-            if (("HS_PLL" in fusedef["osc"]) & ("usb_bdt" in var)):            # USB variant
-               if (build_validate_compile_sample(picname, blink_pin, "HS_USB", "HS_PLL")):
-                  sample_count += 1
-
-                  if (picname in extra_intosc_usb):   # INTOSC_USB sample requested
-                     if ("INTOSC_NOCLKOUT_PLL" in fusedef["osc"]):
-                        if (build_validate_compile_sample(picname, blink_pin, "INTOSC_USB", "INTOSC_NOCLKOUT_PLL")):
-                           sample_count += 1
-                     else:
-                        print("   No INTOSC + PLL available for 48 KHz")
    return sample_count
+
 
 
 
