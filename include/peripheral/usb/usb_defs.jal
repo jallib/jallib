@@ -2,11 +2,11 @@
 -- Title: USB constant definitions
 -- Author: Albert Faber, Copyright (c) 2008..2021, all rights reserved.
 -- Adapted-by: Rob Jansen
--- Compiler: 2.5r4
+-- Compiler: 2.5r5
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 -- 
 -- Description: Constants for configurting the USB interface
 -- 
@@ -39,7 +39,7 @@
 -- *) usb_bd_array[80]. This buffer holds all buffer descriptions. This driver
 --    only uses 8 (4 in and 4 out) buffer descriptions of 4 bytes so only 32
 --    bytes are actually used.
--- *) usb_sdp_buffer[8]. Some general purpose USB buffer.
+-- *) usb_sdp_buffer[8]. Buffer that holds the data of the SETUP packet.
 -- *) usb_epxout_buf[8] and usb_epxin_buf[8] where x = 0..3. These are the
 --    end point buffers. The number of buffers used depend on the type of USB
 --    device. The maximum currently in use are 4 (0..3) endpoint buffers so in
@@ -52,20 +52,20 @@
 -- *) usb_epxoutbuf       starting at USB_BASE_ADDRESS + 0x0080  (second bank)
 -- *) usb_delivery_buffer starting at USB_BASE_ADDRESS + 0x0100  (third bank)
 -- For the PIC18F14K50 we do not use use banks but the following addresses:
--- *) usb_bd_array        starting at USB_BASE_ADDRESS + 0x0000
--- *) usb_sdp_buffer      starting at USB_BASE_ADDRESS + 0x00f8
--- *) usb_epxoutbuf       starting at USB_BASE_ADDRESS + 0x0020
--- *) usb_delivery_buffer starting at USB_BASE_ADDRESS + 0x0078
--- Since arrays are declared at a certain address we must make sure that all
--- used memory locations are reserved so that the compiler knows they are used.
--- Because of this a dummy buffer usb_bd_endpt[80] is also declared which
--- reserves the required space for the usb_epxoutbuf and usb_epxinbuf.
+-- *) usb_bd_array        starting at USB_BASE_ADDRESS + 0x0000 (32 bytes)
+-- *) usb_epxoutbuf       starting at USB_BASE_ADDRESS + 0x0020 (88 bytes)
+-- *) usb_delivery_buffer starting at USB_BASE_ADDRESS + 0x0078 (80 bytes)
+-- *) usb_sdp_buffer      starting at USB_BASE_ADDRESS + 0x00f8 (8 bytes)
+--
+-- Note: Since arrays are declared at a certain address we must make sure that 
+--       all used memory locations are reserved so that the compiler knows
+--       they are used. Because of this a dummy buffer usb_bd_endpt[80] 
+--       is also declared for the PIC16F1455 which reserves the required space 
+--       for the usb_epxoutbuf and usb_epxinbuf.
+--       
 
 if defined(USB_BDT_ADDRESS) == false then
    _error "This PIC has no declared USB_BDT_ADDRESS constant, is it really a USB capable PIC ? If so, please report !"
-   -- need to define constant anyway to error is reported at proper compilation state
-   -- TODO: looks like a bug in compiler ?
-   const byte USB_BDT_ADDRESS = 0
 end if
 
 -- ------- Some aliases to get things working for different PICs ---------------
@@ -119,7 +119,8 @@ end if
 -- using only the POSTINC function, this usb_delivery_buffer must be much
 -- larger since it is also used to transmit the device descriptor which is 67
 -- bytes long. So it has been re-declared to 80 bytes in size.
-var byte usb_delivery_buffer[ 80 ] at USB_IN_DELIVERY_BUFFER_LOC
+const byte USB_DELIVERY_BUFFER_MAX_SIZE = 80
+var byte usb_delivery_buffer[USB_DELIVERY_BUFFER_MAX_SIZE] at USB_IN_DELIVERY_BUFFER_LOC
 var byte usb_delivery_bytes_max_send
 var byte usb_delivery_bytes_sent
 var byte usb_delivery_buffer_size
@@ -129,11 +130,13 @@ if defined(USB_DEBUG) == false  then
    const bit USB_DEBUG = false
 end if
 
+-- Debug high is used for debugging _usb_handle_transaction()
 if defined(USB_DEBUG_HIGH) == false  then
    const bit USB_DEBUG_HIGH = false
 end if
 
 const byte USB_HIGHEST_EP = 3
+-- Use can select self powered or bus powered.
 const bit USB_SELF_POWERED = 1
 
 if (USB_BDT_ADDRESS  == 0x0020) then
@@ -147,6 +150,8 @@ else
    const word usb_sdp_loc = ( USB_BASE_ADDRESS + 0x00F8 )
 end if
 
+-- Definitions for the buffer for storage of the SETUP package data. The
+-- SETUP package is 8 bytes long.
 var volatile byte usb_sdp[8] at usb_sdp_loc
 var volatile byte usb_sdp_request_type at usb_sdp_loc
 var volatile byte usb_sdp_request at usb_sdp_loc + 1
@@ -174,7 +179,7 @@ const byte USB_CM_CTRL_READ_AWAITING_STATUS   = 5 -- Device is awaiting receptio
 const byte USB_CM_CTRL_WRITE_SENDING_STATUS   = 6 -- Device is sending status after receiving data 
 
 
--- USB REQUESTS
+-- USB REQUESTS from the SETUP package.
 const byte USB_REQUEST_GET_STATUS        = 0x00
 const byte USB_REQUEST_CLEAR_FEATURE     = 0x01
 const byte USB_REQUEST_SET_FEATURE       = 0x03
@@ -188,7 +193,7 @@ const byte USB_REQUEST_SET_INTERFACE     = 0x0b
 const byte USB_REQUEST_REQ_SYNCH_FRAME   = 0x0c
 
 
--- Bits of BDn.stat when UOWN = 0
+-- Bits of BDnstat when UOWN = 0, that is CPU mode (data written from MCU to the Host)
 const byte USB_BDSTATUS_UOWN   = 7   -- 0 if uC owns buffer
 const byte USB_BDSTATUS_DTS    = 6   -- 1 data 1 packet, 0 data 0 packet
 const byte USB_BDSTATUS_KEN    = 5   -- 1 USB will keep buffer indefinately, 0 USB will hand back buffer
@@ -199,18 +204,21 @@ const byte USB_BDSTATUS_BC9    = 1   -- bit 9 of buffer count
 const byte USB_BDSTATUS_BC8    = 0   -- bit 8 of buffer count
 
 
-const USB_DATA_STAGE_DIR_BIT = 7
-const USB_REQUEST_TYPE1_BIT  = 6 -- 00= USB standard request
-const USB_REQUEST_TYPE0_BIT  = 5 -- 01= Request for a specific class
--- const byte USB_REQUEST_TYPE_MASK = 0b_0110_000
--- 10= Vendor specific
+-- SETUP request type constant definitions.
+const USB_DATA_STAGE_DIR_BIT = 7 --  0 = Host to Device, 1 = Device to Host
+const USB_REQUEST_TYPE1_BIT  = 6 -- 00 = USB standard request
+const USB_REQUEST_TYPE0_BIT  = 5 -- 01 = Request for a specific class
+                                 -- 10 = Vendor specific
+                                 -- 11 = Reserved
 --                  
 -- Bits 4-0 define recipient bits
--- 0b00000= Device
--- 0b00001= Specific interface
--- 0b00010= Endpoint
--- 0b00011= Other element (whatever that means)
+-- 0b00000 = Device
+-- 0b00001 = Specific interface
+-- 0b00010 = Endpoint
+-- 0b00011 = Other element (whatever that means)
+-- The remaning bits are reserved.
 
+-- ----- Packet ID's (PID) ----------
 -- Token
 const byte USB_PID_OUT   = 0b00000001
 const byte USB_PID_IN    = 0b00001001
@@ -229,10 +237,12 @@ const byte USB_PID_NAK   = 0b00001010
 const byte USB_PID_STALL = 0b00001110
 const byte USB_PID_NYET  = 0b00000110
 
-var byte usb_state = USB_STATE_POWERED
-var byte usb_status
-var byte usb_control_mode
-var byte usb_address
+-- Internal states and modes. These are (re)set by a USB reset but also 
+-- initialzed here at startup.
+var byte usb_state  = USB_STATE_POWERED
+var byte usb_status = USB_STATUS_IDLE
+var byte usb_control_mode = USB_CM_IDLE
+var byte usb_address = 0
 
 -- Start address of the end points. Note: USB_BASE_ADDRESS must not be used
 -- anymore to define the start address of the end points since the now defined
@@ -240,10 +250,14 @@ var byte usb_address
 -- For backwards compatibility the use of USB_BASE_ADDRESS still works for
 -- older sample programa since the start address for was not changed.
 -- This constant is now used in usb_serial.jal.
+-- We have to claim the data space for USB driver from the compiler since
+-- some buffers are indirectly used.
 if (USB_BDT_ADDRESS  == 0x0020) then
+   -- E.g. PIC16F1455 has this USB_BDT_ADDRESS and has banks of 80 bytes.
    const USB_EP0_ADDRESS = USB_BASE_ADDRESS + 0x0080
    -- Buffer reservation used by end points. This buffer overlays with the
-   -- endpoint buffers on purpose (see e.g. usb_serial.jal).
+   -- endpoint buffers on purpose (see e.g. usb_serial.jal). Also see
+   -- the note back where the buffers are described.
    var volatile byte usb_bd_endpt[ 80 ] at ( USB_EP0_ADDRESS )
    -- Buffer reservarion used for the buffer descriptions. This buffer overlays
    -- with the 4 usb buffer descriptions on purpose (see below).
@@ -255,6 +269,7 @@ else
    var volatile byte usb_bd_array[ 256 ] at ( USB_BASE_ADDRESS + 0x0000 )
 end if
 
+-- Buffer descriptors.
 var volatile byte usb_bd0out[4]      at ( USB_BASE_ADDRESS + 0x0000 )
 var volatile byte usb_bd0out_stat    at usb_bd0out[0]
 var volatile byte usb_bd0out_cnt     at usb_bd0out[1]
@@ -311,6 +326,7 @@ var volatile word usb_bd3in_addr    at usb_bd3in[2]
 var volatile byte usb_bd3in_addrl   at usb_bd3in[2]
 var volatile byte usb_bd3in_addrh   at usb_bd3in[3]
 
+-- Endpoint control bit definitions.
 var volatile bit EP1STALL  at  UEP1:0
 var volatile bit EP1INEN   at  UEP1:1
 var volatile bit EP1OUTEN  at  UEP1:2
@@ -329,9 +345,7 @@ var volatile bit EP3OUTEN  at  UEP3:2
 var volatile bit EP3CONDIS at  UEP3:3
 var volatile bit EP3HSHK   at  UEP3:4
 
-
-
-----------------------------------------------------
+-- USB descriptor types.
 const USB_DEVICE_DESCRIPTOR_SIZE     = 18
 const byte USB_DT_DEVICE             = 0x01
 const byte USB_DT_CONFIGURATION      = 0x02

@@ -2,7 +2,7 @@
 -- Title: USB Serial 
 -- Author: Albert Faber, Copyright (c) 2009..2021, all rights reserved.
 -- Adapted-by: Rob Jansen
--- Compiler: 2.5r4
+-- Compiler: 2.5r5
 -- Revision: $Revision$
 -- 
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -66,22 +66,28 @@
 
 -------------------------------------------------------------------------
 -- consts to enable debugging
+-- Note that not all can be enabled at the same time since the USB
+-- device might not be recognized by the Host.
 -------------------------------------------------------------------------
 if defined( USB_SERIAL_DEBUG ) == true then
    const USB_CDC_DEBUG = 1
    const USB_DEBUG = 1
-   const USB_DEBUG_HIGH = 1
+   const USB_DEBUG_HIGH = 1 -- Used to debug _usb_handle_transaction()
    const USB_CDC_DEBUG_HIGH = 1
 end if
 
 include usb_defs
 
 -------------------------------------------------------------------------
--- Setup USB endpoints, three enpoints are required for a CDC class
--- The default control enpoint
--- Interrupt endpoint
--- And the bulk endpoint
+-- Setup the buffers for the USB endpoints, three endpoints are required 
+-- for a CDC class:
+-- -) The default control enpoint (0)
+-- -) Interrupt endpoint (1)
+-- -) The bulk endpoint (3)
+-- 
 -- Note: Addresses are based on USB_EP0_ADDRESS and not USB_BDT_ADDRESS.
+--       The USB_BDT_ADDRESS is the start address of the buffer endpoints.
+--       Currently the USB driver covers buffer sizes of at most 8 bytes.
 -------------------------------------------------------------------------
 const bit  USB_EP0 = 1
 const byte USB_EP0_OUT_SIZE = 8
@@ -113,7 +119,16 @@ var volatile byte usb_ep2in_buf[ USB_EP2_IN_SIZE ]   at USB_EP2_IN_ADDR
 const bit  USB_EP3 = 1
 const byte USB_EP3_OUT_SIZE = 8
 const word USB_EP3_OUT_ADDR = ( USB_EP2_IN_ADDR + USB_EP2_IN_SIZE )
-const byte USB_EP3_IN_SIZE  = 8
+const byte USB_EP3_IN_SIZE  = 8 -- Size may be changed, see comment below.
+-- RJ: The above buffer to send data to the host is increased. 
+--     This still fits sinds it is at the end of the usb_epxoutbuf.
+--     Since we need 48 bytes for EP0 to EP2 and 8 bytes for EP3 OUT
+--     so in total 56 bytes and the usb_epxoutbuf is 80 bytes max,
+--     keeping the PIC16 in mind which can only have 80 bytes buffers, 
+--     we still have 24 bytes free so USB_EP3_IN_SIZE can be increased
+--     to 24. This slightly increases the serial transmission the 
+--     speed to the host with for larger transmissions.
+--     const byte USB_EP3_IN_SIZE = 24    
 const word USB_EP3_IN_ADDR  = ( USB_EP3_OUT_ADDR + USB_EP3_OUT_SIZE )
 
 var volatile byte usb_ep3out_buf[ USB_EP3_OUT_SIZE ] at USB_EP3_OUT_ADDR
@@ -186,9 +201,11 @@ const byte USB_CDC_INT_EP_SIZE = 8
 -- set the interrupt interface ID
 const byte USB_CDC_DATA_INTF_ID = 0x01
 
+-- Endpoint buffer sizes for CDC.
 const byte USB_CDC_BULK_OUT_EP_SIZE = USB_EP3_OUT_SIZE
 const byte USB_CDC_BULK_IN_EP_SIZE  = USB_EP3_IN_SIZE
 
+-- Endpoint buffer locations for CDC.
 const word USB_CDC_BULK_OUT_EP_ADDR = USB_EP3_OUT_ADDR
 const word USB_CDC_BULK_IN_EP_ADDR = USB_EP3_IN_ADDR
 
@@ -270,7 +287,7 @@ const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
    USB_DT_CONFIGURATION,   -- descriptor_type
 
    USB_CONFIGURATION_DESCRIPTOR_SIZE,
-   0x00,   -- total_length;
+   0x00,   -- total_length (high byte of length word)
    
    0x02,   -- num_interfaces,
    0x01,   -- configuration_value,
@@ -352,7 +369,7 @@ const byte USB_CONFIGURATION_DESCRIPTOR[ USB_CONFIGURATION_DESCRIPTOR_SIZE ]=
    USB_DT_ENDPOINT,      -- descriptor_type,
    0b10000011,            -- endpoint_address, (Endpoint 3, IN)
    USB_EPT_BULK,         -- attributes
-   USB_CDC_BULK_OUT_EP_SIZE,            
+   USB_CDC_BULK_IN_EP_SIZE,            
    0x00,               -- max_packet_size
    0x00               -- interval
 }

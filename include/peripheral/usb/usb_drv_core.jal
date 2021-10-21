@@ -2,7 +2,7 @@
 -- Title: USB driver library
 -- Author: Albert Faber, Copyright (c) 2008..2021, all rights reserved.
 -- Adapted-by: Matthew Schinkel, Rob Jansen
--- Compiler: 2.5r4
+-- Compiler: 2.5r5
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -37,17 +37,21 @@ end procedure
 
 -- --------------------------------------------------------------------------------------
 -- This procedure sends the content of the USB delivery buffer in the USB SIE
+-- If the MCU does not own the buffer then nothing will be sent. 
+-- Note that this is all data for endpoint0.
 -- --------------------------------------------------------------------------------------
 procedure usb_send_data_chunk() is
    
-   var volatile bit own_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN
+   var volatile bit uown_bit at usb_bd0in_stat : USB_BDSTATUS_UOWN
+   var volatile bit dts_bit  at usb_bd0in_stat : USB_BDSTATUS_DTS
    
-   if ( own_bit ) then
+   if ( uown_bit ) then
+      -- SIE owns the buffer.
       if USB_DEBUG > 0  then
-         const byte str[] = " !don't own it! "
-         print_string( serial_hw_data,str);
+         print_string(serial_hw_data," !do not own it! ")
       end if
    else
+      -- MCU owns the buffer.
       var byte byte_cnt
       
       if ( usb_delivery_bytes_to_send > usb_delivery_bytes_max_send ) then
@@ -56,50 +60,69 @@ procedure usb_send_data_chunk() is
             serial_hw_write( "*" )
             print_byte_hex(serial_hw_data,  usb_delivery_bytes_max_send )
          end if
+         -- We cannot send more than allowed in one package (given by Host).
          usb_delivery_bytes_to_send = usb_delivery_bytes_max_send
       end if
       
+      -- Calculate remaining bytes to send.
       byte_cnt = usb_delivery_bytes_to_send - usb_delivery_bytes_sent
       
-      if ( byte_cnt > usb_delivery_buffer_size ) then
+          -- We cannot send more than the size of the delivery buffer.
+   if ( byte_cnt > usb_delivery_buffer_size ) then
          byte_cnt = usb_delivery_buffer_size
       end if
            
       if USB_DEBUG > 0  then
-         var byte idx
-         
+         var byte idx 
+         -- Write the total number of bytes that we want to send.       
          print_crlf(serial_hw_data)
-         --print_byte_hex(serial_hw_data,  usb_delivery_bytes_max_send )
-         --serial_hw_write( "~" )
-         print_byte_hex(serial_hw_data,  byte_cnt )
-         serial_hw_write( ">" )
+         print_byte_hex(serial_hw_data,usb_delivery_bytes_max_send)
+         serial_hw_write("~")
+         -- Write the total number of bytes allowed in one transmission.
+         print_byte_hex(serial_hw_data,byte_cnt)
+         serial_hw_write(">")
+         -- Write the data for one transmission.
          for byte_cnt using idx loop
-            var byte w_val = usb_delivery_buffer[ idx + usb_delivery_bytes_sent ]
-            print_byte_hex(serial_hw_data,  w_val )
+            var byte w_val = usb_delivery_buffer[idx + usb_delivery_bytes_sent]
+            print_byte_hex(serial_hw_data,w_val)
          end loop
       end if
       
-      -- toggle DTS, set UOWN and DTSEN bit		
+      -- Store the address of the - remaining - data and the number of bytes to be sent.
+      -- RJ: Before calling this procedure the variable 'usb_delivery_buffer_size'
+      --     is set in '_handle_standard_request()' to USB_EP0_IN_SIZE which is 8 bytes
+      --     wide while for the actual transmission the buffer 'usb_delivery_buffer' 
+      --     is used which is much bigger so more data could be transmitted in one go. 
+      --     In full speed 64 bytes can be transmitted in one go which is now not used.  
       usb_bd0in_addr = USB_IN_DELIVERY_BUFFER_LOC + usb_delivery_bytes_sent
       usb_bd0in_cnt = byte_cnt
       
-      var volatile bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
-      if ( dts_bit  ) then
+         -- Toggle DTS, set UOWN and DTSEN bit.
+      if dts_bit then
          if USB_DEBUG > 0  then
             print_byte_hex(serial_hw_data,  0b_1000_1000 )
          end if	
-         usb_bd0in_stat = 0b_1000_1000
+         usb_bd0in_stat = 0b_0000_1000 -- Clear DTS, set DTSEN,
       else
          if USB_DEBUG > 0  then
-            print_byte_hex(serial_hw_data,  0b_1100_1000 )
+            print_byte_hex(serial_hw_data,0b_1100_1000)
          end if
-         usb_bd0in_stat = 0b_1100_1000
+         usb_bd0in_stat = 0b_0100_1000 -- Set DTS and DTSEN
       end if
+      -- RJ: According to the datasheet the UOWN bit must not be set at the same time
+      --     the other bits in the bd status register are set.	SIE now owns the buffer.
+      uown_bit = TRUE 
       
       usb_delivery_bytes_sent = usb_delivery_bytes_sent + byte_cnt
       
-      if ( usb_delivery_bytes_sent == usb_delivery_bytes_to_send )  then
+      if (usb_delivery_bytes_sent == usb_delivery_bytes_to_send)  then
          -- usb_control_mode = USB_CM_CTRL_READ_AWAITING_STATUS -- we're done with data stage
+   
+         -- RJ: The above statment was removed by the initial author. The trick here is that
+         -- this procedure is continuously called and when all data has been sent it will
+         -- continue sending zero data packets which equals sending an acknowledge.
+         -- This seems to work OK and this means that the above mentioned state is
+         -- never reached (also see usb_drv.jal).         
          if USB_DEBUG > 0  then
             serial_hw_write( "@" )
          end if
@@ -109,19 +132,18 @@ end procedure
 
 
 -- --------------------------------------------------------------------------------------
--- This procedure sends an empty USB packet, normally not called by the end user
+-- This procedure sends an empty USB packet via endpoint0, normally not called by the end user
 -- --------------------------------------------------------------------------------------
 procedure usb_send_empty_data_pkt() is
    
+   var bit volatile dts_bit at usb_bd0in_stat:USB_BDSTATUS_DTS
+
    usb_delivery_buffer_size = USB_EP0_IN_SIZE
    usb_delivery_bytes_sent = 0
    usb_delivery_bytes_to_send = 0
-   usb_delivery_bytes_max_send = 0
-   
+   usb_delivery_bytes_max_send = 0   
    -- clear DTS in order to toggle it
-   var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
-   dts_bit = low
-   
+   dts_bit = low  
    usb_send_data_chunk()
    
 end procedure
@@ -136,21 +158,22 @@ end procedure
 
 
 -- --------------------------------------------------------------------------------------
--- This procedure will send one byte, with the contend specified by the data input
--- parameter, normally not called by the end user
+-- This procedure will send one byted via endpoint0, with the contend specified by the 
+-- data input parameter, normally not called by the end user
 -- --------------------------------------------------------------------------------------
 procedure usb_send_one_byte(byte in data) is
+
+   var bit volatile dts_bit at usb_bd0in_stat:USB_BDSTATUS_DTS
+
    usb_delivery_buffer[0] = data
    usb_delivery_buffer_size = USB_EP0_IN_SIZE
    usb_delivery_bytes_sent = 0
    usb_delivery_bytes_to_send = 1
-   usb_delivery_bytes_max_send = 1 -- AF from 0 to 1??????
-   
+   usb_delivery_bytes_max_send = 1 
    -- clear DTS in order to toggle it
-   var bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
    dts_bit = low
-   
    usb_send_data_chunk()
+   
 end procedure
 
 
@@ -160,11 +183,11 @@ end procedure
 -- byte_cnt the number of bytes to be send, and is_new_sequence determines if the data
 -- tranmission is starting with USB packet o (if set to true), otherwise the USB packet
 -- is toggled before transmission.
+-- Note: This function is not yet used by the USB driver.
 -- --------------------------------------------------------------------------------------
 procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit in is_new_sequence ) is
    
-   var byte idx;
-   var byte index
+   var byte idx, index
    
    if USB_DEBUG > 0 then
       print_crlf(serial_hw_data)
@@ -185,7 +208,6 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
          var volatile bit dts_bit at usb_bd0in_stat : USB_BDSTATUS_DTS
          
          if is_new_sequence then
-            -- serial_hw_write("N")
             dts_bit = low
          end if
          
@@ -195,7 +217,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
             print_byte_hex(serial_hw_data,  usb_bd0in_stat )
          end if
          
-         if ( dts_bit  ) then
+         if dts_bit then
             if USB_DEBUG > 0  then
                print_byte_hex(serial_hw_data,  0b_1000_1000)	
             end if	
@@ -232,14 +254,13 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
       block
          if USB_EP2 then
             _usb_copy_array_to_ram( USB_EP2_IN_ADDR, data, byte_cnt )
-            usb_bd2in_addr = USB_EP2_IN_ADDR
-            
+            usb_bd2in_addr = USB_EP2_IN_ADDR           
             var volatile bit dts_bit at usb_bd2in_stat : USB_BDSTATUS_DTS
             
             if is_new_sequence then
                dts_bit = low
             end if
-            if ( dts_bit  ) then
+            if dts_bit then
                usb_bd2in_stat = 0b_1000_1000
             else
                usb_bd2in_stat = 0b_1100_1000
@@ -265,6 +286,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
             end if		
          end if
       end block
+
       otherwise
       block		
          if USB_DEBUG > 0  then
@@ -273,6 +295,7 @@ procedure usb_send_data(byte in endpoint, byte in data[], byte in byte_cnt, bit 
             print_string( serial_hw_data,str);
          end if	
       end block
+
    end case
 end procedure
 
@@ -280,11 +303,12 @@ end procedure
 -- --------------------------------------------------------------------------------------
 -- This procedure will setup and initalize the USB endpoints,
 -- normally not called by the end user
+-- Endpoint0 is mandatory and was already configured by USB reset. We only configure 
+-- endpoint 1-3 here.
 -- --------------------------------------------------------------------------------------
 procedure usb_configure_endpoints() is
    if USB_DEBUG > 0  then
-      const byte str[] = " Config eps "
-      print_string( serial_hw_data,str)
+      print_string( serial_hw_data," Config eps ")
    end if	
    
    if USB_EP1 then
@@ -350,6 +374,7 @@ procedure usb_configure_endpoints() is
          usb_bd2out_stat = 0b10000000
       end if
    end if
+
    if USB_EP3 then
       EP3HSHK = high -- EP handshaking on
       
@@ -384,8 +409,10 @@ procedure usb_configure_endpoints() is
 end procedure
 
 
+-- Set BSTALL bit and UOWN bit (SIE will own the buffer). 
 procedure usb_stall_ep0() is
-   -- set BSTALL bit and UOWN bit (SIE will own the buffer)
+
+   var volatile bit uown_bit at usb_bd0out_stat : USB_BDSTATUS_UOWN
    
    if USB_DEBUG > 0  then
       print_crlf(serial_hw_data)
@@ -393,49 +420,63 @@ procedure usb_stall_ep0() is
       print_byte_hex(serial_hw_data,  usb_bd0out_stat )
       print_byte_hex(serial_hw_data,  usb_bd0out_stat | 0b_1000_0100)	
    end if
-   
-   -- AF REMOVE usb_bd0in_stat = usb_bd0in_stat | 0b_1000_0100
-   usb_bd0out_stat = usb_bd0out_stat | 0b_1000_0100
+   -- RJ: According to the datasheet the UOWN bit must not be set at the same time
+   --     the other bits in the bd status register.
+   usb_bd0out_stat = usb_bd0out_stat | 0b_0000_0100 -- Set BSTALL
+   uown_bit = TRUE -- SIE owns the buffer.
 end procedure
 
-
+-- Handle an endpoint0 out request (data from Host to MCU).
 procedure usb_prime_ep0_out() is
+
+   var volatile bit uown_bit at usb_bd0out_stat : USB_BDSTATUS_UOWN
    var byte new_value
+
    usb_bd0out_cnt = USB_EP0_OUT_SIZE
    usb_bd0out_addr = USB_EP0_OUT_ADDR
    
    -- AF CHECK THIS STUFF TODO
    if ( usb_control_mode == USB_CM_CTRL_READ_DATA_STAGE ) then
-      new_value = 0x8C
       if USB_DEBUG > 0  then
          print_crlf(serial_hw_data)
          serial_hw_write("i")
          print_byte_hex(serial_hw_data,  usb_bd0in_stat )
-         print_byte_hex(serial_hw_data, 0)	
+         print_string(serial_hw_data,"-->")
+        print_byte_hex(serial_hw_data, 0)	
       end if
-      usb_bd0in_stat = 0x00
-   else
-      -- AF TODO, STALL
-      new_value = 0b_1100_1000	
+      -- RJ: Set DTS to data packet 0 and enable data toggle
+      --     synchronisation. Why enable STALL?
+      new_value = 0b_0000_1100 
+      usb_bd0in_stat = 0x00 -- RJ: Why clear the bd0_in_stat?
+  else
+      -- RJ: Set DTS to data packet 1 and enable data toggle
+      --     synchronisation. Why not enable STALL?
+      new_value = 0b_0100_1000	
    end if
    
    if USB_DEBUG > 0  then
       print_crlf(serial_hw_data)
       serial_hw_write("o")
       print_byte_hex(serial_hw_data,  usb_bd0out_stat )
-      print_byte_hex(serial_hw_data, new_value)	
-      
-   end if
-   
-   usb_bd0out_stat = new_value		
+      print_string(serial_hw_data,"-->")
+      print_byte_hex(serial_hw_data,new_value | 0b1000_0000) -- Out will be set with UOWN set.	           
+   end if  
+   -- RJ: According to the datasheet the UOWN bit must not be set at the same time
+   --     the other bits in the bd status register. So usb_bd0out_stat set in two steps.
+  usb_bd0out_stat = new_value
+  uown_bit = TRUE -- SIE owns the buffer.
+
 end procedure
 
-
+-- Initialize the given OUT endpoints with the given size.
 procedure usb_prime_epx_out( byte in end_point, byte in size ) is
-   var byte idx = end_point * 8
+
+   var byte idx = end_point * 8 -- Go to OUT endpoint 
+
    -- reset size
-   usb_bd_array[ idx + 1 ] = size
-   -- set to UOWN
+   usb_bd_array[ idx + 1 ] = size -- Buffer descriptor count
+   -- set to UOWN (in two steps, first without UOWN set)
+   usb_bd_array[ idx  ] = 0x00 				
    usb_bd_array[ idx  ] = 0x80 				
    
 end procedure
