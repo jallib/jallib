@@ -12,6 +12,7 @@ jalv2.exe        : Windows 32-bit binary
 jalv2_64.exe     : Windows 64-bit binary 
 jalv2-i686       : Linux 32-bit binary
 jalv2-x86-64     : Linux 64-bit binary
+jalv2-osx        : MacOS 64-bit binary
 
 Compiler issues can be registered and found at: https://github.com/jallib/jalv2compiler/issues
 
@@ -19,6 +20,10 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
+2.5r6 -- 29 october 2021
+         * Added 64-bit compiler for MacOS
+         * Removed -Werror compiler warnings for Windows 64-bit compiler and MacOS compiler
+		 
 2.5r5 -- 23 september 2021
          * Fixed issue#19: Compiler generates an assert when an inline procedure is called frequently.
          * Fixed issue#20: Compiler does not accept single character constants.
