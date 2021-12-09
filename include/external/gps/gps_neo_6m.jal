@@ -1,0 +1,363 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for the GPS NEO-6M receiver.
+-- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
+-- Adapted-by:
+-- Revision: $Revision$
+--
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: JAL library for use of the GPS NEO-6M receiver. 
+--              This library only provided the functionality to obtain the time and the
+--              date from the GPS NEO-6M receiver. No GPS location data is provided.
+--
+-- Sources: The NMEA 0183 Protocol. Klaus Betke, May 2000. Revised August 2001.
+--
+-- Notes: The default serial interface of the NEO-6M GPS receiver is 9600 baud,
+--        1 stopbit, no parity and no flow control. 
+--        At least one of the JAL serial hardware libraries must be included
+--        and initialized by the main program with the above settings. 
+--        This library claims a data buffer of 80 bytes.
+--
+--        A read timeout is used for the GPS receiver to respond. This timeout is
+--        can be set in steps of 100 us can be overruled by defining:
+--        const dword GPS_NEO_6M_READ_TIMEOUT = 50_000 -- 5 seconds (default). 
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Maximum wait time to receive data from the GPB Module. The read timeout can 
+-- be overruled by the main program. Timeout is in steps of 100 us.
+if !defined(GPS_NEO_6M_READ_TIMEOUT) then
+  const dword GPS_NEO_6M_READ_TIMEOUT = 50_000 -- 5 seconds (default). 
+end if
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Get the GPS time. Returns TRUE when a valid time is received within the
+-- defined timeout. Time is returned in BCD format. Note that this is a blocking 
+-- call that takes at most the time defined in GPS_NEO_6M_READ_TIMEOUT.
+function gps_neo_6m_get_time(byte out hours, byte out minutes, 
+                             byte out seconds) return bit
+
+-- Get the GPS date. Returns TRUE when a valid date is received within the
+-- defined timeout. Date is returned in BCD format. Note that this is a blocking 
+-- call that takes at most the time defined in GPS_NEO_6M_READ_TIMEOUT.
+function gps_neo_6m_get_date(byte out date, byte out month, 
+                             byte out year) return bit
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Private stuff ------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Size of the receive buffer. Measurement show a buffer size of 72 would be
+-- sufficient but we take a bit more that fits in one bank (PIC12 and PIC16).
+const _GPS_NEO_6M_BUFFER_SIZE = 80
+
+-- Receive buffer for holding one message from the GPS module.
+var byte _gps_neo_6m_buffer[_GPS_NEO_6M_BUFFER_SIZE]
+
+-- Definition of the NEO-6M Recommended Minimum Navigation String (RMC).
+const byte _GPS_RMC_STRING[] = "$GPRMC"
+
+-- Position of the element in the GPS string. The elements are separated by 
+-- comma's. These positions are for the $GPRMC GPS string.
+const byte _GPS_NEO_6M_ELEMENT_TIME        = 1
+const byte _GPS_NEO_6M_ELEMENT_STATUS      = 2
+const byte _GPS_NEO_6M_ELEMENT_LATITUDE    = 3
+const byte _GPS_NEO_6M_ELEMENT_NORTH_SOUTH = 4
+const byte _GPS_NEO_6M_ELEMENT_LONGITUDE   = 5
+const byte _GPS_NEO_6M_ELEMENT_EAST_WEST   = 6
+const byte _GPS_NEO_6M_ELEMENT_DATE        = 9
+
+-- -----------------------------------------------------------------------------
+-- ------------------------- Private API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Check if the given range of ascii characters at the index in the receive buffer
+-- are valid ascii numbers in range "0" to "9".
+function _gps_neo_6m_check_ascii_numbers(byte in index, byte in range_count) return bit
+
+-- Convert an ascii hexadecimal nibble to a binary number.
+function _gps_neo_6m_ascii_to_binary(byte in ascii) return byte 
+
+-- Verify the checksum of the string in the receive buffer and return TRUE when OK.
+function _gps_neo_6m_verify_checksum() return bit
+
+-- Check the GPS status and return TRUE if the status is valid (=A). Currently 
+-- not used. Needed when GPS location data is used.
+function _gps_neo_6m_status_is_valid() return bit
+
+-- Wait for the given string from the GPS module. Returns TRUE if the string 
+-- with the given token was found. The GPS string is stored in the receive buffer.
+function _gps_neo_6m_get_string_with_token(byte in token[]) return bit
+
+-- Seek to the given element in the receive buffer. The elements are 
+-- separated in the buffer by comma's. The function returns the 
+-- position in the receive buffer where the element starts. If the
+-- element cannot be found 0 is returned.
+function _gps_neo_6m_seek_to_element(byte in element) return byte 
+
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- The main program can use different versions of the JAL serial hardware
+-- libraries so we use aliases to make this generic. 
+if defined(serial_hw_write) then
+   alias _gps_neo_6m_serial_write is serial_hw_write
+   alias _gps_neo_6m_serial_read  is serial_hw_read
+elsif defined(serial_hw2_write) then
+   alias _gps_neo_6m_serial_write is serial_hw2_write
+   alias _gps_neo_6m_serial_read  is serial_hw2_read
+elsif defined(serial_sw_write) then
+   alias _gps_neo_6m_serial_write is serial_sw_write
+   alias _gps_neo_6m_serial_read  is serial_sw_read
+else
+   _error "no serial port defined"     
+end if
+
+
+-- Get the GPS time. Returns TRUE when a valid time is received within the
+-- defined timeout. Time is returned in BCD format. Note that this is a blocking 
+-- call that takes at most the time defined in GPS_NEO_6M_READ_TIMEOUT.
+function gps_neo_6m_get_time(byte out hours, byte out minutes, 
+                             byte out seconds) return bit is
+
+   var byte index
+   var bit time_ok = FALSE
+
+   -- Get the string from the mddule that contains the time.
+   if _gps_neo_6m_get_string_with_token(_GPS_RMC_STRING) then
+      -- Verify the checkum of the string in the buffer.
+      if _gps_neo_6m_verify_checksum() then
+         -- Checksum & Status OK. Get the position of the time element in the buffer.          
+         index = _gps_neo_6m_seek_to_element(_GPS_NEO_6M_ELEMENT_TIME)
+         if (index != 0) then 
+            -- Convert the ASCII data to binary but keep the BCD format. Note 
+            -- that no time may be present yet so we have to check if the 
+            -- data makes sense. Time is 6 characters wide.
+            if _gps_neo_6m_check_ascii_numbers(index, 6) then
+               hours = _gps_neo_6m_buffer[index] - "0"
+               hours = (hours << 4) + _gps_neo_6m_buffer[index + 1] - "0"
+               minutes = _gps_neo_6m_buffer[index + 2] - "0"
+               minutes = (minutes << 4) + _gps_neo_6m_buffer[index + 3] - "0"
+               seconds = _gps_neo_6m_buffer[index + 4] - "0"
+               seconds = (seconds << 4) + _gps_neo_6m_buffer[index + 5] - "0"
+               time_ok = TRUE
+            end if 
+         end if 
+      end if
+   end if
+
+   return time_ok
+
+end function
+
+
+-- Get the GPS date. Returns TRUE when a valid date is received within the
+-- defined timeout. Date is returned in BCD format. Note that this is a blocking 
+-- call that takes at most the time defined in GPS_NEO_6M_READ_TIMEOUT.
+function gps_neo_6m_get_date(byte out date, byte out month, 
+                             byte out year) return bit is
+
+   var byte index
+   var bit date_ok = FALSE
+
+   -- Get the string from the module that contains the date.
+   if _gps_neo_6m_get_string_with_token(_GPS_RMC_STRING) then
+      -- Verify the checkum of the string in the buffer.
+      if _gps_neo_6m_verify_checksum() then
+         -- Checksum and status OK. Get the position of the date element in the buffer.
+         index = _gps_neo_6m_seek_to_element(_GPS_NEO_6M_ELEMENT_DATE)
+         if (index != 0) then 
+            -- Convert the ASCII data to binary but keep the BCD format. Note
+            -- that no date may be present yet so we have to check if the 
+            -- data makes sense. Date is 6 characters wide.
+            if _gps_neo_6m_check_ascii_numbers(index, 6) then
+               date = _gps_neo_6m_buffer[index] - "0"
+               date = (date << 4) + _gps_neo_6m_buffer[index + 1] - "0"
+               month = _gps_neo_6m_buffer[index + 2] - "0"
+               month = (month<< 4) + _gps_neo_6m_buffer[index + 3] - "0"
+               year = _gps_neo_6m_buffer[index + 4] - "0"
+               year = (year << 4) + _gps_neo_6m_buffer[index + 5] - "0"
+               date_ok = TRUE
+            end if 
+         end if 
+      end if
+   end if
+
+   return date_ok
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- ----------------- PRIVATE PROCEDURES AND FUNCTIONS --------------------------
+-- -----------------------------------------------------------------------------
+
+-- Check if the given range of ascii characters at the index in the receive buffer
+-- are valid ascii numbers in range "0" to "9".
+function _gps_neo_6m_check_ascii_numbers(byte in index, byte in range_count) return bit is
+
+   var bit all_ok = TRUE
+
+   while all_ok & (range_count > 0) loop
+      if (_gps_neo_6m_buffer[index] < "0") | (_gps_neo_6m_buffer[index] > "9") then
+         all_ok = FALSE
+      end if
+      range_count = range_count - 1
+      index = index + 1
+   end loop
+
+   return all_ok
+
+end function
+
+
+-- Convert an ascii hexadecimal nibble to a binary number.
+function _gps_neo_6m_ascii_to_binary(byte in ascii) return byte is
+
+   var byte converted
+
+   if (ascii >= "a") & (ascii <= "f") then
+      converted = (ascii - "a") + 10
+   elsif (ascii >= "A") & (ascii <= "F") then
+      converted = (ascii - "A") + 10
+   else
+      converted = (ascii - "0")
+   end if
+
+   return converted
+
+end function
+
+
+-- Verify the checksum of the string in the receive buffer and return TRUE when OK.
+function _gps_neo_6m_verify_checksum() return bit is
+
+   var byte index, checksum, gps_checksum
+   var bit  checksum_ok = FALSE
+
+   -- The checksum equals the exor of the ASCII code of all characters between "$" and "*""
+   checksum = _gps_neo_6m_buffer[1] -- Character 0 is always "$", so skip that.
+   index = 2                        -- Start checkum xor with the next one.
+   while (_gps_neo_6m_buffer[index] != "*") & (index < _GPS_NEO_6M_BUFFER_SIZE) loop
+      checksum = checksum ^ _gps_neo_6m_buffer[index]
+      index = index + 1
+   end loop
+
+   -- Now verify the checksum with the given checksum which is the hexdecimal number
+   -- after the "*", the location where we currently are (unless we ran out of the buffer).
+   if (index != _GPS_NEO_6M_BUFFER_SIZE) then
+      gps_checksum = _gps_neo_6m_ascii_to_binary(_gps_neo_6m_buffer[index + 1]) * 16 +
+                     _gps_neo_6m_ascii_to_binary(_gps_neo_6m_buffer[index + 2])
+      checksum_ok = (gps_checksum == checksum)
+  end if
+
+   return checksum_ok
+ 
+end function
+
+
+-- Check the GPS status and return TRUE if the status is valid (=A). Currently 
+-- not used. Needed when GPS location data is used.
+function _gps_neo_6m_status_is_valid() return bit is
+
+   var byte index
+
+   -- Get the position of the status element in the buffer.
+   index = _gps_neo_6m_seek_to_element(_GPS_NEO_6M_ELEMENT_STATUS)
+   if (index != 0) then 
+      return (_gps_neo_6m_buffer[index] == "A")
+   else
+      -- Element not found.
+      return FALSE
+   end if
+
+end function
+
+
+-- Wait for the given string from the GPS module. Returns TRUE if the string 
+-- with the given token was found. The GPS string is stored in the receive buffer.
+function _gps_neo_6m_get_string_with_token(byte in token[]) return bit is
+
+   var dword timeout = 0
+   var byte index = 0
+   var byte character
+   var bit done = FALSE
+
+   -- First flush the receive buffer to prevent partial data.
+   while _gps_neo_6m_serial_read(character) loop
+      -- Empty
+   end loop
+
+   -- Get the token but do not wait forever.
+   while (index != count(token)) & (timeout < GPS_NEO_6M_READ_TIMEOUT) loop
+      if _gps_neo_6m_serial_read(character) then
+         if (character == token[index]) then
+            -- Always copy the data to the buffer.
+            _gps_neo_6m_buffer[index] = character
+            index = index + 1
+         else
+            -- No match (yet), try again.
+            index = 0
+         end if  
+      end if
+      timeout = timeout + 1
+      _usec_delay(100)
+   end loop
+   
+   -- We either received the token or we got a timeout.
+   if (index == count(token)) then
+      -- Token was found, read the rest of the string until CR or LF.
+      while !done & (timeout < GPS_NEO_6M_READ_TIMEOUT) loop
+         if _gps_neo_6m_serial_read(character) then
+            -- If CR or LF was received then we are done.
+            if (character == "\r") | (character == "\n") then
+               done = TRUE
+            else
+               _gps_neo_6m_buffer[index] = character
+               index = index + 1
+            end if 
+         end if 
+         timeout = timeout + 1
+         _usec_delay(100)
+      end loop
+   end if
+
+   return done
+   
+end function
+
+
+-- Seek to the given element in the receive buffer. The elements are 
+-- separated in the buffer by comma's. The function returns the 
+-- position in the receive buffer where the element starts. If the
+-- element cannot be found 0 is returned.
+function _gps_neo_6m_seek_to_element(byte in element) return byte is
+
+   var byte index = 0
+   var byte counter = 0
+  
+   while (counter != element) & (index < _GPS_NEO_6M_BUFFER_SIZE) loop
+      if (_gps_neo_6m_buffer[index] == ",") then
+         counter = counter + 1
+      end if
+      index = index + 1
+   end loop
+
+   if (counter == element) then
+      return index
+   else
+      return 0
+   end if
+
+end function
+
