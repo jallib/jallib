@@ -271,21 +271,17 @@ const byte USB_DEVICE_DESCRIPTOR[USB_DEVICE_DESCRIPTOR_SIZE] =
 {
 0x12, -- Size of this descriptor in bytes
 0x01, -- Descriptor Type - DEVICE
-0x00,
-0x02, -- USB Specification Release Number - BCD 2.00
+0x00, 0x02, -- USB Specification Release Number
 0x00, -- Class is specified in the interface level
 0x00, -- Subclass is specified at interface level
 0x00, -- Protocol isspecified at interface level
-USB_EP0_OUT_SIZE, -- Maximum packet size for endpoint zero - 64
-0xD8,
-0x04, -- Vendor ID - Assigned by the USB-IF - Microchip Technology
-0x09,
-0x01, -- Product ID - assigned by vendor
-0x00,
-0x01, -- Device release number in BCD - assigned by vendor 1.00
+USB_EP0_OUT_SIZE, -- Maximum packet size for endpoint zero
+0x04, 0xD8, -- Vendor ID - Assigned by the USB-IF - Microchip Technology
+0x09, 0x01, -- Product ID - assigned by vendor
+0x00, 0x01, -- Device release number in BCD - assigned by vendor 1.00
 0x01, -- Index of string descriptor describing the manufacturer
 0x02, -- Index of string descriptor describing this product
-0x03, -- Index of string descriptor describing the device.s serial number
+0x00, -- Index of string descriptor describing the device.s serial number
 0x01  -- Number of possible configurations
 }
 
@@ -298,13 +294,12 @@ const byte USB_CONFIGURATION_DESCRIPTOR[USB_CONFIGURATION_DESCRIPTOR_SIZE] =
 --  Configuration Descriptor
 0x09, -- Descriptor size in bytes
 0x02, -- Descriptor type - CONFIGURATION
-0x20,
-0x00, -- Total length of data returned for this configuration
+0x20, 0x00, -- Total length of data returned for this configuration
 0x01, -- Number of interfaces supported by this configuration
 0x01, -- Value to use as an argument to the SetConfiguration() request to select this configuration
 0x00, -- Index of string descriptor describing this configuration. 0 = none
-0xC0, -- Configuration characteristics. Self-powered with no remote wakeup
-0x32, -- Maximum power consumption - 100mA
+0x80, -- Configuration characteristics. Self-powered with no remote wakeup
+0x32, -- Maximum power consumption
 
 -- Bulk-Only Data Interface Descriptor
 0x09, -- Descriptor size in bytes
@@ -322,8 +317,7 @@ const byte USB_CONFIGURATION_DESCRIPTOR[USB_CONFIGURATION_DESCRIPTOR_SIZE] =
 0x05, -- Descriptor type - ENDPOINT
 0x81, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 1 = in)
 0x02, -- Transfer type - Bulk
-0x40,
-USB_EP1_IN_SIZE, -- Maximum packet size - 64
+USB_EP1_IN_SIZE, 0x00, -- Maximum packet size
 0x00, -- Does not apply to Bulk endpoints
 
 -- Endpoint Descriptor (ENDPOINT 1 OUT)
@@ -331,19 +325,20 @@ USB_EP1_IN_SIZE, -- Maximum packet size - 64
 0x05, -- Descriptor type - ENDPOINT
 0x01, -- The address of this endpoint on the USB device (bit 3..0 = endpoint number 1) (bit 7 = 0 = out)
 0x02, -- Transfer type - Bulk
-0x40,
-USB_EP0_OUT_SIZE, -- Maximum packet size - 64
+USB_EP1_OUT_SIZE, 0x00, -- Maximum packet size
 0x00  -- Does not apply to Bulk endpoints
 }
 
 
 -- STRING 0
-const byte USB_STRING0[] =
+-- note: there may be bad packets till the host requests with wLength 4, but host will retry.
+const byte USB_STRING0_SIZE = 0x04
+const byte USB_STRING0[USB_STRING0_SIZE] =
 {
-0x04,            -- Descriptor size in bytes
-USB_DT_STRING,   -- Descriptor type - STRING
-0x09,            -- wLANGID[0] (low byte)
-0x04             -- wLANGID[0] (high byte)
+   USB_STRING0_SIZE,            -- Descriptor size in bytes
+   USB_DT_STRING,    -- Descriptor type - STRING
+   0x09,            -- wLANGID[0] (low byte)
+   0x04             -- wLANGID[0] (high byte)
 }
 
 -- String descriptor describing the manufacturer
@@ -1658,3 +1653,39 @@ if USB_WRITE_TRANSFER_SPEED == USB_WRITE_SUPER_SPEED then
    end procedure
 end if
 
+-- -----------------------------------------------------------------------
+-- Print the selected transfer speed settings.
+-- Several transfer speeds exist for testing better performance
+-- and reliability.
+-- -----------------------------------------------------------------------
+;_SUPER_SPEED -- uses memory pointer for extra speed,
+;                                     -- data direct from devide to USB endpoint, no buffer array
+;_EXTRA_SPEED -- uses storage device extra speed routines,
+;                                     -- with 512 byte buffer array
+;_NORMAL_SPEED -- uses normal storage device routines
+;                                     -- with 512 byte buffer array.
+procedure usb_print_speeds() is
+   print_string(serial_data, "MSD Read Speed: ")
+   if USB_READ_TRANSFER_SPEED == USB_READ_NORMAL_SPEED then
+      print_string(serial_data, "USB_READ_NORMAL_SPEED")
+   end if
+   if USB_READ_TRANSFER_SPEED == USB_READ_EXTRA_SPEED then
+      print_string(serial_data, "USB_READ_EXTRA_SPEED")
+   end if
+   if USB_READ_TRANSFER_SPEED == USB_READ_SUPER_SPEED then
+      print_string(serial_data, "USB_READ_SUPER_SPEED")
+   end if
+   print_crlf(serial_data)
+
+   print_string(serial_data, "MSD write Speed: ")
+   if USB_WRITE_TRANSFER_SPEED == USB_WRITE_NORMAL_SPEED then
+      print_string(serial_data, "USB_WRITE_NORMAL_SPEED")
+   end if
+   if USB_WRITE_TRANSFER_SPEED == USB_WRITE_EXTRA_SPEED then
+      print_string(serial_data, "USB_WRITE_EXTRA_SPEED")
+   end if
+   if USB_WRITE_TRANSFER_SPEED == USB_WRITE_SUPER_SPEED then
+      print_string(serial_data, "USB_WRITE_SUPER_SPEED")
+   end if
+   print_crlf(serial_data)
+end procedure
