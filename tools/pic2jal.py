@@ -3,7 +3,7 @@
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2021, all rights reserved.
+        Rob Jansen,    Copyright (c) 2018..2022, all rights reserved.
 
 Adapted-by:
 
@@ -62,8 +62,8 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.2"     # script version
-compilerversion = "2.5r5"   # latest JalV2 compiler version
+scriptversion = "1.5.3"     # script version
+compilerversion = "2.5r6"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
@@ -3638,6 +3638,14 @@ def collect_config_info(root, picname):
                     cfgvar["sharedrange"] = (gpraddr, gprlast)
                 if (gpraddr == 0):
                     cfgvar["accessbanksplitoffset"] = gprlast
+
+    # Note that some PICs also have a SystemGPRDataSector. These sectors are in the data space but used for
+	# something else. Copying the above code and replacing gprdatasectors by SystemGPRDataSector would add
+	# these locations to the data space. Since it is not always clear if this can be used by the program
+	# running within the PIC these locations are not added. It concerns at least the following 
+	# SystemGPRDataSectors which are not added to the dats space: Sector RAM, Buffer RAM and CAN RAM
+	# so the total data space may be less than what is mentioned in the data sheet.
+
     dprdatasectors = root.getElementsByTagName("edc:DPRDataSector")
     for dprdatasector in dprdatasectors:
         if dprdatasector.hasAttribute("edc:bank"):  # count numbanks
