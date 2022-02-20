@@ -52,7 +52,7 @@
       <note type="remember">as a consequence, these procedures don&apos;t exist when analog pins are dependent as in our first case.</note>
       <note type="caution">it&apos;s not because there are PCFG bits that PICs have dependent analog pins. Some have PCFG bits which act exactly the same as ANS bits (like some of recent 18F) </note>
       <note type="tip">how to know if your PIC has dependent or independent pins ? First have a look at its datasheet, if you can a table like the one for 16F877, there are dependent. Also, if you configure a PIC with dependent pins as if it was one with independent pins (and vice-versa), you&apos;ll get an error. Finally, if you get an error like: &quot;<i>Unable to configure ADC channels. Configuration is supposed to be done using ANS bits but it seems there&apos;s no ANS bits for this PIC. Maybe your PIC isn&apos;t supported, please report !</i>&quot;, or the like, well, this is not a normal situation, so as stated, please report !</note>
-      <p>Once configured, using ADC is easy. You&apos;ll find <codeph>adc_read()</codeph> and <b>adc_read_low_res()</b> functions, for respectively read ADC in high and low resolution. Because low resolution is coded on 8-bits, <codeph>adc_read()</codeph> returns a <codeph>byte</codeph> as the result. <b>adc_read_low_res()</b> returns a <codeph>word</codeph>.</p>
+      <p>Once configured, using ADC is easy. You&apos;ll find <codeph>adc_read_high_res()</codeph> and <b>adc_read_low_res()</b> functions, for respectively read ADC in high and low resolution. Because low resolution is coded on 8-bits, <codeph>adc_read_low_res()</codeph> returns a <codeph>byte</codeph> as the result. <b>adc_read_high_res()</b> returns a <codeph>word</codeph>.</p>
     </section>
     <section>
       <title>Example with 16F877, dependent analog pins</title>
@@ -69,146 +69,117 @@ include 16f877
 -- setup clock running @20MHz
 pragma target OSC HS
 pragma target clock 20_000_000
--- no watchdog
+-- no watchdog, no LVP
 pragma target WDT  disabled
-pragma target LVP  disabled
-enable_digital_io()
-include delay
+pragma target LVP  enabled 
 
--- ok, now setup serial, we&apos;ll use this
--- to get ADC measures
-const serial_hw_baudrate = 19_200
+-- We&apos;ll start to set all pins as digital
+-- then, using ADC, we&apos;ll configure needed
+-- ones as analog.
+enable_digital_io()
+
+include print
+include delay
+const serial_hw_baudrate = 115_200
 include serial_hardware
 serial_hw_init()
 
-
--- ok, now let&apos;s configure ADC
--- we want to measure using low resolution
--- (that&apos;s our choice, we could use high resolution as well)
-const bit ADC_HIGH_RESOLUTION = false
--- we said we want 1 analog channel...
-const byte ADC_NCHANNEL = 1
--- and no external voltage reference
-const byte ADC_NVREF = ADC_NO_EXT_VREF
--- now we can include the library
--- note it&apos;s now named &quot;adc&quot;, not &quot;adc_hardware&quot; anymore
+-- Step 1: ADC input pin setup we wil use channel 0
+pin_AN0_direction = input 
+-- Step 2: Set A0 analog input and VDD as Vref
+ADCON1_PCFG = 0b0000
+-- Step 3: Use Frc as ADC clock 
+ADCON0_ADCS = 0b11 
+-- Now we can include the library
 include adc
--- and run the initialization step
+-- And initialize the whole with our parameters
 adc_init()
 
-
 -- will periodically send those chars
-var byte measure
-forever loop
-   -- get ADC result, on channel 0
-   -- this means we&apos;re currently reading on pin RA0/AN0 !
-   measure = adc_read_low_res(0)
-   -- send it back through serial
-   serial_hw_write(measure)
+var word wmeasure
+var byte bmeasure
+const byte wprefix[] = &quot;Result in high resolution: &quot;
+const byte bprefix[] = &quot;Result in low  resolution: &quot;
 
-   -- and sleep a litte to prevent flooding serial...
+forever loop
+
+   -- get ADC result, on channel 0
+   -- this means we&apos;re currently reading on pin AN0 !
+
+   -- access results in high resolution
+   wmeasure = adc_read_high_res(0)
+   -- wmeasure contains the result, as a word (byte*2)
+   print_string(serial_hw_data,wprefix)
+   print_word_dec(serial_hw_data,wmeasure)
+   print_crlf(serial_hw_data)
+
+   -- though we are in high resolution mode,
+   -- we can still get a result as a byte, as though
+   -- it were in low resolution.
+   bmeasure = adc_read_low_res(0)
+   print_string(serial_hw_data,bprefix)
+   print_byte_dec(serial_hw_data,bmeasure)
+   print_crlf(serial_hw_data)
+
+   -- and sleep a little to prevent flooding serial...
    delay_1ms(200)
+   
 end loop
 </codeblock></p>
-      <p><b>Example 2</b>: <i>16F877, with 5 analog pins, 1 external voltage reference, that is, Vref+ </i></p>
-      <p>This is almost the same as before, except we now want 5 (analog pins) + 1 (Vref) = <b>6 ADC channels</b> (yes, I consider Vref+ pin as an ADC channel).</p>
-      <p>The beginning is the same, here&apos;s just the part about ADC configuration and readings:</p>
-      <p><codeblock>const bit ADC_HIGH_RESOLUTION = false
--- our 6 ADC channel
-const byte ADC_NCHANNEL = 6
--- and one Vref pin
-const byte ADC_NVREF = ADC_VREF_POS
--- the two parameters could be read as:
--- &quot;I want 6 ADC channels, amongst which 1 will be
--- reserved for Vref, and the 5 remaining ones will be
--- analog pins&quot;
+      <p><b>Example 2</b>: <i>16F877, with 2 analog pins, 1 external voltage reference, that is, Vref+ </i></p>
+      <p>This is almost the same as before, except we now want 2 (analog pins A0 and A1) + 1 (Vref+ A3), so yes we are using 3 analog pins here.</p>
+      <p>The beginning is the same, here&apos;s just the part about ADC configuration and readings. We use a for loop to go over the 2 analog pins A0 and A1:</p>
+      <p><codeblock>-- Step 1: ADC input pin setup we wil use channel 0 and 1 (2 channels)
+pin_AN0_direction = input 
+pin_AN1_direction = input 
+-- Step 2: Set A0 and A1 analog input and A3 as Vref
+ADCON1_PCFG = 0b0011
+-- Step 3: Use Frc as ADC clock 
+ADCON0_ADCS = 0b11 
+-- Now we can include the library
 include adc
+-- And initialize the whole with our parameters
 adc_init()
 
 -- will periodically send those chars
-var byte measure
+var word measure
+var byte lowmeasure, channel
+const byte prefix[] = &quot;Channel &quot;
+const byte highstr[] = &quot; (high) &quot;
+const byte lowstr[] = &quot; (low) &quot;
+const byte suffix[] = &quot;: &quot;
+
 forever loop
-   -- get ADC result, on channel 0
-   -- this means we&apos;re currently reading on pin RA0/AN0 !
-   measure = adc_read_low_res(0)
-   -- send it back through serial
-   serial_hw_write(measure)
 
-   -- same for pin RA1/AN1
-   measure = adc_read_low_res(1)
-   serial_hw_write(measure)
+   -- loop over all channels and read
+   for 2 using channel loop
 
-   -- same for pin RA2/AN2
-   measure = adc_read_low_res(2)
-   serial_hw_write(measure)
+  -- get ADC result, high resolution
+  measure = adc_read_high_res(channel)
+  -- send it back through serial
+  print_string(serial_hw_data,prefix)
+  print_string(serial_hw_data,highstr)
+  print_byte_dec(serial_hw_data,channel)
+  print_string(serial_hw_data,suffix)
+  print_word_dec(serial_hw_data,measure) 
+  print_crlf(serial_hw_data)
+  -- and sleep a little...
+  delay_1ms(100)
 
-   -- pin RA3/AN3 can&apos;t be read, since it&apos;s Vref+
+  -- Even if we set high resolution, we can still access results
+  -- in low resolution (the 2 LSb will be removed)
+  lowmeasure = adc_read_low_res(channel)
+  print_string(serial_hw_data,prefix)
+  print_string(serial_hw_data,lowstr)
+  print_byte_dec(serial_hw_data,channel)
+  print_string(serial_hw_data,suffix)
+  print_byte_dec(serial_hw_data,lowmeasure) 
+  print_crlf(serial_hw_data)
+  -- and sleep a little...
+  delay_1ms(100)
 
-   -- same for pin RA5/AN4
-   -- 4 is from from &quot;AN4&quot; !
-   measure = adc_read_low_res(4)
-   serial_hw_write(measure)
-
-   -- same for pin RE10/AN5
-   measure = adc_read_low_res(5)
-   serial_hw_write(measure)
-
-   -- and sleep a litte to prevent flooding serial...
-   delay_1ms(200)
+   end loop
 end loop </codeblock></p>
-    </section>
-    <section>
-      <title>Example with 16F88, independent analog pins</title>
-      <p>The following example is about setting up ADC module with PIC 16F88, where analog pins are independent from each other.</p>
-      <p>The following diagram is here to help knowing where <b>analog pins</b> (blue) are and where <b>Vref pins</b> (red) are:</p>
-      <p><fig>
-          <title>Analog pins and Vref pins on 16F88</title>
-          <image href="images/adc_16f88_diagram.jpg" width="400" placement="break" otherprops="clickable"/>
-        </fig></p>
-      <p><b>Example 1</b>: <i>16F88, analog pins on RA0/AN0, RA4/AN4 and RB6/AN5. No external voltage reference. </i></p>
-      <p><codeblock>-- beginning is about configuring the chip
-include 16f88
--- We&apos;ll use internal oscillator. It work @ 8MHz
-pragma target CLOCK     8_000_000
-pragma target OSC       INTOSC_NOCLKOUT
-OSCCON_IRCF = 0b_111
-pragma target WDT       disabled
-enable_digital_io()
-
--- ok, now setup serial, we&apos;ll use this
--- to get ADC measures
-const serial_hw_baudrate = 19_200
-include serial_hardware
-serial_hw_init()
-
--- now configure ADC
-const bit ADC_HIGH_RESOLUTION = false
-const byte ADC_NVREF = ADC_NO_EXT_VREF
--- we can&apos;t specify a number of ADC channel here,
--- or we&apos;ll get an error !
-include adc
-adc_init()
--- now we declare the pin we want as analog !
-set_analog_pin(0)  -- RA0/AN0
-set_analog_pin(4)  -- RA4/AN4
-set_analog_pin(5)  -- RB6/AN5
-
--- reading is then the same
-var byte measure
-forever loop
-
-   measure = adc_read_low_res(0)
-   serial_hw_write(measure)
-
-   measure = adc_read_low_res(4)
-   serial_hw_write(measure)
-
-   measure = adc_read_low_res(5)
-   serial_hw_write(measure)
-
-end loop</codeblock></p>
-      <p>Whether you would want to turn RB6/AN5 into a digital pin again, you&apos;d just call:</p>
-      <p><codeblock>set_digital_pin(5)</codeblock></p>
     </section>
   </body>
 </topic>
