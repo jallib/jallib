@@ -1,0 +1,129 @@
+-- -----------------------------------------------------------------------------
+-- Title: Tutorial USB Serial Demo
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6
+-- Revision: $Revision$
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: This application demonstrates the functionality of the USB Serial library, 
+--              this application will emulate a RS-232 terminal device. Once the USB device 
+--              has been detected by the host operating system, it will create a virtual 
+--              COM port. When opening this COM on the host computer, using a standard 
+--              terminal application. Two LEDs can remotely be controlled and the status 
+--              of the LEDs is returned to the host.
+--
+-- Notes: For hardware a 14 pin DIL PIC16F1455 was used. The circuit can be powered by
+--        the USB connection and the PIC16F1455 is connected as follows:
+--        *) USB data- wire to pin 12 (D-)
+--        *) USB data+ wire to pin 13 (D+)
+--        *) USB power wire to pin 1 (VDD). Don't forget a 100nF decoupling capacitor.
+--        *) USB ground wire to pin 14 (VSS or GND)
+--        *) A resistor of 33kOhm to pin 4 (MCLR) and VDD. We use internal reset.
+--        *) A capacitor of 470nF to pin 11 (Vusb3v3) and GND.
+--        *) An Yello LED with 330 Ohm resistor to pin 10. Indicates that USB is configured.
+--        *) An Red LED with 330 Ohm resistor to pin 9.
+--        *) An Green LED with 330 Ohm resistor to pin 8.
+--
+include 16f1455             -- Target processor.
+
+pragma target clock         48_000_000
+
+-- Settings for internal clock and system clock 48 MHz.
+pragma target OSC           INTOSC_NOCLKOUT -- Internal clock
+pragma target CLKOUTEN      DISABLED -- CLKOUT function is disabled. I/O or oscillator function on the CLKOUT pin
+pragma target PLLMULT       N3X      -- PLL Multipler Selection Bit, 3x Output Frequency Selected
+
+-- Other fuses.
+pragma target CPUDIV        P1       -- NO CPU system divide
+pragma target USBLSCLK      F48MHZ   -- System clock expects 48 MHz, FS/LS USB CLKENs divide-by is set to 8.
+pragma target PLLEN         ENABLED  -- 3x or 4x PLL Enabled
+pragma target FCMEN         DISABLED -- Fail-Safe Clock Monitor is disabled
+pragma target WRT           DISABLED -- Write protection off
+pragma target STVR          ENABLED  -- Stack Overflow or Underflow will cause a Reset
+pragma target LPBOR         DISABLED -- Low-Power BOR is disabled
+pragma target IESO          DISABLED -- Internal/External Switchover Mode is disabled
+pragma target PWRTE         DISABLED -- power up timer
+pragma target BROWNOUT      DISABLED -- no brownout detection
+pragma target WDT           DISABLED -- Watchdog disabled
+pragma target MCLR          EXTERNAL -- External reset
+pragma target LVP           ENABLED  -- allow low-voltage programming
+pragma target VOLTAGE       MAXIMUM  -- brown out voltage
+pragma target CP            DISABLED -- Program memory code protection is disabled
+
+OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator
+
+-- Enable weak pull-up for port a and and set port c to output just to
+-- have no floating input pins.
+OPTION_REG_WPUEN = FALSE             -- Enable weak pull-up for port a.
+WPUA          = 0b0011_1111          -- Weak-pull up for all inputs.
+TRISC         = 0b0000_0000          -- Port c output.
+                               
+-- Include serial library and print library for formatting print output.
+include usb_serial
+include print
+
+-- Aliases for LEDs, active HIGH.
+alias led_red is pin_C2                 
+pin_C2_direction = output            -- Pin 8 of 14 pin DIP.
+alias led_green is pin_C1
+pin_C1_direction = output            -- Pin 9 of 14 pin DIP.
+alias led_yellow is pin_C0           
+pin_C0_direction = output            -- Pin 10 of 14 pin DIP.
+
+-- Variables.
+var byte character
+var bit red_value, green_value
+
+-- ------------- The main program starts here  ------------------------
+
+-- Setup the USB serial library.
+usb_serial_init()
+
+-- LEDs off.
+led_yellow = FALSE
+red_value = FALSE
+green_value = FALSE
+
+forever loop
+
+   -- Update Red and Green LEDs.
+   led_red = red_value
+   led_green = green_value
+   
+   -- Poll the usb ISR function  on a regular base, in order to serve 
+   -- the USB requests
+   usb_serial_flush()
+   
+   -- Check if USB device has been configured by the host.
+   if ( usb_cdc_line_status() !=  0x00 )  then
+      led_yellow = TRUE   
+   else
+      led_yellow = FALSE  
+   end if
+   
+   -- Check for input character. If OK, toggle led value.
+   if usb_serial_read(character) then
+      if (character == "R") | (character == "r") then
+         red_value = !red_value
+         if red_value then 
+           print_string(usb_serial_data, "Red LED is on.")
+         else
+           print_string(usb_serial_data, "Red LED is off.")
+         end if
+      elsif (character == "G") | (character == "g") then  
+         green_value = !green_value
+         if green_value then 
+           print_string(usb_serial_data, "Green LED is on.")
+         else
+           print_string(usb_serial_data, "Green LED is off.")
+         end if
+      else
+         print_string(usb_serial_data, "Unsupported command.")
+      end if
+      print_crlf(usb_serial_data)
+   end if
+
+end loop
