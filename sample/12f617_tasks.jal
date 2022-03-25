@@ -1,0 +1,135 @@
+-- Title: Sample program to demonstrate the use of tasks in JAL.
+-- Author: Rob Jansen, Copyright (c) 2021..2021, all rights reserved.
+-- Adapted-by:
+-- Compiler: >=2.5r4
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This sample program shows how to use tasks in JAL.
+--              The main program counts as 1 task. The order of execution is:
+--              1) No task is running. The main (forever) loop is started as the 
+--                 first task which starts the other 3 tasks.
+--              2) The main program controls the white led once and suspends to
+--                 give control to the other started tasks in the order these 
+--                 tasks were started by the main program.
+--              3) The red task controls the red led once and suspends
+--              4) The green task controls the green led once and suspends  
+--              5) The blue taak controls the blue led once and suspends  
+--              6) The cycle starts again at 2)
+--
+--              For the result see this video: https://youtu.be/tOFy_s7aVnQ
+--
+-- Note:        In order for this program to run you have to define the number
+--              of tasks with the pragma task. This number equals the number of
+--              tasks that need to run plus one for the main program which
+--              counts as one task. So in this case the number of tasks is 4.
+--              Only the main program can start a task.
+--
+
+include 12f617                 
+
+; Use internal clock and internal reset.
+pragma target clock    4_000_000       ; oscillator frequency 4 MHz
+pragma target OSC      INTOSC_NOCLKOUT ; Internal Clock
+pragma target PWRTE    enabled         ; Power up timer
+pragma target MCLR     internal        ; Reset internal
+pragma target WDT      disabled        ; No watchdog
+pragma target BROWNOUT enabled         ; Enable in case voltage becomes too low
+pragma target IOSCFS   F4MHZ           ; Set internal oscillator to 4 MHz
+
+-- Set the number of tasks that need to run. Note that the main program counts
+-- as one task so in this case 4 in total.
+pragma task 4
+
+
+-- Define the pins for the LEDs
+alias led_red is pin_A5    ; Pin 2 for 8 pin DIP. 
+pin_A5_direction =  output
+alias led_green is pin_A4  ; Pin 3 for 8 pin DIP.  
+pin_A4_direction =  output
+alias led_blue is pin_A2   ; Pin 5 for 8 pin DIP.  
+pin_A2_direction =  output
+alias led_white is pin_A1  ; Pin 6 for 8 pin DIP.  
+pin_A1_direction =  output
+
+enable_digital_io()              -- make all pins digital I/O
+
+-- We use a delay timer that runs on an interrupt basis so there is no wait
+-- time. 
+const word timer0_isr_rate = 50  -- desired # of interrupts per second
+const DELAY_SLOTS = 4            -- 4 delay slots                                    
+include timer0_isr_interval      -- non blocking delay library
+timer0_isr_init()                -- initialize timer0 interrupt service
+
+-- All LEDs off to start with.
+led_red = LOW
+led_green = LOW
+led_blue = LOW
+led_white = LOW
+
+
+-- This task control the red LED and suspends when done to give control to the 
+-- next task but the task itself does not end.
+task task_red() is
+
+   forever loop                  -- The task itself never ends  
+      if (check_delay(0)) then   -- Check is delay passed for slot 0              
+         led_red = !led_red      -- Toggle the LED  
+         set_delay(0,10)         -- Set the delay again for slot 0
+      end if
+      suspend                    -- Give control to the next Task    
+   end loop
+     
+end task
+
+
+-- This task control the green LED and suspends when done to give control to the 
+-- next task but the task itself does not end.
+task task_green()is
+
+   forever loop                  -- The task itself never ends  
+      if (check_delay(1)) then   -- Check is delay passed for slot 1             
+         led_green = !led_green  -- Toggle the LED   
+         set_delay(1,55)         -- Set the delay again for slot 1
+      end if
+      suspend                    -- Give control to the next Task    
+   end loop
+      
+end task
+
+
+-- This task control the blue LED and suspends when done to give control to the 
+-- next task but the task itself does not end.
+task task_blue()is
+
+   forever loop                  -- The task itself never ends  
+      if (check_delay(2)) then   -- Check is delay passed for slot 2              
+         led_blue = !led_blue    -- Toggle the LED   
+         set_delay(2,99)         -- Set the delay again for slot 2
+      end if
+      suspend                    -- Give control to the next Task    
+   end loop
+      
+end task
+
+
+-- The main program starts here. It starts the tasks. Our tasks do not have
+-- parameters but this can be used to control the operation of the task if
+-- that is required. 
+start task_red()
+start task_green()
+start task_blue()
+
+forever loop                     -- The main loop itself never ends  
+
+   -- This loop controls the blue white LED and suspends when done to give 
+   -- control to the one of the started tasks.
+   if (check_delay(3)) then      -- Check is delay passed for slot 3        
+      led_white = !led_white     -- Toggle the LED   
+      set_delay(3,133)           -- Set the delay again for slot 3
+   end if
+   suspend                       -- Give control to the next Task    
+   
+end loop
+
