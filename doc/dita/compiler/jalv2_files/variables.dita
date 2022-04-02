@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN"
+"topic.dtd">
+<topic id="d0e490" xml:lang="en-US">
+  <title>Variables</title>
+
+  <body>
+    <p>A variable is simply an identifier that holds a value. These
+    identifiers have types associated which define how much space is required
+    to hold the value. The following types are built-in:</p>
+
+    <p>The complete format for defining a variable is:</p>
+
+    <codeblock>          VAR [VOLATILE] [SHARED] type[*<i>cexpr</i>] <i>identifier</i> [ '[' [ <i>cexpr</i> ] 
+             '] ' ]
+             [ { AT <i>cexpr</i> [ ':' <i>bit</i> ] | <i>var</i> [ ':' <i>bit</i> ] | '{' <i>cexpr1</i>[',' 
+             <i>cexpr2</i>...] '}' | IS <i>var</i> } ]
+             [ '=' <i>cexpr</i> | '{' <i>cexpr1</i>',' ... '}' | '"'...'"' ]
+             [',' <i>identifier2</i>...]</codeblock>
+
+    <p>This is, by far, the most complex construct in all of JAL, so I'll
+    describe it one piece at a time below. Once variable definition is
+    understood, everything else is easy!</p>
+
+    <p>VAR</p>
+
+    <lq>Denotes the beginning of a variable definition.</lq>
+
+    <p>VOLATILE</p>
+
+    <lq>The VOLATILE keyword guarantees that a variable that is either used or
+    assigned will not be optimized away, and the variable will be only read
+    (or written) once when evaluating an expression.</lq>
+
+    <lq>Normally, if a variable is assigned a value that is never used, the
+    assignment is removed and the variable is not allocated any space. If the
+    assignment is an expression, the expression *will* be fully evaluated. If
+    a variable is used, but never assigned, all instances of the variable will
+    be replaced with the constant 0 (of the appropriate type) and the variable
+    will not be allocated any space.</lq>
+
+    <p>SHARED</p>
+
+    <lq>Tells the compiler that this variable exists in shared memory, so
+    there is no need to set bank bits (14 bit cores), or the BSR register (16
+    bit cores).</lq>
+
+    <p>type[*<i>cexpr]</i></p>
+
+    <lq>type is one of the predefined types (above). If type is BIT, BYTE, or
+    SBYTE it can be extended using [*<i>cexpr</i>]. For BYTE and SBYTE, this
+    means the variable will be defined as an integer using <i>cexpr</i> bytes,
+    e.g. WORD is simply shorthand for BYTE*2.</lq>
+
+    <lq>If type is BIT, the definition changes. A BIT variable, as defined in
+    JAL, is really of type boolean. When assigned any non-zero value, it takes
+    on the value of 1. Using the [*<i>cexpr</i>], the definition changes to be
+    more like a C bit field: assignment is masked. For example:</lq>
+
+    <codeblock>          VAR BIT*2 cc</codeblock>
+
+    <lq>when assigning to cc, the assignment is:</lq>
+
+    <codeblock>          cc = (value &amp; 0x03)</codeblock>
+
+    <p><i>identifier</i></p>
+
+    <lq>Any valid JAL identifier</lq>
+
+    <p>'[' [ <i>cexpr</i> ] ']'</p>
+
+    <lq>Defines an arrayof <i>cexpr </i>elements. The array index starts at 0
+    and continues through (<i>cexpr</i> - 1). <i>cexpr</i> must be &gt;= 1. An
+    array *must* fit entirely within a single PIC data bank.</lq>
+
+    <lq>If <i>cexpr</i> is ommitted, the '=' term must exist and the size of
+    the array will be set to the number of initializers present.</lq>
+
+    <lq>BIT arrays are *not* supported.</lq>
+
+    <p>AT <i>cexpr</i> [ ':' bit ]</p>
+
+    <lq>Places the new variable at location <i>cexpr</i>. If it is a BIT
+    variable, [ ':' <i>bit </i>] defines the bit offset with the location. Any
+    location uses for explicit placement will not be allocated to another
+    variable.</lq>
+
+    <codeblock>          VAR BYTE fixed_variable at 0x20</codeblock>
+
+    <p>AT <i>var</i> [ ':' <i>bit</i> ]</p>
+
+    <lq>Places the new variable at the same location as an existing variable.
+    If it is a BIT variable, [ ':' <i>bit </i>] defines the bit offset with
+    the location.</lq>
+
+    <codeblock>          VAR BYTE data
+          VAR BIT data_bit at data:0 -- Overlay
+
+          VAR WORD channel_word
+          VAR BYTE channel_byte[2] at channel_word -- Overlay</codeblock>
+
+    <lq>Note that channel_byte[0] is the least significant byte and
+    channel_byte[1] is the most significant byte of channel_word, which is a
+    little-endian system. Because of this system these constructions also
+    work:</lq>
+
+    <codeblock>          VAR DOWRD base_data
+          VAR BYTE low_byte at base_data+0
+          VAR BYTE high_byte at base_data+1
+          VAR WORD upper_word at base_data+2</codeblock>
+
+    <p>AT '{' <i>cexpr</i>1[',' <i>cexpr</i>2...] '}'</p>
+
+    <div>Places the new variable at multiple locations. On the PIC, many of
+    the special purpose registers are mirrored in two or more data banks.
+    Telling the compiler which locations hold the variable allows it to
+    optimize the data access bits.</div>
+
+    <p>IS <i>var</i></p>
+
+    <lq>Tells the compiler that this identifier is simply an alias for
+    another. This has been deprecated, use "ALIAS identifier IS identifier1"
+    instead.</lq>
+
+    <p>'=' <i>expr</i></p>
+
+    <lq>Shorthand assignment. The variable will be assigned <i>expr</i>.</lq>
+
+    <p>'=' '{' <i>expr</i>1 [',' <i>expr</i>2...] '}'</p>
+
+    <lq>For an array variable, the elements will be assigned <i>expr</i>1,
+    <i>expr</i>2, ...</lq>
+
+    <p>'=' '"' ... '"'</p>
+
+    <lq>For a variable array, this assigns each ASCII value between '"' and
+    '"' to one element of the constant array. Unlike C, there is no
+    terminating NUL.</lq>
+
+    <p>'=' "..."</p>
+
+    <lq>For an array variable, the elements will be assigned one the ASCII
+    values inside the quotes.</lq>
+
+    <lq>= "abc" is equivalent to = {"a", "b", "c"}</lq>
+
+    <p>',<i>' identifier</i>2...</p>
+
+    <lq>Allows defining multiple variables with the same attributes:</lq>
+
+    <codeblock>          VAR BYTE a,b,c</codeblock>
+  </body>
+</topic>
