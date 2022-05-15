@@ -1,7 +1,7 @@
 -- Title: timer0 isr interval
--- Author: Joep Suijs, Copyright (C) 2008 Joep Suijs
--- Adapted-by: Rob Hamerling
--- Compiler: 2.4q3
+-- Author: Joep Suijs, Copyright (C) 2008..2022 Joep Suijs
+-- Adapted-by: Rob Hamerling, Rob Jansen
+-- Compiler: 2.5r6
 -- Revision: $Revision$
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -44,6 +44,19 @@
 -- TODO:
 --
 
+-- Aliases for compatibilty with other PICs. 
+if defined(PIR0_TMR0IF) then
+   alias _TIMR0_ISR_INTERVAL_INTERRUPT_FLAG   is PIR0_TMR0IF
+   alias _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE is PIE0_TMR0IE
+   alias _TIMR0_ISR_INTERVAL_PRESCALER        is T0CON1_T0CKPS
+else 
+   -- Default of the original library.
+   alias _TIMR0_ISR_INTERVAL_INTERRUPT_FLAG   is INTCON_TMR0IF
+   alias _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE is INTCON_TMR0IE
+   alias _TIMR0_ISR_INTERVAL_PRESCALER        is T0CON_T0PS
+end if
+
+
 var word internal_isr_counter
 
 var word isr_countdown[DELAY_SLOTS]
@@ -53,9 +66,9 @@ var byte timer0_load
 function isr_counter'get() return word is
    var word temp
 
-   INTCON_TMR0IE = off
+   _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE = off
    temp = internal_isr_counter
-   INTCON_TMR0IE = on
+   _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE = on
 
    return temp
 end function
@@ -65,9 +78,9 @@ procedure set_delay(byte in slot, word in ticks) is
 
    if (slot >= DELAY_SLOTS) then return end if
 
-   INTCON_TMR0IE = off
+   _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE = off
    isr_countdown[slot] = ticks
-   INTCON_TMR0IE = on
+   _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE = on
 
 end procedure
 
@@ -97,43 +110,52 @@ procedure timer0_isr_init() is
       _error "requested ISR rate is too low"
 
    elsif (timer0_div > ((128 * 256) - 1)) then
-      T0CON_T0PS = 7 ; prescaler 256
+      _TIMR0_ISR_INTERVAL_PRESCALER = 7 ; prescaler 256
       timer0_load = 255 - byte(timer0_div / 256)
 
    elsif (timer0_div > ((64 * 256) - 1)) then
-      T0CON_T0PS = 6 ; prescaler 128
+      _TIMR0_ISR_INTERVAL_PRESCALER = 6 ; prescaler 128
       timer0_load = 255 - byte(timer0_div / 128)
 
    elsif (timer0_div > ((32 * 256) - 1)) then
-      T0CON_T0PS = 5 ; prescaler 64
+      _TIMR0_ISR_INTERVAL_PRESCALER = 5 ; prescaler 64
       timer0_load = 255 - byte(timer0_div / 64)
 
    elsif (timer0_div > ((16 * 256) - 1)) then
-      T0CON_T0PS = 4 ; prescaler 32
+      _TIMR0_ISR_INTERVAL_PRESCALER = 4 ; prescaler 32
       timer0_load = 255 - byte(timer0_div / 32)
 
    elsif (timer0_div > ((8 * 256) - 1)) then
-      T0CON_T0PS = 3 ; prescaler 16
+      _TIMR0_ISR_INTERVAL_PRESCALER = 3 ; prescaler 16
       timer0_load = 255 - byte(timer0_div / 16)
 
    elsif (timer0_div > ((4 * 256) - 1)) then
-      T0CON_T0PS = 2 ; prescaler 8
+      _TIMR0_ISR_INTERVAL_PRESCALER = 2 ; prescaler 8
       timer0_load = 255 - byte(timer0_div / 8)
 
    elsif (timer0_div > ((2 * 256) - 1)) then
-      T0CON_T0PS = 1 ; prescaler 4
+      _TIMR0_ISR_INTERVAL_PRESCALER = 1 ; prescaler 4
       timer0_load = 255 - byte(timer0_div / 4)
 
    else
-      T0CON_T0PS = 0 ; prescaler 2
+      _TIMR0_ISR_INTERVAL_PRESCALER = 0 ; prescaler 2
       timer0_load = 255 - byte(timer0_div / 2)
    end if
 
-   T0CON_T0CS = 0  ; internal clock
-   T0CON_PSA  = 0  ; assign prescaler to timer0
+   -- Do some correction for other PICs, e.g PIC16F18313
+   if defined(PIR0_TMR0IF) then
+      _TIMR0_ISR_INTERVAL_PRESCALER = _TIMR0_ISR_INTERVAL_PRESCALER + 1
+      T0CON1_T0CS = 0b010 ; internal clock (means Fosc/4)
+      -- For this PIC type you must enable the timer.
+      T0CON0_T0EN = TRUE
+   else
+      -- Default of the original library.
+      T0CON_T0CS = 0  ; internal clock
+      T0CON_PSA  = 0  ; assign prescaler to timer0
+    end if
 
-   INTCON_TMR0IF = off
-   INTCON_TMR0IE = on
+   _TIMR0_ISR_INTERVAL_INTERRUPT_FLAG = off
+   _TIMR0_ISR_INTERVAL_INTERRUPT_ENABLE = on
    INTCON_GIE  = on    ; enable global interrupts
 
    var byte i
@@ -147,7 +169,7 @@ end procedure
 procedure ISR() is
    pragma interrupt
 
-   if INTCON_TMR0IF == true then
+   if _TIMR0_ISR_INTERVAL_INTERRUPT_FLAG == true then
       tmr0 = timer0_load
 
       -- counters
@@ -165,7 +187,7 @@ procedure ISR() is
          timer0_isr_wedge()
       end if
 
-      INTCON_TMR0IF = off
+      _TIMR0_ISR_INTERVAL_INTERRUPT_FLAG = off
 
    end if
 
