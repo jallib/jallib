@@ -1,13 +1,12 @@
 #!/usr/bin/python
 #
-#
 # Title: jallib main wrapper script
-# Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
-# Adapted-by:
+# Author: Sebastien Lelong, Copyright (c) 2008..2022, all rights reserved.
+# Adapted-by: Rob Jansen
 # Compiler:
 #
 # This file is part of jallib (https://github.com/jallib/jallib)
-# Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+# Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 #
 # Sources:
 #
@@ -271,7 +270,6 @@ FIELDS = [
         {'field':"Title",'predicate' : content_not_empty,'mandatory': True, 'multiline' :False},
         {'field':"Author",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Adapted-by",'predicate':content_not_empty,'mandatory':False,'multiline':False},
-        ##{'field':"Revision",'predicate':content_not_empty,'mandatory':True,'multiline':False},
         {'field':"Compiler",'predicate':compiler_version,'mandatory':True,'multiline':False},
         {'field':"Description",'predicate':content_not_empty,'mandatory':True,'multiline':True},
         {'field':"Sources",'predicate':content_not_empty,'mandatory':False,'multiline':True},
@@ -1591,7 +1589,7 @@ def do_monitor(args):
 
 def generic_help():
     print """
-jallib wrapper script (revision: $Revision$)
+jallib wrapper script
 Actions:
     - compile  : compile the given file, expanding one or more root
                  directories containing libraries
