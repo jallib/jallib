@@ -1,0 +1,117 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the PCA9685 16 channel 12-bit PWM Controller
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program for controlling leds with the PCA9685 16 channel 
+--              12-bit PWM controller. It will increase the brightness of the leds
+--              on all channels.
+--
+-- Sources: NXP Product data sheet, Rev. 4 — 16 April 2015
+--
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(100_000)     -- Give the hardware some time to stabilize.
+
+-- We control the Output Enable of the PCA9685 which is active LOW. 
+alias pca9685_output_enable is pin_C2 -- Pin 8 for 14 pin DIP.
+pin_C2_direction = output
+pca9685_output_enable = HIGH -- Disabled.
+
+-- Settings for the PCA9685 IIC and intialization.
+alias pca9685_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias pca9685_sck_direction is pin_C0_direction
+alias pca9685_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
+alias pca9685_sdo_direction is pin_C1_direction 
+-- If you want to use software IIC, define the following constant.
+-- const PCA9685_SOFTWARE_IIC = TRUE
+
+-- You can redefine the default IIC address. Only needed when not equal 
+-- to the default IIC address with address bits A0..A5 being zero which is 0x80.
+-- For example a new default IIC address using A0 = 1 and A2..A5 = 0 gives:
+-- const byte PCA9685_IIC_ADDRESS = 0x82 -- Bit 0 is the read/write bit.
+include pca9685
+
+var word off_time
+var byte pwm_percentage, pwm_channel
+
+ -- Wait 1 seconds.
+procedure wait_1s() is
+   _usec_delay(1_000_000)
+end procedure
+
+-- ------------------- The main program starts here -----------------
+
+-- Initialize and start the PCA9685.
+pca9685_init()
+
+-- Choose 100 Hz as PWM frequency, the default is 200 Hz.
+pca9685_set_pwm_frequency(100)
+
+-- Switch all channels off. 
+pca9685_set_channel_off(PCA9685_ALL_CHANNEL)
+
+-- Now we can enable the output.
+pca9685_output_enable = LOW
+
+forever loop
+
+   -- Go through all channels and change brightness from 0% to 100%.
+   for PCA9685_NR_OF_CHANNELS using pwm_channel loop
+      for 100 using pwm_percentage loop
+         pca9685_set_channel_pwm_percent(pwm_channel, pwm_percentage)
+         _usec_delay(5_000)
+      end loop
+   end loop
+ 
+   wait_1s()
+   -- Switch them all off.
+   for PCA9685_NR_OF_CHANNELS using pwm_channel loop
+      pca9685_set_channel_off(pwm_channel)
+   end loop
+   wait_1s()
+   
+   -- Now do the same using the ratio, this gives a higher resoluion since
+   -- it uses 4069 steps (0 .. PCA9685_PWM_MAX_TIME).
+   for PCA9685_NR_OF_CHANNELS using pwm_channel loop
+      for (PCA9685_PWM_MAX_TIME + 1) using off_time loop
+         -- We always start the on-time a the start of a new cycle at
+         -- PCA9685_PWM_MIN_TIME. This is not mandatory. 
+         pca9685_set_channel_pwm_ratio(pwm_channel, PCA9685_PWM_MIN_TIME, off_time)
+         _usec_delay(100)
+      end loop
+   end loop
+
+   wait_1s()
+   -- Switch them all off.
+   for PCA9685_NR_OF_CHANNELS using pwm_channel loop
+      pca9685_set_channel_off(pwm_channel)
+   end loop
+   wait_1s()
+
+end loop

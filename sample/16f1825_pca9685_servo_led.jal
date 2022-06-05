@@ -1,0 +1,180 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the PCA9685 16 channel 12-bit PWM Controller
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program for controlling two servos and one led with the PCA9685 
+--               16 channel 12-bit PWM controller. The following is done:
+--               -) Servo 1 moves in small steps from left to right and returns left.
+--               -) Servo 2 goes from left to right after a certain time and returns left.
+--               -) The brightness of 2 leds increase and decreases in small steps.
+--
+-- Sources: NXP Product data sheet, Rev. 4 — 16 April 2015
+--
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(100_000)     -- Give the hardware some time to stabilize.
+
+-- We control the Output Enable of the PCA9685 which is active LOW. 
+alias pca9685_output_enable is pin_C2 -- Pin 8 for 14 pin DIP.
+pin_C2_direction = output
+pca9685_output_enable = HIGH -- Disabled.
+
+-- Settings for the PCA9685 IIC and intialization.
+alias pca9685_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias pca9685_sck_direction is pin_C0_direction
+alias pca9685_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
+alias pca9685_sdo_direction is pin_C1_direction 
+-- If you want to use software IIC, define the following constant.
+-- const PCA9685_SOFTWARE_IIC = TRUE
+
+-- You can redefine the default IIC address. Only needed when not equal 
+-- to the default IIC address with address bits A0..A5 being zero which is 0x80.
+-- For example a new default IIC address using A0 = 1 and A2..A5 = 0 gives:
+-- const byte PCA9685_IIC_ADDRESS = 0x82 -- Bit 0 is the read/write bit.
+include pca9685
+
+-- Define the values for the servo. For the MG90S servo we use a PWM frequency
+-- of 100 Hz instead of the default 50 Hz since we want to control a LED too. 
+-- Position 0 degrees angle equals a pulse of 1.5 ms, position +90 degrees 
+-- angle equals 2 ms and position -90 degrees angle equals 1 ms. We have 
+-- PCA9685_PWM_MAX_TIME + 1 (4096) steps in the PWM signal. The values for 
+-- 100 Hz (10 ms) then become as follows:
+--   0 degrees : (1.5 / 10) * 4096 = 614. Middle position.
+-- +90 degrees : (2 / 10)   * 4096 = 819. Right position.
+-- -90 degrees : (1 / 10)   * 4096 = 410. Left position.
+-- Note: The values below are after calibrating the positions.
+const word SERVO_LEFT   = 200 -- 488 us
+const word SERVO_MIDDLE = 630 -- 1.48 ms
+const word SERVO_RIGHT  = 1030 -- 2.28 ms
+-- Used PWM channels.
+const byte PWM_CHANNEL_SERVO_1  = 15
+const byte PWM_CHANNEL_SERVO_2  = 13
+const byte PWM_CHANNEL_LED_1    = 11
+const byte PWM_CHANNEL_LED_2    = 0
+
+-- Some speed timing constants based on a 25 ms timer tick.
+const word SERVO_2_SPEED   = 200
+const word BRIGHTNESS_STEP = 40
+
+-- Global variables.
+var word timer_servo_2, position_servo_1, position_servo_2
+var word brightness_led_1, brightness_led_2
+var bit brightness_up_1, brightness_up_2
+
+-- ------------------- The main program starts here -----------------
+-- Initialize and start the PCA9685.
+pca9685_init()
+
+-- Choose 100 Hz as PWM frequency or 10 ms because of the leds.
+pca9685_set_pwm_frequency(100)
+
+-- Initialize the the servo variables.
+position_servo_1 = SERVO_LEFT 
+position_servo_2 = SERVO_LEFT 
+timer_servo_2 = 0
+
+-- Start led 1 at minimum brightness.
+brightness_led_1 = 0
+brightness_up_1 = TRUE
+
+-- Start led 2 at maximim brightness.
+brightness_led_2 = PCA9685_PWM_MAX_TIME
+brightness_up_2 = FALSE
+
+-- Switch all channels off.
+pca9685_set_channel_off(PCA9685_ALL_CHANNEL)
+
+-- Now we can enable the output.
+pca9685_output_enable = LOW
+
+forever  loop 
+
+   -- Main loop tick is 25 ms.
+   _usec_delay(25_000)
+
+   -- Increase the position of servo 1 in small steps.
+   position_servo_1 = position_servo_1 + 1
+   if (position_servo_1 >= SERVO_RIGHT) then
+      position_servo_1 = SERVO_LEFT
+   end if
+   pca9685_set_channel_pwm_ratio(PWM_CHANNEL_SERVO_1, 0, position_servo_1)
+
+   -- Change the servo direction of servo 2 after a certain time.
+   timer_servo_2 = timer_servo_2 + 1
+   if (timer_servo_2 > SERVO_2_SPEED) then
+      timer_servo_2 = 0
+      -- Change to the opposite direction.
+      if (position_servo_2 == SERVO_LEFT) then
+         position_servo_2 = SERVO_RIGHT
+      else
+         position_servo_2 = SERVO_LEFT
+      end if 
+      pca9685_set_channel_pwm_ratio(PWM_CHANNEL_SERVO_2, 0, position_servo_2)
+   end if
+
+   -- Change brightness of LED 1.
+   if brightness_up_1 then
+      -- Going up.
+      brightness_led_1 = brightness_led_1 + BRIGHTNESS_STEP
+      if (brightness_led_1 >= PCA9685_PWM_MAX_TIME) then
+         brightness_led_1 = PCA9685_PWM_MAX_TIME
+         brightness_up_1 = FALSE
+      end if
+   else
+      -- Going down.
+      if (brightness_led_1 >= BRIGHTNESS_STEP) then
+         brightness_led_1 = brightness_led_1 - BRIGHTNESS_STEP
+      else
+         brightness_led_1 = 0
+         brightness_up_1 = TRUE
+      end if
+   end if  
+   pca9685_set_channel_pwm_ratio(PWM_CHANNEL_LED_1, 0, brightness_led_1)
+
+   -- Change brightness of LED 2.
+   if brightness_up_2 then
+      -- Going up.
+      brightness_led_2 = brightness_led_2 + BRIGHTNESS_STEP
+      if (brightness_led_2 >= PCA9685_PWM_MAX_TIME) then
+         brightness_led_2 = PCA9685_PWM_MAX_TIME
+         brightness_up_2 = FALSE
+      end if
+   else
+      -- Going down.
+      if (brightness_led_2 >= BRIGHTNESS_STEP) then
+         brightness_led_2 = brightness_led_2 - BRIGHTNESS_STEP
+      else
+         brightness_led_2 = 0
+         brightness_up_2 = TRUE
+      end if
+   end if  
+   pca9685_set_channel_pwm_ratio(PWM_CHANNEL_LED_2, 0, brightness_led_2)
+
+end loop
+
