@@ -1,25 +1,44 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This document was created with Syntext Serna Free. -->
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN"
+"topic.dtd">
 <topic id="topic-1">
   <title>USB (Part 2) - The PIC as a serial port</title>
+
   <prolog>
     <author>Rob Jansen</author>
+
     <publisher>Jallib Group</publisher>
   </prolog>
+
   <body>
-    <section>
-      <title>Using the Jallb USB library</title>
-    </section>
-    <p>In the  <xref href="tutorial_usb1.xml">
-        <apiname>previous section</apiname>
-      </xref> some introduction as given about what the Universal Serial Bus is about. In this section we will make use of the Jallib USB driver to create an application using the USB.</p>
-    <p>In the following sample program the PIC will act as a serial port. From the computer (the host) we will control two LEDs connected to the PIC. The PIC will also
-send the status of the LEDs back to the computer. On the computer side, the terminal emulation program is used for sending the control commands to the PIC and
-for showing the message returned by the PIC.</p>
-    <section>
-      <title>The sample program explained</title>
-      <p>We start with the configuration of the PIC. This is done via the setting the correct   <codeph>pragma target</codeph> and we set the <codeph>target clock</codeph>. Note that for correct operation the USB hardware, the PIC has to run at 48 MHz,</p>
-      <p><codeblock scale="80">include 16f1455             -- Target processor.
+    <section><title>Using the Jallb USB library</title></section>
+
+    <p>In the <xref href="tutorial_usb1.xml"> <apiname>previous
+    section</apiname> </xref> some introduction as given about what the
+    Universal Serial Bus is about. In this section we will make use of the
+    Jallib USB driver to create an application using the USB.</p>
+
+    <p>To show you how this works, we need some hardware and software. The
+    hardware used for this Tutorial consists of a PIC16F1455 with some LEDs
+    that can be controlled via USB. The schematic diagram of this hardware is
+    given below.</p>
+
+    <image href="images/usb_schematic.png" otherprops="clickable"
+           placement="inline" width="400"/>
+
+    <p>In the following sample program the PIC will act as a serial port. From
+    the computer (the host) we will control two LEDs connected to the PIC. The
+    PIC will also send the status of the LEDs back to the computer. On the
+    computer side, the terminal emulation program is used for sending the
+    control commands to the PIC and for showing the message returned by the
+    PIC.</p>
+
+    <section><title>The sample program explained</title><p>We start with the
+    configuration of the PIC. This is done via the setting the correct
+    <codeph>pragma target</codeph> and we set the <codeph>target
+    clock</codeph>. Note that for correct operation the USB hardware, the PIC
+    has to run at 48 MHz,</p><p><codeblock scale="80">include 16f1455             -- Target processor.
 
 pragma target clock         48_000_000
 
@@ -45,13 +64,21 @@ pragma target LVP           ENABLED  -- allow low-voltage programming
 pragma target VOLTAGE       MAXIMUM  -- brown out voltage
 pragma target CP            DISABLED -- Program memory code protection is disabled
 
-OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator</codeblock></p>
-      <p>When a PIC is reset, all pins are set to input and are floating. A good practice is to use the weak pull-up feature of the PIC to pull the inputs high. When making a pin <codeph>output</codeph> the weak pull-up for that pin is disabled. For this PIC only port A has the weak pull-up feature and because of that we make port C output so that the pins are not floating.<codeblock scale="80">-- Enable weak pull-up for port a and and set port c to output just to
+OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator</codeblock></p><p>When
+    a PIC is reset, all pins are set to input and are floating. A good
+    practice is to use the weak pull-up feature of the PIC to pull the inputs
+    high. When making a pin <codeph>output</codeph> the weak pull-up for that
+    pin is disabled. For this PIC only port A has the weak pull-up feature and
+    because of that we make port C output so that the pins are not
+    floating.<codeblock scale="80">-- Enable weak pull-up for port a and and set port c to output just to
 -- have no floating input pins.
 OPTION_REG_WPUEN = FALSE             -- Enable weak pull-up for port a.
 WPUA          = 0b0011_1111          -- Weak-pull up for all inputs.
-TRISC         = 0b0000_0000          -- Port c output.</codeblock></p>
-      <p>Now include the Jallib USB library. Since we will send information back to the computer we want to format it nicely so we also include the Jallib print library. We will also define the pins including some aliases to make the program more readable.<codeblock scale="80">-- Include serial library and print library for formatting print output.
+TRISC         = 0b0000_0000          -- Port c output.</codeblock></p><p>Now
+    include the Jallib USB library. Since we will send information back to the
+    computer we want to format it nicely so we also include the Jallib print
+    library. We will also define the pins including some aliases to make the
+    program more readable.<codeblock scale="80">-- Include serial library and print library for formatting print output.
 include usb_serial
 include print
 
@@ -61,20 +88,35 @@ pin_A5_direction = output            -- Pin 2 of 14 pin DIP.
 alias led_red is pin_C2                 
 pin_C2_direction = output            -- Pin 8 of 14 pin DIP.
 alias led_green is pin_C1
-pin_C1_direction = output            -- Pin 9 of 14 pin DIP.</codeblock></p>
-      <p>This program uses a few variables, one for the character that is received from the computer and two bit variable to hold the status of the Red and Green LED.<codeblock scale="80">-- Variables.
+pin_C1_direction = output            -- Pin 9 of 14 pin DIP.</codeblock></p><p>This
+    program uses a few variables, one for the character that is received from
+    the computer and two bit variable to hold the status of the Red and Green
+    LED.<codeblock scale="80">-- Variables.
 var byte character
-var bit red_value, green_value</codeblock></p>
-      <p>Last but not least is the main part of the program which does the following:<ul>
-          <li>Initialize the usb library</li>
-          <li>Initialize (clear) all LEDs</li>
-          <li>Report if the PIC USB device is configured</li>
-          <li>Keep the USB going by frequently calling the function <codeph>usb_serial_flush()</codeph><note>The USB driver can also be used on an interrupt basis as described in the USB library and the USB sample programs. In that case the <codeph>usb_serial_flush()</codeph> is not required</note></li>
-          <li>Handle the commands sent by the computer and control the LEDs accordingly. A single character command will toggle the status of the LED from on to off or the other way around</li>
-          <li>Return the status of the controlled LED to the computer after a command was received</li>
-          <li>Return an error message if an incorrect command was received</li>
-        </ul></p>
-      <p>The main program then becomes as follows.<codeblock scale="80">-- ------------- The main program starts here  ------------------------
+var bit red_value, green_value</codeblock></p><p>Last but not least is the
+    main part of the program which does the following:<ul>
+        <li>Initialize the usb library</li>
+
+        <li>Initialize (clear) all LEDs</li>
+
+        <li>Report if the PIC USB device is configured</li>
+
+        <li>Keep the USB going by frequently calling the function
+        <codeph>usb_serial_flush()</codeph><note>The USB driver can also be
+        used on an interrupt basis as described in the USB library and the USB
+        sample programs. In that case the <codeph>usb_serial_flush()</codeph>
+        is not required</note></li>
+
+        <li>Handle the commands sent by the computer and control the LEDs
+        accordingly. A single character command will toggle the status of the
+        LED from on to off or the other way around</li>
+
+        <li>Return the status of the controlled LED to the computer after a
+        command was received</li>
+
+        <li>Return an error message if an incorrect command was received</li>
+      </ul></p><p>The main program then becomes as follows.<codeblock
+    scale="80">-- ------------- The main program starts here  ------------------------
 
 -- Setup the USB serial library.
 usb_serial_init()
@@ -103,35 +145,43 @@ forever loop
    
    -- Check for input character. If OK, toggle led value.
    if usb_serial_read(character) then
-      if (character == &quot;R&quot;) | (character == &quot;r&quot;) then
+      if (character == "R") | (character == "r") then
          red_value = !red_value
          if red_value then 
-           print_string(usb_serial_data, &quot;Red LED is on.&quot;)
+           print_string(usb_serial_data, "Red LED is on.")
          else
-           print_string(usb_serial_data, &quot;Red LED is off.&quot;)
+           print_string(usb_serial_data, "Red LED is off.")
          end if
-      elsif (character == &quot;G&quot;) | (character == &quot;g&quot;) then  
+      elsif (character == "G") | (character == "g") then  
          green_value = !green_value
          if green_value then 
-           print_string(usb_serial_data, &quot;Green LED is on.&quot;)
+           print_string(usb_serial_data, "Green LED is on.")
          else
-           print_string(usb_serial_data, &quot;Green LED is off.&quot;)
+           print_string(usb_serial_data, "Green LED is off.")
          end if
       else
-         print_string(usb_serial_data, &quot;Unsupported command.&quot;)
+         print_string(usb_serial_data, "Unsupported command.")
       end if
       print_crlf(usb_serial_data)
    end if
 
-end loop</codeblock></p>
-      <p>The complete program can be found in the sample directory of the latest Jallib release under the name  <codeph>16f1455_tutorial_usb_serial.jal</codeph>.</p>
-      <p>In this <xref href="https://youtu.be/xduaVSsQToE" format="html" scope="external">
-          <apiname>video </apiname>
-        </xref>you can see the program in action. Commands are entered in the terminal emulation program, LEDs are switched on and off  and the response of the PIC is returned to the computer. Some additional info that is worth mentioning:<ul>
-          <li>In order to initialize the PIC as USB device you have to enable RTS/CTS</li>
-          <li>The USB serial baudrate and number of bits is not relevant</li>
-          <li>Since we are using single character commands make sure to disable sending carriage return and/or linefeed after the character was entered, otherwise the PIC will return that as an unsupported command.</li>
-        </ul></p>
-    </section>
+end loop</codeblock></p><p>The complete program can be found in the sample
+    directory of the latest Jallib release under the name
+    <codeph>16f1455_tutorial_usb_serial.jal</codeph>.</p><p>In this <xref
+    format="html" href="https://youtu.be/xduaVSsQToE" scope="external">
+    <apiname>video </apiname> </xref>you can see the program in action.
+    Commands are entered in the terminal emulation program, LEDs are switched
+    on and off and the response of the PIC is returned to the computer. Some
+    additional info that is worth mentioning:<ul>
+        <li>In order to initialize the PIC as USB device you have to enable
+        RTS/CTS</li>
+
+        <li>The USB serial baudrate and number of bits is not relevant</li>
+
+        <li>Since we are using single character commands make sure to disable
+        sending carriage return and/or linefeed after the character was
+        entered, otherwise the PIC will return that as an unsupported
+        command.</li>
+      </ul></p></section>
   </body>
 </topic>
