@@ -1,0 +1,109 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample showing how to use adc_library for a PIC16F18323
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This program shows how to use adc library. It regurlarly performs a
+--              high resultion and low resolution Analog-to-Digital Conversion 
+--              on pin AN4 (ADC channel 4) and sends the result through serial.
+--
+--  Notes: To test the whole ADC range we use a potentiometer of 10K connected between
+--         +5V and Ground. The PIC should also run at +5V in this case.
+--
+--         +5V
+--          |
+--          |
+--          |           -----------
+--         |-|          |
+--         | |<---- AN4-|   PIC
+--         |-|          |
+--          |  10k      |
+--          |
+--          |
+--         ---
+--         GND
+--
+--         The low resolution range should be from 0 to 255.
+--         The high resolution range should be from 0 to 1023
+--
+include 16f18323                                  -- target PIC
+
+-- Use internal oscillator 32 MHz.
+pragma target CLOCK     32_000_000
+--
+pragma target OSC      OFF                       -- internal oscillator
+pragma target RSTOSC   HFINT32                   -- select 32 MHz
+pragma target CLKOUTEN DISABLED                  -- no clock output
+pragma target WDT      DISABLED                  -- watchdog
+pragma target DEBUG    DISABLED                  -- no debugging
+pragma target BROWNOUT DISABLED                  -- no brownout reset
+pragma target FCMEN    DISABLED                  -- no clock monitoring
+pragma target CSWEN    ENABLED                   -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED                   -- low voltage programming
+pragma target MCLR     EXTERNAL                  -- external reset
+OSCCON1_NDIV = 0b0000                            -- Fosc 32 / 1 = 32 MHz
+
+enable_digital_io()                              -- set all IO as digital
+
+-- Step 1: ADC analog input pin setup
+const byte ADC_CHANNEL = 4                       -- Potmeter connected to pin_A4
+ANSELA_ANSA4 = TRUE                              -- Channel 4 is analog input
+-- Step 2: Set VDD and VSS as Vref
+ADCON1_ADPREF = 0b00
+ADCON1_ADNREF = FALSE                          
+-- Step 3: Use Frc as ADC clock 
+ADCON1_ADCS = 0b111
+const ADC_RSOURCE = 10_000                       -- Input resistance: 10K potmeter
+-- Now we can include the library
+include adc                                     
+-- And initialize the whole with our parameters
+adc_init()                                      
+
+-- Setup the serial hardware. Also maps the TX pin.
+-- PPS is needed to set the USART pins correctly. 
+include pps
+pps_control_lock(FALSE)
+-- Change following lines to match your pcb layout. 
+RC4PPS = PPS_TX  -- TX assigned to C4 
+RXPPS  = PPS_RC3 -- RX assigned to C3
+pps_control_lock(TRUE)
+
+-- Serial interface definitions.
+const serial_hw_baudrate = 115_200
+alias pin_tx_direction is pin_C4_direction
+alias pin_rx_direction is pin_C3_direction
+include serial_hardware
+serial_hw_init()
+
+-- We want to print some strings and values of variables.
+include print
+
+-- Used variables
+var word measure_highres
+var byte measure_lowres
+
+-- Main program
+forever loop
+
+   -- Get results in high resolution and print it.
+   measure_highres = adc_read_high_res(ADC_CHANNEL)
+   print_string(serial_hw_data, "ADC high resolution value is: ")
+   print_word_dec(serial_hw_data,measure_highres)
+   print_crlf(serial_hw_data)
+
+   -- Get results in low resolution and print it.
+   measure_lowres = adc_read_low_res(ADC_CHANNEL)
+   print_string(serial_hw_data, "ADC low resolution value is: ")
+   print_byte_dec(serial_hw_data, measure_lowres)
+   print_crlf(serial_hw_data)
+
+   -- Do not overflow the serial interface.
+   _usec_delay(100_000)
+   print_crlf(serial_hw_data)
+
+end loop
+
