@@ -13,6 +13,10 @@
 --              includes extra functions and procedures specific for the DS3231.
 --              For all common rtc procedures and functions see rtc_common.jal.
 --
+--              This chip has a temperature sensor on board so a temperature 
+--              measurement is also included. Since this is not an rtc funtion
+--              the prefix of the function starts with ds3231_ instead of rtc_.
+--
 -- Sources: Maxim datasheet rtc. 19-5170; Rev 10; 3/15
 --
 -- Notes: This library supports the control of the DS3231 via IIC.
@@ -27,6 +31,7 @@
 --        -) alias rtc_sdo             -- IIC to sda of rtc  
 --        -) alias rtc_sdo_direction  
 -- 
+--
 
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
@@ -257,6 +262,14 @@ procedure rtc_disable_32_khz()
 --       The M version of the DS3231 can only generate the 1 Hz signal.
 -- ----------------------------------------------------------------------------
 procedure rtc_set_square_wave(byte in frequency)
+
+-- ----------------------------------------------------------------------------
+-- Read the temperature of the DS3231 and return the value. The value is given
+-- in Celsius with a 0.25 resolution. A value of 23.25 degrees is returned 
+-- as 2325. 
+-- Note: This is a specific DS3231 feature, not an rtc feature.
+-- ----------------------------------------------------------------------------
+function ds3231_get_temperature() return sword
 
 -- ---------------------- Advanced procedures ----------------------------------
 
@@ -970,6 +983,40 @@ procedure rtc_set_square_wave(byte in frequency) is
    rtc_write_register(RTC_CONTROL_ADDRESS, data) 
 
 end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Read the temperature of the DS3231 and return the value. The value is given
+-- in Celsius with a 0.25 resolution. A value of 23.25 degrees is returned 
+-- as 2325. 
+-- Note: This is a specific DS3231 feature, not an rtc feature.
+-- ----------------------------------------------------------------------------
+function ds3231_get_temperature() return sword is
+
+   var sword temperature
+   var word calculation
+   var byte temperature_msb, temperature_lsb
+
+   -- Get the temperature in steps of 0.25 degrees Celsius.
+   rtc_read_register(RTC_TEMP_MSB_ADDRESS, temperature_msb)
+   rtc_read_register(RTC_TEMP_LSB_ADDRESS, temperature_lsb) 
+
+   -- First make the whole thing a word and place the bits on the right location.
+   calculation = (word(temperature_msb) << 2) | (word(temperature_lsb) >> 6) 
+   if ((temperature_msb & 0x80) != 0) then
+      -- Since this is only a 10-bit two's complement, make it 16-bit.
+      calculation = calculation | 0b1111_1100_0000_0000
+      -- Convert two's complement to binary and calculate negative temperature.
+      calculation = !(calculation - 1)
+      temperature = -(sword(calculation)  * 25)
+   else
+      -- Positive temperature.
+      temperature = sword(calculation) * 25
+   end if
+
+   return temperature
+
+end function
 
 -- ----------------------------- Advanced functions ---------------------------
 
