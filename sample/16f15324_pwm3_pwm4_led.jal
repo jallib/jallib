@@ -1,0 +1,77 @@
+-- -----------------------------------------------------------------------------
+-- Title: Test program using two PWM channels of a PIC16F15324, controlling the
+--        brightnes of two LEDs independently. 
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: This sample program shows how to use two PWM channels to control 
+--              the brightness of two LEDs independently. It progressively light 
+--              up and down two LEDs connected to port RC3 and RC5.
+--
+include 16f15324                            -- target PICmicro
+
+-- Use internal oscillator at 32 MHz.
+pragma target CLOCK    32_000_000
+
+pragma target OSC      OFF                  -- internal oscillator
+pragma target RSTOSC   HFINT32              -- select 32 MHz
+pragma target CLKOUTEN DISABLED             -- no clock output
+pragma target WDT      DISABLED             -- watchdog
+pragma target BROWNOUT DISABLED             -- no brownout reset
+pragma target FCMEN    DISABLED             -- no clock monitoring
+pragma target CSWEN    ENABLED              -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED              -- low voltage programming
+pragma target MCLR     EXTERNAL             -- external reset
+OSCCON1_NDIV = 0b0000                       -- Fosc 32 / 1 -> 32 MHz
+
+enable_digital_io()                         -- make all pins digital I/O
+
+-- PWM setup. We need to map the two PWM outputs to the relevant pins.
+include pps
+pps_control_lock(FALSE)                     -- unlock PPS module
+RC3PPS = PPS_PWM3OUT                        -- pin_C3 is PWM3
+RC5PPS = PPS_PWM4OUT                        -- pin_C5 is PWM4
+pps_control_lock(TRUE)                      -- lock PPS module
+pin_C3_direction = output                   -- don't forget to set this to output
+pin_C5_direction = output                   -- don't forget to set this to output
+include pwm_hardware                        -- fetch PWM library
+pwm_max_resolution(1)                       -- max res. with highest possible freq.
+
+-- Enable both PWMs.
+pwm3_on()
+pwm4_on()
+
+var byte i
+
+forever loop
+
+   i = 0
+   -- loop up and down, to produce different duty cycle
+   while i < 100 loop
+      pwm3_set_dutycycle_percent(i)         -- brightness goes up
+      pwm4_set_dutycycle_percent(100 - i)   -- brightness goes down
+      _usec_delay(20_000)
+      i = i + 1
+   end loop
+
+   while i > 0 loop
+      pwm3_set_dutycycle_percent(i)         -- brightness goes down
+      pwm4_set_dutycycle_percent(100 - i)   -- brightness goes up 
+      _usec_delay(20_000)
+      i = i - 1
+   end loop
+
+   -- turning off, the LED
+   _usec_delay(500_000)
+   pwm3_off()
+   pwm4_off()
+
+   _usec_delay(500_000)
+   pwm3_on()
+   pwm4_on()
+
+end loop

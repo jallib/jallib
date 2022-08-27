@@ -1,8 +1,8 @@
 -- ----------------------------------------------------------------------------
 -- Title: Hardware PWM control, common procedures
--- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling
--- Compiler: 2.4p
+-- Author: Stef Mientki, Copyright (C) 2002..2022, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -47,7 +47,7 @@ end function
 -- Purpose:   Set all(!) CCP modules for max (10-bits) PWM resolution.
 -- Arguments: byte - prescaler value for Timer2 (allowed value 1, 4 or 16)
 --                   (other values will result in disabled PWM)
--- Notes:     - Allowed values of input parameter: 1, 4 and 16
+-- Notes:     - Allowed values of input parameter: 1, 4 and 16.
 --            - User may check bit TIMER2_TMR2ON to see if call was successful
 --              TRUE:  Timer2 ON, PWM resolution set
 --              FALSE: Timer2 OFF, no PWM signal
@@ -57,8 +57,7 @@ end function
 --   * 1 : highest frequency
 --   * 4 : medium frequency
 --   * 16: lowest frequency
---   Other values result in PWM being disabled.
--- .
+--
 -- Below a table showing the PWM frequencies for common clock speeds and
 -- different Timer2 prescaler values.
 -- ------------------------------------------------------------------------
@@ -67,6 +66,7 @@ end function
 -- ||    4              ||  976  Hz || 1.95 kHz || 2.44 kHz ||  4.88 kHz ||
 -- ||    16             ||  244  Hz ||  488  Hz ||  610 Hz  ||  1.22 kHz ||
 -- ------------------------------------------------------------------------
+--
 -- For PICs with more than one CCP module you should realize that all CCP
 -- modules use Timer2 and PR2 for PWM operations. This means that the PWM
 -- period (frequency) of all PWM output pins is the same. Only the duty
@@ -76,24 +76,56 @@ end function
 -- prescaler value passed with the call. See examples in the table above,
 -- or use the formula in the datasheet to calculate the resulting frequency.
 -- ---------------------------------------------------------------------------
+
+-- Alias for compatibility with other PICs.
+if defined(T2PR) then
+  alias PR2 is T2PR
+end if 
+
+-- ---------------------------------------------------------------------------
+-- Set the prescaler value for Timer 2. If succesfull then Timer 2 will be 
+-- running. 
+-- ---------------------------------------------------------------------------
 procedure pwm_max_resolution(byte in prescaler) is
 
    _pr2_shadow_plus1 = 256                         -- select lowest frequency
    PR2 = byte(_pr2_shadow_plus1 - 1)               -- set PR2
 
-   -- set Timer2 prescaler and enable Timer2 (when prescaler value accepted)
-   if    (prescaler == 1)  then                    -- highest frequency
-      T2CON_T2CKPS = 0b00                          -- 1:1
-      T2CON_TMR2ON = TRUE
-   elsif (prescaler == 4)  then                    -- medium frequency
-      T2CON_T2CKPS = 0b01                          -- 1:4
-      T2CON_TMR2ON = TRUE
-   elsif (prescaler == 16) then                    -- lowest frequency
-      T2CON_T2CKPS = 0b10                          -- 1:16
-      T2CON_TMR2ON = TRUE
+   -- Some PICs have a separate clock register. If present set it to Fosc/4.
+   if defined(T2CLKCON) then
+      T2CLKCON_CS = 0b0001 
+   end if 
+
+   -- Set Timer2 prescaler and enable Timer2 (when prescaler value accepted)
+   if defined(T2CON_T2CKPS2) then
+      -- For PICs with 3 prescaler bits.
+      if (prescaler == 1) then                        -- highest frequency
+         T2CON_T2CKPS = 0b000                         -- 1:1
+         T2CON_TMR2ON = TRUE
+      elsif (prescaler == 4) then                     -- medium frequency
+         T2CON_T2CKPS = 0b010                         -- 1:4
+         T2CON_TMR2ON = TRUE
+      elsif (prescaler == 16) then                    -- lowest frequency
+         T2CON_T2CKPS = 0b100                         -- 1:16
+         T2CON_TMR2ON = TRUE
+     else
+         T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
+      end if
    else
-      T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
-   end if
+      -- For PICs with 2 prescaler bits.
+      if (prescaler == 1)  then                       -- highest frequency
+         T2CON_T2CKPS = 0b00                          -- 1:1
+         T2CON_TMR2ON = TRUE
+      elsif (prescaler == 4)  then                    -- medium frequency
+         T2CON_T2CKPS = 0b01                          -- 1:4
+         T2CON_TMR2ON = TRUE
+      elsif (prescaler == 16) then                    -- lowest frequency
+         T2CON_T2CKPS = 0b10                          -- 1:16
+         T2CON_TMR2ON = TRUE
+      else
+         T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
+      end if
+   end if 
 
 end procedure
 
@@ -126,13 +158,25 @@ procedure pwm_set_frequency(dword in freq) is
         (pr2_provisional <= 4096) ) then           -- not too low for current clock speed
       if (pr2_provisional <= 256) then
          _pr2_shadow_plus1 = pr2_provisional
-         T2CON_T2CKPS = 0b00                       -- set Timer2 prescaler 1:1
-      elsif (pr2_provisional <= 1024) then
+         if defined(T2CON_T2CKPS2) then            -- set Timer2 prescaler 1:1
+            T2CON_T2CKPS = 0b000  
+         else
+            T2CON_T2CKPS = 0b00                       
+         end if 
+      elsif (pr2_provisional <= 1024) then         -- set Timer2 prescaler 1:4
          _pr2_shadow_plus1 = pr2_provisional / 4
-         T2CON_T2CKPS = 0b01                       -- 1:4
-      else
+         if defined(T2CON_T2CKPS2) then
+            T2CON_T2CKPS = 0b010
+         else
+            T2CON_T2CKPS = 0b01  
+         end if                      
+      else                                         -- set Timer2 prescaler 1:16
          _pr2_shadow_plus1 = pr2_provisional / 16
-         T2CON_T2CKPS = 0b10                       -- 1:16
+         if defined(T2CON_T2CKPS2) then
+            T2CON_T2CKPS = 0b100
+         else
+            T2CON_T2CKPS = 0b10  
+         end if                  
       end if
       PR2 = byte(_pr2_shadow_plus1 - 1)            -- set PR2
       T2CON_TMR2ON = TRUE                          -- enable Timer2

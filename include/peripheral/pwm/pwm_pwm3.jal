@@ -1,8 +1,8 @@
 -- -------------------------------------------------------------------------------------
 -- Title: hardware PWM control, dedicated to module PWM3
--- Author: Stef Mientki, Copyright (C) 2002-2006, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling.
--- Compiler: 2.4p
+-- Author: Stef Mientki, Copyright (C) 2002..2022, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -30,7 +30,10 @@ procedure pwm3_on() is
 
    PWM3DCH         = _pwm3dch_shadow               -- restore duty cycle
    PWM3DCL         = _pwm3dcl_shadow               -- restore duty cycle
-   PWM3CON_PWM3OE  = TRUE                          -- activate PWM3 pin
+   -- Not all newer PICs have an output enable setting.
+   if defined(PWM3CON_PWM3OE) then
+      PWM3CON_PWM3OE  = TRUE                       -- activate PWM3 pin
+   end if 
    PWM3CON_PWM3EN  = TRUE                          -- activate PWM module
 
 end procedure
@@ -70,50 +73,6 @@ procedure _pwm3_set_dutycycle_highres(word in steps) is
 
 end procedure
 
--- deprecated procedure
-procedure pwm3_set_dutycycle_highres(word in steps) is
-   _warn "pwm3_set_dutycycle_highres() is deprecated,\n.. use pwm3_set_dutycycle_percent() or pwm3_set_dutycycle_ratio()"
-   _pwm3_set_dutycycle_highres(steps)
-end procedure
-
-
--- -------------------------------------------------------------------------------------
--- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
--- The 'steps' argument is the 8-bits absolute value for the duty cycle:
---  * duty<1:0> are the 2 LSbits
---  * duty<7:2> are the 6 MSbits
--- Arguments: byte - duty cycle (allowed range 0..255)
--- Notes:     This procedure is particularly suitable with higher frequencies
---            whereby the PWM resolution is limited to 256 steps or less!
--- -------------------------------------------------------------------------------------
-procedure pwm3_set_dutycycle_lowres(byte in steps) is
-
-   _warn "pwm3_set_dutycycle_lowres() is deprecated,\n.. use pwm3_set_dutycycle_percent() or pwm3_set_dutycycle_ratio()"
-   _pwm3dch_shadow = byte(steps >> 2)              -- 8 MSbits
-   _pwm3dcl_shadow = byte(steps) << 6              -- 2 LSbits
-   pwm3_on()                                       -- activate PWM
-
-end procedure
-
-
--- -------------------------------------------------------------------------------------
--- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
--- This procedure is equivalent to pwm1_set_dutycycle_highres(), but
--- the low order 2 bits of the 10-bits duty cycle are set to 0.
--- This means that only every 4th of the available 1023 steps can be selected
--- and consequently max 255 PWM steps are available.
--- This procedure is for user convenience, allowing to specify an 8 bits
--- value for the duty cycle is for many applications satisfactory.
--- Calling this procedure will also activate PWM.
--- Note: pin_PWM3_direction should be set to output!
--- -------------------------------------------------------------------------------------
-procedure pwm3_set_dutycycle(byte in steps) is
-
-   _warn "pwm3_set_dutycycle() is deprecated,\n.. use pwm3_set_dutycycle_percent() or pwm3_set_dutycycle_ratio()"
-   _pwm3_set_dutycycle_highres(word(steps) << 2)
-
-end procedure
-
 
 -- -------------------------------------------------------------------------------------
 -- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
@@ -128,7 +87,7 @@ end procedure
 -- -------------------------------------------------------------------------------------
 procedure pwm3_set_dutycycle_percent(byte in percent) is
 
-   var word steps                                   --
+   var word steps                                 
    if (percent == 0) then                          -- effectively PWM off (output low)
      steps = 0
    elsif (percent >= 100) then                     -- effectively PWM off (output high)
@@ -138,12 +97,6 @@ procedure pwm3_set_dutycycle_percent(byte in percent) is
    end if
    _pwm3_set_dutycycle_highres(steps << 2)
 
-end procedure
-
--- deprecated procedure
-procedure pwm3_set_percent_dutycycle(byte in percent) is
-   _warn "pwm3_set_percent_dutycycle() is deprecated, use pwm_set_dutycycle_percent()"
-   pwm3_set_dutycycle_percent(percent)
 end procedure
 
 
@@ -159,7 +112,8 @@ end procedure
 -- -------------------------------------------------------------------------------------
 procedure pwm3_set_dutycycle_ratio(word in ratio) is
 
-   var  word  steps                                  -- intermediate value of PR2+1
+   var  word  steps 
+
    if (ratio == 0) then                            -- effectively PWM off (output low)
      steps = 0
    elsif (ratio > 1023) then                       -- effectively PWM off (output high)
