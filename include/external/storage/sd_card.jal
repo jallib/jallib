@@ -1,8 +1,7 @@
 -- Title: Library for communicating with SD memory cards
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4q2
--- Revision: $Revision: 3534 $
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2022, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -21,16 +20,30 @@
 -- http://www.rjhcoding.com/avrc-sd-interface-3.php
 --
 
--- fix a compatibility issue. compiler bug has been reported.
-if jal_build == 20110306 then
-   --for jalv2 2.4o beta (compiled Mar  6 2011)
-   var volatile byte sd_sector_buffer_low[256] -- 256 low bytes
-   var volatile byte sd_sector_buffer_high[256] -- 256 high bytes
+-- Only PIC16 CPU's can handle buffers of 256, for the others we need a large array.
+if (target_cpu == PIC_14H) | (target_cpu == PIC_14) then
+   -- Use Large Array to set up the sector buffer
+   const dword LARGE_ARRAY_3_SIZE = 256         -- choose number of array variables
+   const dword LARGE_ARRAY_3_VARIABLE_SIZE = 1 -- choose bytes size of variables
+   include large_array_3                    -- include the array library
+   alias sd_sector_buffer_low is large_array_3
+
+   const dword LARGE_ARRAY_4_SIZE = 256         -- choose number of array variables
+   const dword LARGE_ARRAY_4_VARIABLE_SIZE = 1 -- choose bytes size of variables
+   include large_array_4                    -- include the array library
+   alias sd_sector_buffer_high is large_array_4
 else
-   --for jalv2 2.4n and others
-   var byte sd_sector_buffer_low[256] -- 256 low bytes
-   var byte sd_sector_buffer_high[256] -- 256 high bytes
-end if
+   -- PIC16 core. Fix a compatibility issue. compiler bug has been reported.
+   if jal_build == 20110306 then
+      --for jalv2 2.4o beta (compiled Mar  6 2011)
+      var volatile byte sd_sector_buffer_low[256] -- 256 low bytes
+      var volatile byte sd_sector_buffer_high[256] -- 256 high bytes
+   else
+      --for jalv2 2.4n and others
+      var byte sd_sector_buffer_low[256] -- 256 low bytes
+      var byte sd_sector_buffer_high[256] -- 256 high bytes
+   end if
+end if 
 
 const word SD_BYTE_PER_SECTOR = 512
 

@@ -1,0 +1,833 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for GLCD using the ILI9341 display controller.
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Revision: $Revision$
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Text and graphics library for the graphic display module using 
+--              the ILI9341 display controller. The library supports displays
+--              with a resolution of 240 x 320 pixels.
+--
+-- Sources: a-Si TFT LCD Single Chip Driver 240RGBx320 Resolution and 262K color  
+--          Specification version: V1.09   
+--          Inspired by the Adafruit ILI9341 library for Arduino.     
+--
+-- Notes: This library supports the control of the display via 4-wire SPI 
+--        By default the SPI hardware (1) interface is used. 
+--        You can select to use another SPI interface to be used by the ILI9341,
+--        by defining one of the following options:
+--        const ILI9341_SPI_HW2 = TRUE -- SPI hardware 2
+--        const ILI9341_SPI_SW  = TRUE -- SPI Software
+--
+--        The following pins must be defined by the main program before 
+--        including this library. Common pins for using SPI:
+--        -) alias ili9341_sck             -- To SCK of the ILI9341
+--        -) alias ili9341_sck_direction   
+--        -) alias ili9341_sdo             -- To SDI (MOSI) of ILI9341 
+--        -) alias ili9341_sdo_direction   
+--        -) alias ili9341_sdi             -- To SDO (MISO) of ILI9341 
+--        -) alias ili9341_sdi_direction   
+--        -) alias ili9341_csn             -- To CS of ILI9341 
+--        -) alias ili9341_csn_direction 
+--        Other pins needed: 
+--        -) alias ili9341_dc_rs           -- To DC/RS (DC/RS of ILI9341
+--        -) alias ili9341_dc_rs_direction 
+--        Optional: Hardware reset pin. If not defined, software reset will 
+--        be used. Signal is active low.
+--        -) alias ili9341_res             -- To RESET of ILI9341 
+--        -) alias ili9341_res_direction   
+--        If not defined the RES pin of the module must be connected to another
+--        reset circuit. It is active low.
+-- 
+--        About the pixel colors:
+--        The 4-line SPI interface uses 16 bits/pixel for RGB, the format
+--        RGB 5-6-5 is used which means 5 bits for red, 6 bits for green and
+--        5 bits for blue, See specification page 63:
+--        16 bit/pixel color order (R:5-bit, G:6-bit, B:5-bit)
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Number of pixels on the ILI9341 screen. 
+const word ILI9341_MAX_X_PIXELS = 240  -- Default width  
+const word ILI9341_MAX_Y_PIXELS = 320  -- Default height 
+
+-- Variables that hold the current selected display width and display height. 
+-- These values change when the display is rotated.
+var word ili9341_width  -- Default is ILI9341_MAX_X_PIXELS
+var word ili9341_height -- Default is ILI9341_MAX_Y_PIXELS
+
+-- Color definitions.
+const word ILI9341_BLACK        = 0x0000 --   0,   0,   0
+const word ILI9341_NAVY         = 0x000F --   0,   0, 123
+const word ILI9341_DARKGREEN    = 0x03E0 --   0, 125,   0
+const word ILI9341_DARKCYAN     = 0x03EF --   0, 125, 123
+const word ILI9341_MAROON       = 0x7800 -- 123,   0,   0
+const word ILI9341_PURPLE       = 0x780F -- 123,   0, 123
+const word ILI9341_OLIVE        = 0x7BE0 -- 123, 125,   0
+const word ILI9341_LIGHTGREY    = 0xC618 -- 198, 195, 198
+const word ILI9341_DARKGREY     = 0x7BEF -- 123, 125, 123
+const word ILI9341_BLUE         = 0x001F --   0,   0, 255
+const word ILI9341_GREEN        = 0x07E0 --   0, 255,   0
+const word ILI9341_CYAN         = 0x07FF --   0, 255, 255
+const word ILI9341_RED          = 0xF800 -- 255,   0,   0
+const word ILI9341_MAGENTA      = 0xF81F -- 255,   0, 255
+const word ILI9341_YELLOW       = 0xFFE0 -- 255, 255,   0
+const word ILI9341_WHITE        = 0xFFFF -- 255, 255, 255
+const word ILI9341_ORANGE       = 0xFD20 -- 255, 165,   0
+const word ILI9341_GREENYELLOW  = 0xAFE5 -- 173, 255,  41
+const word ILI9341_PINK         = 0xFC18 -- 255, 130, 198
+
+-- Diplay rotation defintions in degrees
+const ILI9341_ROTATE_0_DEGREES   = 0 -- Default.
+const ILI9341_ROTATE_90_DEGREES  = 1
+const ILI9341_ROTATE_180_DEGREES = 2
+const ILI9341_ROTATE_270_DEGREES = 3
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- -------- General functions of usage with text and graphics ------------------
+
+-- -----------------------------------------------------------------------------
+-- Initialize the control pins, the SPI interface and the initialize the 
+-- ILI9341 module. When the reset hardware pin is defined then the module will 
+-- be hardware reset, otherwise it will be software reset.
+-- -----------------------------------------------------------------------------
+procedure ili9341_init()
+
+-- -----------------------------------------------------------------------------
+-- Peform a sofware reset. This will reset the commands and puts the registers 
+-- in their default value. The frame memory content is unaffected.
+-- -----------------------------------------------------------------------------
+procedure ili9341_reset()
+
+-- -----------------------------------------------------------------------------
+-- Clear the screen. 
+-- -----------------------------------------------------------------------------
+procedure ili9341_clear_screen()
+
+-- -----------------------------------------------------------------------------
+-- Fill the screen with the given color. Color must be in RGB 5-6-5 format.
+-- -----------------------------------------------------------------------------
+procedure ili9341_fill_screen(word in color) 
+
+-- ----------------------------------------------------------------------------
+-- Set the current position in pixels for the data to be written. Used for
+-- writing characters to the screen. Character are written as bitmap so x
+-- and y must be given as pixel locations.
+-- -----------------------------------------------------------------------------
+procedure ili9341_goto(word in x, word in y)
+
+-- -----------------------------------------------------------------------------
+-- Plot a pixel at the given absolute (x, y) pixel location. 
+-- Variable 'glcd_pen_color' should be set before calling to plot 
+-- appropriate pixel colors. Color is in RGB format 5-6-5, 65.536 colors.
+-- -----------------------------------------------------------------------------
+procedure ili9341_write_pixel(word in x, word in y) 
+
+-- -----------------------------------------------------------------------------
+-- Draw an bitmap image from a byte array given in format Width * Height. 
+-- -----------------------------------------------------------------------------
+procedure ili9341_draw_image(word in image[],
+                             word in x, word in y,
+                             word in width, word in height)
+
+-- -----------------------------------------------------------------------------
+-- Put the display in normal (non-inverse) mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_normal()
+
+-- -----------------------------------------------------------------------------
+-- Put the display in inverse mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_inverse()
+ 
+-- -----------------------------------------------------------------------------
+-- Turn the display on.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_on() 
+
+-- -----------------------------------------------------------------------------
+-- Turn the display off.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_off()
+
+-- -----------------------------------------------------------------------------
+-- Turn the display into sleep mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_sleep()
+
+-- -----------------------------------------------------------------------------
+-- Wakeup the display from sleep mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_wakeup()
+
+-- -----------------------------------------------------------------------------
+-- Set display rotation to 0, 90, 180 or 270 degrees, see ILI9341_ROTATE.
+-- -----------------------------------------------------------------------------
+procedure ili9341_set_display_rotation(byte in rotation)
+
+-- -----------------------------------------------------------------------------
+-- Set the scroll area of the display. top is the height of the top scroll 
+-- margin and bottom the height of the bottom margin.
+-- -----------------------------------------------------------------------------
+procedure ili9341_set_vertical_scroll_area(word in top, word in bottom)
+
+-- -----------------------------------------------------------------------------
+-- Scroll the display vertical with the given numer of pixels.
+-- -----------------------------------------------------------------------------
+procedure ili9341_vertical_scroll_display(word in number_of_pixels)
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Define some glcd aliases for the available procedures. See glcd_common.
+alias glcd_clear_screen is ili9341_clear_screen  
+alias glcd_write_pixel  is ili9341_write_pixel   
+alias glcd_draw_image   is ili9341_draw_image  
+
+-- GLCD specifications.
+const byte GLCD_X_PIXELS   = ILI9341_MAX_X_PIXELS
+const word GLCD_Y_PIXELS   = ILI9341_MAX_Y_PIXELS
+const byte GLCD_COLOR_BITS = 16 -- 16 bit colors
+-- We can rotate the display so we must overrule the default chosen GLCD_X_SIZE
+-- and GLCD_Y_SIZE (see glcd_common.jal) otherwise the width would be too small.
+const GLCD_X_SIZE = 2
+const GLCD_Y_SIZE = 2
+-- Colors constants. Black & white are official values for display controller.
+const GLCD_BLACK = ILI9341_BLACK
+const GLCD_WHITE = ILI9341_WHITE
+-- Variables for storing background color and pen color.
+var word glcd_background_color = ILI9341_BLACK
+var word glcd_pen_color        = ILI9341_WHITE
+
+-- According to datasheet, ILI9341 controller does not deal with autowrap.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\t
+              the default behavior for this GLCD controller"
+   end if
+else
+    const bit FONT_AUTO_WRAP = TRUE
+end if
+
+-- Must include glcd_common for graphics functions.
+include glcd_common  
+
+-- -------------- Private constants and function prototypes ---------------------
+
+-- ILI9341 command list.
+const byte _ILI9341_NOP        = 0x00  -- No-op register
+const byte _ILI9341_SWRESET    = 0x01 -- Software reset register
+const byte _ILI9341_RDDID      = 0x04 -- Read display identification information
+const byte _ILI9341_RDDST      = 0x09 -- Read Display Status
+const byte _ILI9341_SLPIN      = 0x10 -- Enter Sleep Mode
+const byte _ILI9341_SLPOUT     = 0x11 -- Sleep Out
+const byte _ILI9341_PTLON      = 0x12 -- Partial Mode ON
+const byte _ILI9341_NORON      = 0x13 -- Normal Display Mode ON
+const byte _ILI9341_RDMODE     = 0x0A -- Read Display Power Mode
+const byte _ILI9341_RDMADCTL   = 0x0B -- Read Display MADCTL
+const byte _ILI9341_RDPIXFMT   = 0x0C -- Read Display Pixel Format
+const byte _ILI9341_RDIMGFMT   = 0x0D -- Read Display Image Format
+const byte _ILI9341_RDSELFDIAG = 0x0F -- Read Display Self-Diagnostic Result
+const byte _ILI9341_INVOFF     = 0x20 -- Display Inversion OFF
+const byte _ILI9341_INVON      = 0x21 -- Display Inversion ON
+const byte _ILI9341_GAMMASET   = 0x26 -- Gamma Set
+const byte _ILI9341_DISPOFF    = 0x28 -- Display OFF
+const byte _ILI9341_DISPON     = 0x29 -- Display ON
+const byte _ILI9341_CASET      = 0x2A -- Column Address Set
+const byte _ILI9341_PASET      = 0x2B -- Page Address Set
+const byte _ILI9341_RAMWR      = 0x2C -- Memory Write
+const byte _ILI9341_RAMRD      = 0x2E -- Memory Read
+const byte _ILI9341_PTLAR      = 0x30  -- Partial Area
+const byte _ILI9341_VSCRDEF    = 0x33 -- Vertical Scrolling Definition
+const byte _ILI9341_MADCTL     = 0x36 -- Memory Access Control
+const byte _ILI9341_VSCRSADD   = 0x37 -- Vertical Scrolling Start Address
+const byte _ILI9341_PIXFMT     = 0x3A -- COLMOD: Pixel Format Set
+const byte _ILI9341_FRMCTR1    = 0xB1 -- Frame Rate Control (In Normal Mode/Full Colors)
+const byte _ILI9341_FRMCTR2    = 0xB2 -- Frame Rate Control (In Idle Mode/8 colors)
+const byte _ILI9341_FRMCTR3    = 0xB3 -- Frame Rate control (In Partial Mode/Full Colors)
+const byte _ILI9341_INVCTR     = 0xB4 -- Display Inversion Control
+const byte _ILI9341_DFUNCTR    = 0xB6 -- Display Function Control
+const byte _ILI9341_PWCTR1     = 0xC0 -- Power Control 1
+const byte _ILI9341_PWCTR2     = 0xC1 -- Power Control 2
+const byte _ILI9341_PWCTR3     = 0xC2 -- Power Control 3
+const byte _ILI9341_PWCTR4     = 0xC3 -- Power Control 4
+const byte _ILI9341_PWCTR5     = 0xC4 -- Power Control 5
+const byte _ILI9341_VMCTR1     = 0xC5 -- VCOM Control 1
+const byte _ILI9341_VMCTR2     = 0xC7 -- VCOM Control 2
+const byte _ILI9341_RDID1      = 0xDA -- Read ID 1
+const byte _ILI9341_RDID2      = 0xDB -- Read ID 2
+const byte _ILI9341_RDID3      = 0xDC -- Read ID 3
+const byte _ILI9341_RDID4      = 0xDD -- Read ID 4
+const byte _ILI9341_GMCTRP1    = 0xE0 -- Positive Gamma Correction
+const byte _ILI9341_GMCTRN1    = 0xE1 -- Negative Gamma Correction
+const byte _ILI9341_PWCTR6     = 0xFC
+
+-- Display orientation. See register _ILI9341_RDMADCT.
+const byte MADCTL_MY  = 0x80 -- Bottom to top
+const byte MADCTL_MX  = 0x40 -- Right to left
+const byte MADCTL_MV  = 0x20 -- Reverse Mode
+const byte MADCTL_ML  = 0x10 -- LCD refresh Bottom to top
+const byte MADCTL_RGB = 0x00 -- Red-Green-Blue pixel order (bit 3 = 0)
+const byte MADCTL_BGR = 0x08 -- Blue-Green-Red pixel order (bit 3 = 1)
+const byte MADCTL_MH  = 0x04 -- LCD refresh right to left
+
+-- Control display settings.
+
+-- Sending data or commands.
+const bit _ILI9341_DATA_TRANSMISSION    = 1
+const bit _ILI9341_COMMAND_TRANSMISSION = 0
+
+-- Initiazation data for the ILI9341 (many thanks to Adafruit). 
+-- Format is: Command, nr of data bytes, data bytes.
+const byte _ili9341_initialization_data[] = 
+{
+   0xEF,              3, 0x03, 0x80, 0x02,
+   0xCF,              3, 0x00, 0xC1, 0x30,
+   0xED,              4, 0x64, 0x03, 0x12, 
+                         0x81,
+   0xE8,              3, 0x85, 0x00, 0x78,
+   0xCB,              5, 0x39, 0x2C, 0x00, 
+                         0x34, 0x02,
+   0xF7,              1, 0x20,
+   0xEA,              2, 0x00, 0x00,
+   _ILI9341_PWCTR1,   1, 0x23,             -- Power control VRH[5:0]
+   _ILI9341_PWCTR2,   1, 0x10,             -- Power control SAP[2:0];BT[3:0]
+   _ILI9341_VMCTR1,   2, 0x3e, 0x28,       -- VCM control
+   _ILI9341_VMCTR2,   1, 0x86,             -- VCM control2
+   _ILI9341_MADCTL,   1, 0x48,             -- Memory Access Control
+   _ILI9341_VSCRSADD, 1, 0x00,             -- Vertical scroll zero
+   _ILI9341_PIXFMT,   1, 0x55,             -- RGB and MCU interface use 16 bit
+   _ILI9341_FRMCTR1,  2, 0x00, 0x18,
+   _ILI9341_DFUNCTR,  3, 0x08, 0x82, 0x27, -- Display Function Control
+                         0xF2, 0x01, 0x00, -- 3Gamma Function Disable
+   _ILI9341_GAMMASET, 1, 0x01,             -- Gamma curve selected
+   _ILI9341_GMCTRP1, 15, 0x0F, 0x31, 0x2B, 
+                         0x0C, 0x0E, 0x08, -- Set Gamma
+                         0x4E, 0xF1, 0x37, 
+                         0x07, 0x10, 0x03, 
+                         0x0E, 0x09, 0x00,
+   _ILI9341_GMCTRN1, 15, 0x00, 0x0E, 0x14, 
+                         0x03, 0x11, 0x07, -- Set Gamma
+                         0x31, 0xC1, 0x48, 
+                         0x08, 0x0F, 0x0C, 
+                         0x31, 0x36, 0x0F,
+   _ILI9341_INVOFF,   0,                   -- Normal display
+   _ILI9341_SLPOUT,   0,                   -- Exit Sleep
+   _ILI9341_DISPON,   0                    -- Display on
+}
+
+
+-- -----------------------------------------------------------------------------
+-- Start an SPI data or command transmission. SPI uses 4 wires.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_start_transmission(bit in transmission_type)
+
+-- -----------------------------------------------------------------------------
+-- Stop an SPI transmission.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_stop_transmission()
+
+-- -----------------------------------------------------------------------------
+-- Write a word to the ILI9341.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_word(word in data)
+
+-- -----------------------------------------------------------------------------
+-- Write a data byte to the ILI9341 via the SPI interface.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_data_byte(byte in data)
+
+-- -----------------------------------------------------------------------------
+-- Write a data word to the ILI9341 via the SPI interface.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_data_word(word in data) 
+
+-- -----------------------------------------------------------------------------
+-- Write a command byte to ILI9341 via the SPI interface.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_command(byte in command)
+
+-- -----------------------------------------------------------------------------
+-- Set the address window.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_set_address_window(word in x, word in y, word in width,
+                                      word in height)
+
+-- ------------------------------- Final implemenation -------------------------
+
+-- Define required settings for the SPI interface, depending on the
+-- selection done by the main program.
+
+if defined(ILI9341_SPI_HW2) then
+   -- SPI hardware 2.
+   include spi_master_hw2
+   alias _ili9341_spi_master is spi_master_hw2
+   alias _ili9341_spi_init   is spi2_init
+elsif defined(ILI9341_SPI_SW) then
+   -- Aliases for pins.
+   alias spi_master_sw_sdi is ili9341_sdi
+   alias spi_master_sw_sdo is ili9341_sdo
+   alias spi_master_sw_sck is ili9341_sck
+   alias spi_master_sw_sdi_direction is ili9341_sdi_direction
+   alias spi_master_sw_sdo_direction is ili9341_sdo_direction
+   alias spi_master_sw_sck_direction is ili9341_sck_direction
+   include spi_master_sw
+
+   -- Aliases for functions and procedures.
+   alias _ili9341_spi_master is spi_master_sw
+
+   procedure _ili9341_spi_init(byte in spi_mode, byte in spi_rate) is
+      -- Software does not have a spi_rate.
+      spi_master_sw_init(spi_mode)   
+   end procedure
+else
+   -- SPI Hardware. This is the default.
+   include spi_master_hw
+   alias _ili9341_spi_master is spi_master_hw
+   alias _ili9341_spi_init   is spi_init
+end if
+
+-- -----------------------------------------------------------------------------
+-- Initialize the control pins, the SPI interface and the initialize the 
+-- ILI9341 module. When the reset hardware pin is defined then the module will 
+-- be hardware reset, otherwise it will be software reset.
+-- -----------------------------------------------------------------------------
+procedure ili9341_init() is
+
+   var word index
+   var byte nr_of_data_bytes
+
+   -- Initialize SPI pins.
+   ili9341_sck_direction = output
+   ili9341_sdo_direction = output
+   ili9341_csn_direction = output
+   ili9341_dc_rs_direction = output
+   ili9341_csn = HIGH
+   ili9341_dc_rs = _ILI9341_COMMAND_TRANSMISSION
+
+   _ili9341_spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
+
+   -- Reset the device if a hardware reset pin is present. There is quite
+   -- some wait time needed after the reset is released.
+   if defined(ili9341_rst) then
+      ili9341_rst_direction = OUTPUT
+      ili9341_rst = HIGH
+      _usec_delay(100) -- Give it some time to be inactive.
+      ili9341_rst = LOW
+      _usec_delay(100) -- 10 us would be enough.
+      ili9341_rst = HIGH     
+     _usec_delay(120_000) -- Long recover time needed.
+   else
+      -- No hardware reset defined, performa a software reset.
+      ili9341_reset()
+   end if 
+
+   -- Send the display initialization data.
+   index = 0
+   while (index < count(_ili9341_initialization_data)) loop
+      -- Send command.
+      _ili9341_write_command(_ili9341_initialization_data[index])
+      -- Get nummber of data bytes.
+      index = index + 1
+      nr_of_data_bytes = _ili9341_initialization_data[index]
+      -- Send data (if any).
+      for nr_of_data_bytes loop
+         index = index + 1
+         _ili9341_write_data_byte(_ili9341_initialization_data[index])
+      end loop
+      -- Next command (if not yet done).
+      index = index + 1
+   end loop
+   
+   -- Initialize local variables.
+   ili9341_width  = ILI9341_MAX_X_PIXELS
+   ili9341_height = ILI9341_MAX_Y_PIXELS
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Peform a sofware reset. This will reset the commands and puts the registers 
+-- in their default value. The frame memory content is unaffected.
+-- -----------------------------------------------------------------------------
+procedure ili9341_reset() is
+
+   _ili9341_write_command(_ILI9341_SWRESET)
+   _usec_delay(120_000) -- Long recover time needed.
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Clear the screen. 
+-- -----------------------------------------------------------------------------
+procedure ili9341_clear_screen() is
+
+   ili9341_fill_screen(ILI9341_BLACK)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Fill the screen with the given color. Color must be in RGB 5-6-5 format.
+-- -----------------------------------------------------------------------------
+procedure ili9341_fill_screen(word in color) is
+
+   -- The total does not fit in a word so casting is needed.
+   var dword total_pixels = dword(ili9341_width) * dword(ili9341_height)
+   var byte color_low  at color
+   var byte color_high at color + 1 
+
+
+   -- Set column address and page addresse to maxium.
+   _ili9341_set_address_window(0, 0, ili9341_width, ili9341_height) 
+   -- Write the data.
+    _ili9341_write_command(_ILI9341_RAMWR)  
+   -- ILI9341 is ready for accepting data. 
+   _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
+   -- Two bytes (one word) needed for one pixel.
+    for total_pixels loop
+       _ili9341_spi_master = color_high
+       _ili9341_spi_master = color_low
+   end loop
+   _ili9341_stop_transmission()
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Set the current position in pixels for the data to be written. Used for
+-- writing characters to the screen. Character are written as bitmap so x
+-- and y must be given as pixel locations.
+-- -----------------------------------------------------------------------------
+procedure ili9341_goto(word in x, word in y) is
+
+   -- Set star write address to x and y and end write to display maximum.
+   _ili9341_set_address_window(x, y, GLCD_X_PIXELS - x , GLCD_Y_PIXELS - y)
+
+   -- For font usage, set x and y from glcd_common in pixels for x and y.
+   glcd_char_x_pos = x  
+   glcd_char_y_pos = y
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Plot a pixel at the given absolute (x, y) pixel location. 
+-- Variable 'glcd_pen_color' should be set before calling to plot 
+-- appropriate pixel colors. Color is in RGB format 5-6-5, 65.536 colors.
+-- -----------------------------------------------------------------------------
+procedure ili9341_write_pixel(word in x, word in y) is
+
+   var word pixel_data 
+   var word index, offset
+
+   if (x < ili9341_width) & (y < ili9341_height) then
+      -- Set column address and page address for one pixel (width = 1).
+      _ili9341_set_address_window(x, y, 1 , 0)
+      -- Write the pixel in the last selected color.
+      _ili9341_write_command(_ILI9341_RAMWR)
+      _ili9341_write_data_word(glcd_pen_color)
+   end if
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Draw an bitmap image from a byte array given in format Width * Height. 
+-- -----------------------------------------------------------------------------
+procedure ili9341_draw_image(word in image[],
+                             word in x, word in y,
+                             word in width, word in height) is
+
+   var dword image_size, index
+   var word data
+   var byte data_low  at data
+   var byte data_high at data+1
+
+  -- Calculate the amount of data to be written. 
+   image_size = dword(width) * dword(height)
+   -- Set column address and page address
+   _ili9341_set_address_window(x, y, width, height)
+   -- Write the data. Use the faster method.
+   _ili9341_write_command(_ILI9341_RAMWR)  
+   -- ILI9341 is ready for accepting data. 
+   _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
+   for image_size using index loop
+      data = image[index]
+      _ili9341_spi_master = data_high
+      _ili9341_spi_master = data_low
+   end loop
+   _ili9341_stop_transmission()
+ end procedure
+ 
+
+-- -----------------------------------------------------------------------------
+-- Put the display in normal (non-inverse) mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_normal() is
+ 
+   _ili9341_write_command(_ILI9341_INVOFF)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Put the display in inverse mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_inverse() is
+
+   _ili9341_write_command(_ILI9341_INVON)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Turn the display on.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_on() is
+
+   _ili9341_write_command(_ILI9341_DISPON)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Turn the display off.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_off() is
+
+   _ili9341_write_command(_ILI9341_DISPOFF)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Turn the display into sleep mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_sleep() is
+
+   _ili9341_write_command(_ILI9341_SLPIN)
+   _usec_delay(150_000)
+   
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Wakeup the display from sleep mode.
+-- -----------------------------------------------------------------------------
+procedure ili9341_display_wakeup() is
+
+   _ili9341_write_command(_ILI9341_SLPOUT)
+   _usec_delay(5_000)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Set display rotation to 0, 90, 180 or 270 degrees, see ILI9341_ROTATE.
+-- -----------------------------------------------------------------------------
+procedure ili9341_set_display_rotation(byte in rotation) is
+
+   var byte setting
+
+   rotation = rotation % 4 -- Mask out unwanted bits.
+   case rotation of
+      0:
+      block -- 0 degrees
+         setting = MADCTL_MX | MADCTL_BGR 
+         ili9341_width = ILI9341_MAX_X_PIXELS
+         ili9341_height = ILI9341_MAX_Y_PIXELS
+      end block
+      1:
+      block -- 90 degrees
+         setting = MADCTL_MV | MADCTL_BGR 
+         ili9341_width = ILI9341_MAX_Y_PIXELS
+         ili9341_height = ILI9341_MAX_X_PIXELS
+      end block
+      2:
+      block -- 180 degrees
+         setting = MADCTL_MY | MADCTL_BGR  
+         ili9341_width = ILI9341_MAX_X_PIXELS
+         ili9341_height = ILI9341_MAX_Y_PIXELS
+      end block
+      3:
+      block -- 270 degrees. 
+         setting = MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR 
+         ili9341_width = ILI9341_MAX_Y_PIXELS
+         ili9341_height = ILI9341_MAX_X_PIXELS
+      end block   
+   end case
+
+   _ili9341_write_command(_ILI9341_MADCTL)
+   _ili9341_write_data_byte(setting)
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Set the scroll area of the display. top is the height of the top scroll 
+-- margin and bottom the height of the bottom margin.
+-- -----------------------------------------------------------------------------
+procedure ili9341_set_vertical_scroll_area(word in top, word in bottom) is
+
+    var byte top_low at top
+    var byte top_high at top + 1
+    var byte bottom_low at bottom
+    var byte bottom_high at bottom + 1
+    var word middle
+    var byte middle_low at middle
+    var byte middle_high at middle + 1
+
+   if ((top + bottom) <= ili9341_height) then
+      middle = ili9341_height - (top + bottom)
+      _ili9341_write_command(_ILI9341_VSCRDEF)  
+      -- ILI9341 is ready for accepting data. 
+      _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
+      _ili9341_spi_master = top_high
+      _ili9341_spi_master = top_low
+      _ili9341_spi_master = middle_high
+      _ili9341_spi_master = middle_low
+      _ili9341_spi_master = bottom_high
+      _ili9341_spi_master = bottom_low
+      _ili9341_stop_transmission()
+   end if 
+   
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Scroll the display vertical with the given numer of pixels.
+-- -----------------------------------------------------------------------------
+procedure ili9341_vertical_scroll_display(word in number_of_pixels) is
+
+   _ili9341_write_command(_ILI9341_VSCRSADD)  
+   _ili9341_write_data_word(number_of_pixels)
+
+end procedure
+
+-- ----------------------------- Private functions ---------------------------
+
+-- -----------------------------------------------------------------------------
+-- Start an SPI data or command transmission.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_start_transmission(bit in transmission_type) is
+
+   ili9341_csn = LOW
+   ili9341_dc_rs = transmission_type
+    
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Stop an SPI transmission.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_stop_transmission() is
+
+   ili9341_csn = HIGH
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Write a word to the ILI9341. The MSB of the word is written first.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_word(word in data) is
+
+   var byte _trash
+   var byte data_low  at data
+   var byte data_high at data+1
+
+   _ili9341_spi_master = data_high
+   _ili9341_spi_master = data_low
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the ILI9341. The MSB of the word is read first.
+-- -----------------------------------------------------------------------------
+function _ili9341_read_word() return word is
+
+   var word return_value
+   var byte data_low  at return_value
+   var byte data_high at return_value + 1
+
+   data_high = _ili9341_spi_master
+   data_low  = _ili9341_spi_master
+
+   return return_value
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a data byte to the ILI9341 via the SPI interface.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_data_byte(byte in data) is
+
+   _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
+   _ili9341_spi_master = data
+   _ili9341_stop_transmission()
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Write a data word to the ILI9341 via the SPI interface. The MSB of the 
+-- word is written first.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_data_word(word in data) is
+
+   _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
+   _ili9341_write_word(data)
+   _ili9341_stop_transmission()
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Write a command byte to ILI9341 via the SPI interface.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_write_command(byte in command) is
+
+   _ili9341_start_transmission(_ILI9341_COMMAND_TRANSMISSION)
+   _ili9341_spi_master = command
+   _ili9341_stop_transmission()
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set the address window. Note that the ILI9341 will auto wrap to the next
+-- page when it reaches the end of a column.
+-- -----------------------------------------------------------------------------
+procedure _ili9341_set_address_window(word in x, word in y, word in width,
+                                      word in height) is
+
+   var word column_end_address, page_end_address
+
+   column_end_address = x + width
+   page_end_address   = y + height
+   -- Set column address. Start column address first.
+   _ili9341_write_command(_ILI9341_CASET)
+   _ili9341_write_data_word(x)
+   _ili9341_write_data_word(column_end_address)
+  -- Set page address. Start page address first.
+   _ili9341_write_command(_ILI9341_PASET)
+   _ili9341_write_data_word(y)
+   _ili9341_write_data_word(page_end_address)
+ 
+end procedure
+
+    
+    
+
+ 
+
+
