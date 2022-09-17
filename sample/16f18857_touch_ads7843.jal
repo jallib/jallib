@@ -1,0 +1,323 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample showing the operation of the touch screen on an ili9341.
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6 
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demo program showing the operation of the touch screen on an
+--              ILI9341 TFT full color display based on an ads7843/XPT2406 touch
+--              screen IC. Three items are shown:
+--              1) Touch screen calibration. It does not do an actual calibration
+--                 but shows the values that can be used to re-calibrate the 
+--                 touch screen.
+--              2) Showing the touch screen coordinates when touched and the
+--                 screen pixel coordindate that belong to the touch location.
+--              3) Drawing pixels when the touch screen is touched. It will show
+--                 for four differnt screen rotations.
+--
+-- Notes:       -
+--
+include 16f18857
+pragma target clock 20_000_000      -- oscillator frequency
+pragma target OSC      HS           -- crystal or resonator
+pragma target RSTOSC   EXT1X        -- power-up clock select: OSC
+pragma target CLKOUTEN DISABLED     -- no clock output
+pragma target WDT      DISABLED     -- watchdog
+pragma target BROWNOUT DISABLED     -- no brownout reset
+pragma target FCMEN    DISABLED     -- no clock monitoring
+pragma target CSWEN    ENABLED      -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED      -- use low voltage programming
+pragma target MCLR     EXTERNAL     -- external reset 
+
+enable_digital_io()
+-- Wait some time for the hardware to power up.
+_usec_delay(250_000)
+
+-- Define the SPI pins and other used pins to control the ILI9341 display.
+alias ili9341_sck is pin_C3 -- To pin 7 of the module (SCK).
+alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
+alias ili9341_sdo is pin_C4 -- To pin 6 of the module (SDI).
+alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
+alias ili9341_sdi is pin_C5 -- To pin 9 of the module (SDO).
+alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
+-- Extra needed for SPI.
+alias ili9341_csn is pin_C2  -- To pin 3 of the module (CS). 
+alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
+alias ili9341_dc_rs is pin_C1  -- To pin 5 of the module (DC/RS). 
+alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+alias ili9341_rst is pin_C0  -- To pin 4 of the module (RESET).
+alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
+
+-- You can select which SPI interface will be used by the ILI9341. The
+-- default is SPI hardware 1. You can select one of the following:
+-- const ILI9341_SPI_HW2 = TRUE
+-- const ILI9341_SPI_SW  = TRUE
+
+-- Now specify SPI pins aliases for the touch screen. It uses its own
+-- software SPI since it clocks data on different edges.
+alias ads7843_csn is pin_b7 -- Pin 28 (T_CS)
+alias ads7843_csn_direction is pin_b7_direction
+alias ads7843_sck is pin_b6  -- Pin 27 (T_CLK)
+alias ads7843_sck_direction is pin_b6_direction
+alias ads7843_sdi is pin_b5  -- Pin 26 (T_DO)
+alias ads7843_sdi_direction is pin_b5_direction
+alias ads7843_sdo is pin_b4  -- Pin 25 (T_DIN)
+alias ads7843_sdo_direction is pin_b4_direction
+
+-- Set the pinning for the hardware pins for the ILI9341. This is also 
+-- needed for the default setting. Do not use when using software SPI 
+-- since the pins are then assigned for hardware SPI.
+if !defined(ILI9341_SPI_SW) then
+   include pps
+   pps_control_lock(FALSE)                
+   -- SPI 1 used by ili9341. Do not map when using ILI9341_SPI_SW.
+   RC3PPS = PPS_SCK1 -- SPI clock 
+   RC5PPS = PPS_SDA1 -- SPI data in
+   RC4PPS = PPS_SDO1 -- SPI data out
+   pps_control_lock(TRUE)                 
+end if 
+-- Some other used libraries.
+include print
+include delay
+
+-- Font library.
+include glcd_8x12_font
+
+-- Include the graphics library and initialize.
+include glcd_ili9341
+ili9341_init()
+
+-- Include the touch library and initialize.
+include ads7843
+ads7843_init()
+
+-- Button constants in pixels used on display.
+const word button_x_start = 100
+const word button_y_start = 270
+const word button_x_end = 140
+const word button_y_end = 290
+
+--  -------------------- Procedures and Functions -----------------------------
+
+-- Draw a a simple rectangular button with the text 'DONE' in it.
+procedure draw_button() is
+
+   var word old_pen_color, old_background_color
+
+   old_pen_color = glcd_pen_color
+   old_background_color = glcd_background_color
+   glcd_pen_color = ILI9341_RED
+   glcd_background_color = ILI9341_RED
+   glcd_box_fill(button_x_start, button_y_start, 
+                 button_x_end, button_y_end)
+   glcd_pen_color = ILI9341_WHITE
+   ili9341_goto(button_x_start + 5, button_y_start + 5)
+   print_string(glcd, "DONE")
+   glcd_pen_color = old_pen_color
+   glcd_background_color = old_background_color
+
+end procedure
+
+
+-- Wait until the touch screen is touched and return TRUE if the
+-- screen was touched in the button area on the display.
+function button_touched() return bit is
+   
+   var word x_touch, y_touch,  x_pixel, y_pixel
+
+      if ads7843_get_touch_coordinate(x_touch, y_touch) then
+         ads7843_touch_to_display_coordinate(x_touch, y_touch, x_pixel, y_pixel)
+         return  (x_pixel >= button_x_start) & (x_pixel <= button_x_end) &
+                 (y_pixel >= button_y_start) &  (y_pixel <= button_y_end)
+      else
+         return FALSE
+      end if
+
+end function
+
+
+-- Handle one touch on the screen indicated by a filled green box
+-- and return the x and y coordinates. Change the color of the box
+-- to red when the touch screen has been touched.
+procedure get_coordinates_from_box(word in start_x, word in start_y,
+                                   word in end_x, word in end_y,
+                                   word out x, word out y) is
+
+   var word x_in, y_in
+
+   glcd_pen_color = ILI9341_GREEN
+   -- Draw the box and wait for the screen to be touched.
+   glcd_box_fill(start_x, start_y, end_x, end_y)
+   while !ads7843_get_touch_coordinate(x_in, y_in) loop
+      -- Waiting ...
+   end loop
+   x = x_in
+   y = y_in
+   -- Pressed, change color of box and wait for release.
+   glcd_pen_color = ILI9341_RED
+   glcd_box_fill(start_x, start_y, end_x, end_y)
+   _usec_delay(250_000)  -- Touch 'debounce'.
+   while ads7843_get_touch_coordinate(x_in, y_in) loop
+      -- Waiting ...
+   end loop
+   -- Clear box.
+   glcd_pen_color = ILI9341_BLACK
+   glcd_box_fill(start_x, start_y, end_x, end_y)
+   _usec_delay(250_000) -- Touch 'debounce'.
+                                  
+end procedure
+
+
+-- Obtain the touch values of the corners of the touch screen. Use a small 
+-- green box in the top left corner and after touch in the bottom right corner
+-- and show the touch cormer values. These values can be use to re-calibrate 
+-- the touch screen using the ADS7843_X_TOP_LEFT and other constants.
+procedure calibrate_touch_screen() is
+
+   var word x1, y1, x2, y2
+   var word width, height
+
+   width = ili9341_width - 1
+   height = ili9341_height - 1
+   glcd_clear_screen()
+   glcd_pen_color = ILI9341_WHITE
+   glcd_font_use(FONT_8X12)
+   ili9341_goto(80,40)
+   print_string(glcd,"CALIBRATION")
+   ili9341_goto(80,60)
+   print_string(glcd,"===========")
+   ili9341_goto(40,100)
+   glcd_pen_color = ILI9341_GREEN
+   print_string(glcd,"TOUCH THE GREEN BOXES")
+   ili9341_goto(10,120)
+   print_string(glcd,"(TOP LEFT AND BOTTOM RIGHT)")
+   -- Top left.
+   get_coordinates_from_box(0, 0, 5, 5, x1, y1)
+   -- Bottom right.
+   get_coordinates_from_box(width - 5, height - 5, width, height, x2, y2)
+   -- Print coordinates.
+   glcd_pen_color = ILI9341_YELLOW
+   ili9341_goto(40,140)
+   print_string(glcd,"X TOP LEFT: 0x")
+   print_word_hex(glcd, x1)
+   ili9341_goto(40,155)
+   print_string(glcd,"Y TOP LEFT: 0x")
+   print_word_hex(glcd, y1)
+   ili9341_goto(40,170)
+   print_string(glcd,"X BOTTOM RIGHT: 0x")
+   print_word_hex(glcd, x2)
+   ili9341_goto(40,185)
+   print_string(glcd,"Y BOTTOM RIGHT: 0x")
+   print_word_hex(glcd, y2)
+
+end procedure
+
+
+-- Drawing function. Read the touch screen, translate that to a display coordinate
+-- and write the pixel to the display. Do this for a certain time.
+procedure write_touch_pixel(word in x, word in y) is
+
+   var word t_x, t_y, p_x, p_y
+   var dword timer = 0
+
+   ili9341_goto(x,y)
+   print_string(glcd,"TOUCH THE SCREEN")
+   while (timer < 6_000) loop
+      if ads7843_get_touch_coordinate(t_x, t_y) then
+         ads7843_touch_to_display_coordinate(t_x, t_y, p_x, p_y)
+         glcd_write_pixel(p_x, p_y)
+      end if 
+      _usec_delay(1_000)
+      timer = timer + 1
+   end loop
+
+end procedure
+
+
+-- --------------- Variables and start of program ---------------------------- 
+-- Variables.
+var word touch_x, touch_y, pixel_x, pixel_y
+
+-- Main loop starts here.
+ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
+ads7843_set_screen_orientation(ADS7843_ROTATE_0_DEGREES)
+glcd_clear_screen()
+
+forever  loop  
+
+    -- Start with showing the calibration figures.
+   glcd_pen_color = ILI9341_WHITE
+   calibrate_touch_screen()
+   -- Wait for the 'DONE' button to be pressed.
+   draw_button()
+   while !button_touched() loop
+      -- Wait for button.
+   end loop
+
+   -- Read the touch screen and show the touch screen coordinated
+   -- hexadecimal and the pixel coordinates in decimal notation. Do
+   -- This until the "DONE" button is pressed.
+   glcd_clear_screen()
+   glcd_pen_color = ILI9341_WHITE
+   ili9341_goto(40,40)
+   print_string(glcd,"TOUCH COORDINATES")
+   ili9341_goto(40,100)
+   print_string(glcd,"PIXEL COORDINATES")
+   glcd_pen_color = ILI9341_YELLOW
+   ili9341_goto(40,60)
+   print_string(glcd, "X Touch : 0x")
+   ili9341_goto(40,80)
+   print_string(glcd, "Y Touch : 0x")
+   ili9341_goto(40,120)
+   print_string(glcd, "X Pixel :")
+   ili9341_goto(40,140)
+   print_string(glcd, "Y Pixel :")
+   draw_button()
+   repeat
+      if ads7843_get_touch_coordinate(touch_x, touch_y) then
+         ili9341_goto(139,60)
+         print_word_hex(glcd, touch_x)
+         ili9341_goto(139,80)
+         print_word_hex(glcd, touch_y)
+         ads7843_touch_to_display_coordinate(touch_x, touch_y, pixel_x, pixel_y)
+         ili9341_goto(121,120)
+         print_word_dec(glcd, pixel_x)
+         print_string(glcd, "    ")
+         ili9341_goto(121,140)
+         print_word_dec(glcd, pixel_y)
+         print_string(glcd, "    ")
+      end if 
+   until button_touched()
+
+   -- Show the drawing function in different screen orientations.
+   -- 0 degrees rotation
+   glcd_clear_screen()
+   glcd_pen_color = ILI9341_WHITE
+   glcd_font_use(FONT_8X12)
+   ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
+   ads7843_set_screen_orientation(ADS7843_ROTATE_0_DEGREES)
+   write_touch_pixel(60,0)
+   -- 90 degrees rotation
+   glcd_clear_screen()
+   ili9341_set_display_rotation(ILI9341_ROTATE_90_DEGREES)
+   ads7843_set_screen_orientation(ADS7843_ROTATE_90_DEGREES)
+   write_touch_pixel(90,0)
+   -- 180 degrees rotation
+   glcd_clear_screen()
+   ili9341_set_display_rotation(ILI9341_ROTATE_180_DEGREES)
+   ads7843_set_screen_orientation(ADS7843_ROTATE_180_DEGREES)
+   write_touch_pixel(60,0)
+   -- 270 degrees rotation
+   glcd_clear_screen()
+   ili9341_set_display_rotation(ILI9341_ROTATE_270_DEGREES)
+   ads7843_set_screen_orientation(ADS7843_ROTATE_270_DEGREES)
+   write_touch_pixel(90,0)
+   -- Restore rotation.
+   ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
+   ads7843_set_screen_orientation(ADS7843_ROTATE_0_DEGREES)
+
+end loop

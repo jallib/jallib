@@ -1,0 +1,335 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for touch screen using an ADS7843 or XPT24046 controller.
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for touch screen controllers. Both ADS7843 as well as
+--              XPT2406 controllers are supported which are compatible.
+--
+-- Sources: Texas Instruments ADS7843 Touch Screen Controller
+--          SBAS090B – SEPTEMBER 2000 – REVISED MAY 2002
+--
+-- Notes: This library supports the control of the touch screen via 4-wire SPI 
+--        It uses its own software SPI since the clocking of data is done on
+--        differen edges.
+--
+--        The following pins must be defined by the main program before 
+--        including this library:
+--        -) alias ads7842_sck             -- To T_CLK of the touch screen
+--        -) alias ads7843_sck_direction   
+--        -) alias ads7843_sdo             -- To T_DIN of touch screen
+--        -) alias ads7843_sdo_direction   
+--        -) alias ads7843_sdi             -- To T_DO of touch screen
+--        -) alias ads7843_sdi_direction   
+--        -) alias ads7843_csn             -- To T_CS of touch screen
+--        -) alias ads7843_csn_direction 
+-- 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Touch screen rotation defintions in degrees. This should be used if the screen
+-- is rotated. The touch screen has to match the screen rotation.
+const byte ADS7843_ROTATE_0_DEGREES   = 0 -- Default.
+const byte ADS7843_ROTATE_90_DEGREES  = 1
+const byte ADS7843_ROTATE_180_DEGREES = 2
+const byte ADS7843_ROTATE_270_DEGREES = 3
+
+-- Touch screen calibration values from the corners of the touch screen as they
+-- are returned by the touch screen. These values can be overruled by the user 
+-- for re-calibration if needed. Values are based on 0 degrees screen orienation.
+if !defined(ADS7843_X_TOP_LEFT) then
+   const word ADS7843_X_TOP_LEFT     = 0x0EE5
+end if 
+if !defined(ADS7843_Y_TOP_LEFT) then
+   const word ADS7843_Y_TOP_LEFT     = 0x0F49
+end if 
+if !defined(ADS7843_X_BOTTOM_RIGHT) then
+   const word ADS7843_X_BOTTOM_RIGHT = 0x011F
+end if 
+if !defined(ADS7843_Y_BOTTOM_RIGHT) then
+   const word ADS7843_Y_BOTTOM_RIGHT = 0x01A7
+end if 
+
+-- Default display screen settings in pixels. These must match the resolution of t
+-- the display that is used and can be overruled by the user. The values are needed
+-- to convert the touch screen values to actual display pixel values. Values
+-- are based on 0 degrees screen orientation.
+if !defined(ADS7843_MAX_X_PIXELS) then
+   const ADS7843_MAX_X_PIXELS = 240   -- Default screen width in pixels.
+end if 
+if !defined(ADS7843_MAX_Y_PIXELS) then
+   const ADS7843_MAX_Y_PIXELS = 320   -- Default screen height in pixels.
+end if 
+
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- -------------- General touch screen procedure and functions -----------------
+
+-- -----------------------------------------------------------------------------
+-- Initialize the ADS7843 library.
+-- -----------------------------------------------------------------------------
+procedure ads7843_init()
+
+-- -----------------------------------------------------------------------------
+-- Set the touch screen orientation using the screen rotation constants. The
+-- orientation of the touch screen must match the orientation of the display.
+-- -----------------------------------------------------------------------------
+procedure ads7843_set_screen_orientation(byte in orientation) 
+
+-- -----------------------------------------------------------------------------
+-- Read the x and y coordinate of the touch screen and return TRUE when the 
+-- coordinates are within a certain error margin. The screen does not have to 
+-- be touched. X and Y are returned as touch screen values.
+-- -----------------------------------------------------------------------------
+function ads7843_get_touch_coordinate_raw(word out x, word out y) return bit
+
+-- -----------------------------------------------------------------------------
+-- Get the x and y coordinate where the screen was touched and returns TRUE 
+-- when the screen was touched. X and y are returned in touch screen values.
+-- -----------------------------------------------------------------------------
+function ads7843_get_touch_coordinate(word out touch_x, word out touch_y) return bit
+
+-- -----------------------------------------------------------------------------
+-- Convert the given touch screen coordinates to display coordinates in pixels.
+-- -----------------------------------------------------------------------------
+procedure ads7843_touch_to_display_coordinate(word in touch_x,  word in touch_y, 
+                                              word out pixel_x, word out pixel_y) 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- -------------- Private constants and function prototypes ---------------------
+
+-- Commands for reading X and Y coordinate
+const byte _ADS7843_COMMAND_READ_X = 0xD0
+const byte _ADS7843_COMMAND_READ_Y = 0x90
+
+-- Touch screen min and max values, 12 bits.
+const word _ADS7843_XY_MIN = 0x0000 
+const word _ADS7843_XY_MAX = 0x0FFF 
+
+-- Error margin used to prevent incorrect reading of the toch screen.
+const word _ADS7843_ERROR_RANGE = 50 
+
+-- Touch screen ranges based on the corners of the touch screen.
+const word _ADS7843_X_RANGE = ADS7843_X_TOP_LEFT - ADS7843_X_BOTTOM_RIGHT 
+const word _ADS7843_Y_RANGE = ADS7843_Y_TOP_LEFT - ADS7843_Y_BOTTOM_RIGHT 
+
+-- Touch screen orientation must match the screen orientation.
+var byte _ads7843_screen_rotation
+
+-- -----------------------------------------------------------------------------
+-- Read the value of the given ADC and return the value.
+-- -----------------------------------------------------------------------------
+function _ads7843_read_adc(byte in command) return word
+
+-- ------------------------------- Final implemenation -------------------------
+
+-- -----------------------------------------------------------------------------
+-- Initialize the ADS7843 library.
+-- -----------------------------------------------------------------------------
+procedure ads7843_init() is
+
+   -- Initialize SPI pins.
+   ads7843_csn = HIGH
+   ads7843_csn_direction = output
+   ads7843_sck_direction = output
+   ads7843_sdi_direction = input
+   ads7843_sdo_direction = output
+   -- Initialize local variables.
+   _ads7843_screen_rotation = ADS7843_ROTATE_0_DEGREES
+ 
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Set the touch screen orientation using the screen rotation constants. The
+-- orientation of the touch screen must match the orientation of the display.
+-- -----------------------------------------------------------------------------
+procedure ads7843_set_screen_orientation(byte in orientation) is
+
+   _ads7843_screen_rotation = orientation
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read the x and y coordinate of the touch screen and return TRUE when the 
+-- coordinates are within a certain error margin. The screen does not have to 
+-- be touched. X and Y are returned as touch screen values.
+-- -----------------------------------------------------------------------------
+function ads7843_get_touch_coordinate_raw(word out x, word out y) return bit is
+
+   var word x_first, y_first, x_second, y_second
+
+   -- Read the touch screen twice.
+   x_first = _ads7843_read_adc(_ADS7843_COMMAND_READ_X)
+   y_first = _ads7843_read_adc(_ADS7843_COMMAND_READ_Y)
+   x_second = _ads7843_read_adc(_ADS7843_COMMAND_READ_X)
+   y_second = _ads7843_read_adc(_ADS7843_COMMAND_READ_Y)
+   -- Samples must be more or less the same.
+   if ((x_second <= x_first) & (x_first < (x_second + _ADS7843_ERROR_RANGE)) |
+      (x_first <= x_second) & (x_second < (x_first + _ADS7843_ERROR_RANGE))) &
+      ((y_second <= y_first) | (y_first < (y_second + _ADS7843_ERROR_RANGE)) |
+      (y_first <= y_second) & (y_second < (y_first + _ADS7843_ERROR_RANGE)))
+   then
+      x = (x_first + x_second) / 2
+      y = (y_first + y_second) / 2
+      return TRUE
+   else
+      return FALSE
+   end if
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Get the x and y coordinate where the screen was touched and returns TRUE 
+-- when the screen was touched. X and y are returned in touch screen values.
+-- -----------------------------------------------------------------------------
+function ads7843_get_touch_coordinate(word out touch_x, word out touch_y) return bit is
+
+   -- We can detect that the screen is touched when using the min and max 
+   -- values with a certain margin. We use the error range for that.
+   if ads7843_get_touch_coordinate_raw(touch_x, touch_y) then
+      if (touch_x > _ADS7843_XY_MIN + _ADS7843_ERROR_RANGE) & 
+         (touch_y < _ADS7843_XY_MAX - _ADS7843_ERROR_RANGE) then
+         -- Here the conversion is needed to pixels on the screen depending
+         -- on the screen orientation. We also need to incorporate the 
+         -- calibration values.
+         return TRUE
+      else
+         return FALSE
+      end if 
+   else
+      return FALSE
+   end if 
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Convert the given touch screen coordinates to display coordinates in pixels.
+-- -----------------------------------------------------------------------------
+procedure ads7843_touch_to_display_coordinate(word in touch_x,  word in touch_y, 
+                                              word out pixel_x, word out pixel_y) is
+
+   var dword touch_to_pixel_x = 0
+   var dword touch_to_pixel_y = 0
+
+   -- Pixel coordindates are depending on the rotation of the screen.
+   case _ads7843_screen_rotation of
+
+      ADS7843_ROTATE_0_DEGREES:
+      block -- No rotation.
+         touch_to_pixel_x = (dword(ADS7843_X_TOP_LEFT - touch_x) * dword(ADS7843_MAX_X_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+         touch_to_pixel_y = (dword(ADS7843_Y_TOP_LEFT - touch_y) * dword(ADS7843_MAX_Y_PIXELS)) / 
+                             dword(_ADS7843_Y_RANGE)
+      end block
+      ADS7843_ROTATE_90_DEGREES:
+      block -- X becomes Y and Y becomes -X
+         touch_to_pixel_x = (dword(ADS7843_Y_TOP_LEFT - touch_y) * dword(ADS7843_MAX_Y_PIXELS)) / 
+                            dword(_ADS7843_Y_RANGE)
+         touch_to_pixel_y = (dword(touch_x - ADS7843_X_BOTTOM_RIGHT) * dword(ADS7843_MAX_X_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+      end block
+      ADS7843_ROTATE_180_DEGREES:
+      block -- X becomes -X and Y becomes -Y
+         touch_to_pixel_x = (dword(touch_x - ADS7843_X_BOTTOM_RIGHT) * dword(ADS7843_MAX_X_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+         touch_to_pixel_y = (dword(touch_y - ADS7843_Y_BOTTOM_RIGHT) * dword(ADS7843_MAX_Y_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+       end block
+      ADS7843_ROTATE_270_DEGREES:
+      block -- X becomes -Y and Y becomes X
+         touch_to_pixel_x = (dword(touch_y - ADS7843_Y_BOTTOM_RIGHT) * dword(ADS7843_MAX_Y_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+         touch_to_pixel_y = (dword(ADS7843_X_TOP_LEFT - touch_x) * dword(ADS7843_MAX_X_PIXELS)) / 
+                             dword(_ADS7843_X_RANGE)
+       end block
+
+   end case
+
+   pixel_x = word(touch_to_pixel_x) 
+   pixel_y = word(touch_to_pixel_y) 
+
+end procedure
+-- ----------------------------- Private functions ---------------------------
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to write the SPI data. Data is clocked out on raising edge.
+-- -----------------------------------------------------------------------------
+procedure _ads7843_spi_sw'put(byte in data) is
+
+  var bit data_bit_out at data:7
+
+  for 8 loop
+      ads7843_sdo = data_bit_out
+      data = data << 1 
+      -- Writing is on the rising clock.
+      ads7843_sck = HIGH
+      _usec_delay(1)
+      ads7843_sck = LOW
+      _usec_delay(1)
+      ads7843_sdo = LOW
+   end loop
+
+end procedure 
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to read the SPI data. Data is clocked in on falling edge.
+-- -----------------------------------------------------------------------------
+function _ads7843_spi_sw'get() return byte is
+
+  var byte data
+  var bit data_bit_in at data:0
+
+  for 8 loop
+      data = data << 1
+      -- Reading is on the faling clock
+      ads7843_sck = HIGH
+     _usec_delay(1)
+      ads7843_sck = LOW
+      _usec_delay(1)
+     data_bit_in = ads7843_sdi
+   end loop
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Read the value of the given touch ADC and return the value.
+-- -----------------------------------------------------------------------------
+function _ads7843_read_adc(byte in command) return word is
+
+   var word data
+   var byte data_low  at data
+   var byte data_high at data+1
+
+   ads7843_csn = LOW
+   _ads7843_spi_sw = command
+   data_high = _ads7843_spi_sw
+   data_low  = _ads7843_spi_sw
+   ads7843_csn = HIGH
+   -- Align the 12 bits right.
+   data = data >> 4
+
+   return data
+
+end function
+
+
