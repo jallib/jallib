@@ -68,10 +68,6 @@ end if
 if !defined(ILI9341_MAX_Y_PIXELS) then
    const word ILI9341_MAX_Y_PIXELS = 320  -- Default height 
 end if 
--- Variables that hold the current selected display width and display height. 
--- These values change when the display is rotated.
-var word ili9341_width  -- Default is ILI9341_MAX_X_PIXELS
-var word ili9341_height -- Default is ILI9341_MAX_Y_PIXELS
 
 -- Color definitions.
 const word ILI9341_BLACK        = 0x0000 --   0,   0,   0
@@ -460,10 +456,6 @@ procedure ili9341_init() is
       index = index + 1
    end loop
    
-   -- Initialize local variables.
-   ili9341_width  = ILI9341_MAX_X_PIXELS
-   ili9341_height = ILI9341_MAX_Y_PIXELS
-
 end procedure
 
 
@@ -495,13 +487,13 @@ end procedure
 procedure ili9341_fill_screen(word in color) is
 
    -- The total does not fit in a word so casting is needed.
-   var dword total_pixels = dword(ili9341_width) * dword(ili9341_height)
+   var dword total_pixels = dword(glcd_display_x_size) * dword(glcd_display_y_size)
    var byte color_low  at color
    var byte color_high at color + 1 
 
 
    -- Set column address and page addresse to maxium.
-   _ili9341_set_address_window(0, 0, ili9341_width, ili9341_height) 
+   _ili9341_set_address_window(0, 0, glcd_display_x_size, glcd_display_y_size) 
    -- Write the data.
     _ili9341_write_command(_ILI9341_RAMWR)  
    -- ILI9341 is ready for accepting data. 
@@ -543,7 +535,7 @@ procedure ili9341_write_pixel(word in x, word in y) is
    var word pixel_data 
    var word index, offset
 
-   if (x < ili9341_width) & (y < ili9341_height) then
+   if (x < glcd_display_x_size) & (y < glcd_display_y_size) then
       -- Set column address and page address for one pixel (width = 1).
       _ili9341_set_address_window(x, y, 1 , 0)
       -- Write the pixel in the last selected color.
@@ -656,26 +648,26 @@ procedure ili9341_set_display_rotation(byte in rotation) is
       0:
       block -- 0 degrees
          setting = MADCTL_MX | MADCTL_BGR 
-         ili9341_width = ILI9341_MAX_X_PIXELS
-         ili9341_height = ILI9341_MAX_Y_PIXELS
+         glcd_display_x_size = ILI9341_MAX_X_PIXELS
+         glcd_display_y_size = ILI9341_MAX_Y_PIXELS
       end block
       1:
       block -- 90 degrees
          setting = MADCTL_MV | MADCTL_BGR 
-         ili9341_width = ILI9341_MAX_Y_PIXELS
-         ili9341_height = ILI9341_MAX_X_PIXELS
+         glcd_display_x_size = ILI9341_MAX_Y_PIXELS
+         glcd_display_y_size = ILI9341_MAX_X_PIXELS
       end block
       2:
       block -- 180 degrees
          setting = MADCTL_MY | MADCTL_BGR  
-         ili9341_width = ILI9341_MAX_X_PIXELS
-         ili9341_height = ILI9341_MAX_Y_PIXELS
+         glcd_display_x_size = ILI9341_MAX_X_PIXELS
+         glcd_display_y_size = ILI9341_MAX_Y_PIXELS
       end block
       3:
       block -- 270 degrees. 
          setting = MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR 
-         ili9341_width = ILI9341_MAX_Y_PIXELS
-         ili9341_height = ILI9341_MAX_X_PIXELS
+         glcd_display_x_size = ILI9341_MAX_Y_PIXELS
+         glcd_display_y_size = ILI9341_MAX_X_PIXELS
       end block   
    end case
 
@@ -699,8 +691,8 @@ procedure ili9341_set_vertical_scroll_area(word in top, word in bottom) is
     var byte middle_low at middle
     var byte middle_high at middle + 1
 
-   if ((top + bottom) <= ili9341_height) then
-      middle = ili9341_height - (top + bottom)
+   if ((top + bottom) <= glcd_display_y_size) then
+      middle = glcd_display_y_size - (top + bottom)
       _ili9341_write_command(_ILI9341_VSCRDEF)  
       -- ILI9341 is ready for accepting data. 
       _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)

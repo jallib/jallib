@@ -24,7 +24,7 @@
 -- In order to honor this common interface, and benefit its features,
 -- the following must be implemented in the device specific library.
 --   * GLCD_X_PIXELS: (const) specifies display's width in pixels
---   * GLCD_Y_PIXELS: (const) specifies display's height in pixels
+--   * glcd_display_y_size: (const) specifies display's height in pixels
 --   * GLCD_COLOR_BITS: (const) specifies the number of bits required
 --     for colors (1 for black & white), (16 for 16 bit color)
 --   * glcd_pen_color: (var|const) specifies color of the pen
@@ -50,7 +50,7 @@
 --
 -- Notes:
 --   Changes by Rob Hamerling (Nov/Dec 2011):
---   - fixed typo in comments above (GLCD_Y_SIZE -> GLCD_Y_PIXELS)
+--   - fixed typo in comments above (GLCD_Y_SIZE -> glcd_display_y_size)
 --   - corrected irrelevant comments (artifacts of older versions)
 --   - changed sword to sbyte*3 of local variables in glcd_ellipse procedure
 --     to prevent overflow of intermediate results.
@@ -59,6 +59,11 @@
 --   - fixed glcd_box_fill() for situation y1 < y0
 --   - minor code optimizations (incl some add/remove pragma inline)
 --   - comments: extended, corrected, aligned
+--
+--   RJ: Note that the procedure glcd_write_char_pbp() has been adapted
+--       to deal with larger fonts but only for font that are oriented
+--       as FONT_TOP_LEFT_HORIZONTAL, not for FONT_BOTTOM_LEFT_VERTICAL.
+--       There where no fonts for the later to test with. So still to do.
 --
 
 -- --------------------------------------------------------------
@@ -138,9 +143,13 @@ end if
 -- ----------------------------------------------------------------------------
 -- Global variables for text processing
 -- ----------------------------------------------------------------------------
-var byte*GLCD_X_SIZE glcd_char_x_pos = 0;
-var byte*GLCD_Y_SIZE glcd_char_y_pos = 0;
+var byte*GLCD_X_SIZE glcd_char_x_pos = 0
+var byte*GLCD_Y_SIZE glcd_char_y_pos = 0
 
+-- We need to store the screen size due to the option of screen rotation by
+-- which the x size and y size can change.
+var byte*GLCD_X_SIZE glcd_display_x_size = GLCD_X_PIXELS
+var byte*GLCD_Y_SIZE glcd_display_y_size = GLCD_Y_PIXELS
 
 include glcd_font                                  -- common font library
 
@@ -153,18 +162,22 @@ include glcd_font                                  -- common font library
 -- -----------------------------------------------------------------------------
 procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte in value) is
 
-   var word j, k
+   var word j, k, row_width, next_in_row, index
    var byte char_byte, bit_y_address
    var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save current pen color
 
+   -- generic font printing (bit by bit)
+   -- this will work for any glcd that has a lcd_write_pixel procedure
    if glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL then
-      -- generic font printing (bit by bit)
-      -- this will work for any glcd that has a lcd_write_pixel procedure
+      -- Depending on the font size, more bytes are needed for one row to complete the font.
+      row_width = ((glcd_font_current_width_ - 1) / 8)  + 1
       for glcd_font_current_height_ using k loop
          -- Get each byte from character, space (32) is the first position in the table.
-         char_byte = glcd_font_lookup((word(value-32) * word(glcd_font_current_byte_per_char_)) + k)
-         bit_y_address = 0b1000_0000 -- y bit mask
+         index = (word(value-32) * word(glcd_font_current_byte_per_char_)) + (row_width * k)
+         char_byte = glcd_font_lookup(index)
+         bit_y_address = 0b1000_0000 -- Set y bit mask
          -- Get each bit from each character byte and print it to glcd.
+         next_in_row = 0 -- First byte in the row of the font.
          for glcd_font_current_width_ using j loop
             if ((char_byte & bit_y_address) > 0) then
                glcd_pen_color = color
@@ -173,9 +186,15 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte
             end if
             glcd_write_pixel(byte*GLCD_X_SIZE(x+j),byte*GLCD_Y_SIZE(y+k))
             bit_y_address = bit_y_address >> 1
+            -- If we are done with one row there may be more rows, depending on the width.
+            if (((j + 1) % 8) == 0) & (row_width > 1) then
+               -- Next byte in in the row of the font for the same character.
+               next_in_row = next_in_row + 1
+               char_byte = glcd_font_lookup(index + next_in_row)
+               bit_y_address = 0b1000_0000 -- Reset y bit mask               
+            end if 
          end loop
       end loop
-
    elsif glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
       -- generic font printing (bit by bit)
       -- this will work for any glcd that has a glcd_write_pixel procedure
@@ -252,7 +271,7 @@ end if                  -- (when block writing supported)
 procedure glcd'put(byte in char) is
    if defined(FONT_AUTO_WRAP) then
       if FONT_AUTO_WRAP == TRUE then
-         if glcd_char_x_pos > (GLCD_X_PIXELS - glcd_font_current_width_) then
+         if glcd_char_x_pos > (glcd_display_x_size - glcd_font_current_width_) then
             glcd_char_y_pos = glcd_char_y_pos + glcd_font_current_height_
             glcd_char_x_pos = 0
          end if
@@ -304,9 +323,9 @@ procedure glcd_clear_screen() is
    -- fill using glcd's block write procedures
    if GLCD_USE_BLOCK_WRITE == TRUE then
       if GLCD_BLOCK_WRITE_TYPE == FONT_TOP_LEFT_HORIZONTAL then
-         glcd_block_set_address(0, 0, GLCD_X_PIXELS - 1, GLCD_Y_PIXELS - 1)
-         for GLCD_Y_PIXELS loop
-            for GLCD_X_PIXELS loop
+         glcd_block_set_address(0, 0, glcd_display_x_size - 1, glcd_display_y_size - 1)
+         for glcd_display_y_size loop
+            for glcd_display_x_size loop
                 glcd_block_write_color(glcd_background_color)
             end loop
          end loop
@@ -317,8 +336,8 @@ procedure glcd_clear_screen() is
       var byte*GLCD_COLOR_SIZE color = glcd_pen_color
       var byte*GLCD_X_SIZE x
       var byte*GLCD_Y_SIZE y
-      for GLCD_Y_PIXELS using y loop
-         for GLCD_X_PIXELS using x loop
+      for glcd_display_y_size using y loop
+         for glcd_display_x_size using x loop
              glcd_pen_color = glcd_background_color
              glcd_write_pixel(x,y)
          end loop
@@ -363,19 +382,19 @@ procedure glcd_write_4_ellipse_pixels_( byte*GLCD_X_SIZE       in cx,
    var sbyte*(GLCD_Y_SIZE + 1) cy12 = cy + dy,     -- y-coord    "     1 and 2
                                cy34 = cy - dy      --    "       "     3 and 4
    if GLCD_CLIPPING == TRUE then
-      if cx14 >= 0 & cx14 < GLCD_X_PIXELS then
-         if cy12 >= 0 & cy12 < GLCD_Y_PIXELS  then
+      if cx14 >= 0 & cx14 < glcd_display_x_size then
+         if cy12 >= 0 & cy12 < glcd_display_y_size  then
             glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy12))
          end if
-         if cy34 >= 0 & cy34 < GLCD_Y_PIXELS  then
+         if cy34 >= 0 & cy34 < glcd_display_y_size  then
             glcd_write_pixel(byte*GLCD_X_SIZE(cx14), byte*GLCD_Y_SIZE(cy34))
          end if
       end if
       if cx23 >= 0 & cx23 < GLCD_X_PIXELS  then
-         if cy12 >= 0 & cy12 < GLCD_Y_PIXELS  then
+         if cy12 >= 0 & cy12 < glcd_display_y_size  then
             glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy12))
          end if
-         if cy34 >= 0 & cy34 < GLCD_Y_PIXELS  then
+         if cy34 >= 0 & cy34 < glcd_display_y_size  then
             glcd_write_pixel(byte*GLCD_X_SIZE(cx23), byte*GLCD_Y_SIZE(cy34))
          end if
       end if
