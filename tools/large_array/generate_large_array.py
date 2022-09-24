@@ -21,7 +21,7 @@
 #       This value defines the maximum size of each array. As of 2020, 60 banks
 #       of 80 bytes each is more than the largest PIC14 controller can have.
 #       Limit is 255*80.
-#   number_of_arrays=4
+#   number_of_arrays=6
 #       The original set of Large Array libs was designed to give up to four
 #       arrays. Now, as the source is generated, the number can be increased
 #       if needed.
@@ -31,7 +31,7 @@
 # Configure the generated library
 max_bytes_pic16=(58*256)
 max_bytes_pic14=(60*80)
-number_of_arrays=4
+number_of_arrays=6
 
 output_filename="large_array_{0}.jal"
 
@@ -47,8 +47,7 @@ prologue="""-- Title: Large Array_{7} library
 -- Author: Oliver "Kiste" Seitz, copyright (c) 2009..2020, all rights reserved.
 -- Based on work by Matthew Schinkel - borntechi.com and Rob Jansen 
 -- Adapted-by: 
--- Compiler: >=2.5r4
--- Revision: $Revision$
+-- Compiler: >=2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
