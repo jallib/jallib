@@ -1,0 +1,194 @@
+-- -----------------------------------------------------------------------------
+-- Title: GLCD ILI9341 demo sample showing all JAL fonts
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r6 
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program showing various JAL Fonts on a normal and
+--              rotated ili9341 color display.
+--
+--
+
+include 18f46q10                        -- target PICmicro
+
+-- This program uses the internal oscillator at 48 MHz.
+pragma target clock    48_000_000       -- oscillator frequency
+--
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINTOSC_64MHZ   -- select 64 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target XINST    DISABLED         -- do not use extended instructionset
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCFRQ_HFFRQ = 0b0111                   -- Fosc 48 MHz
+--
+enable_digital_io()                     -- make all pins digital I/O
+-- Wait some time for the hardware to power up.
+_usec_delay(100_000)
+
+-- Define the SPI pins and other used pins to control the display
+alias ili9341_sck is pin_C3 -- To pin 7 of the module (SCK).
+alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
+alias ili9341_sdo is pin_C4 -- To pin 6 of the module (SDI).
+alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
+alias ili9341_sdi is pin_C5 -- To pin 9 of the module (SDO).
+alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
+-- Extra needed for SPI.
+alias ili9341_csn is pin_C2  -- To pin 3 of the module (CS). 
+alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
+alias ili9341_dc_rs is pin_C1  -- To pin 5 of the module (DC/RS). 
+alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+alias ili9341_rst is pin_C0  -- To pin 4 of the module (RESET).
+alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
+
+-- You can select which SPI interface will be used by the ILI9341. The
+-- default is SPI hardware 1. You can select one of the following:
+-- const ILI9341_SPI_HW2 = TRUE
+-- const ILI9341_SPI_SW  = TRUE
+
+-- Map the pinning for the hardware pins for SPI. This is default but still
+-- needed. 
+include pps
+pps_control_lock(FALSE)                
+-- SPI 1 used by ili9341. Do not map when using ILI9341_SPI_SW.
+if !defined(ILI9341_SPI_SW) then
+   RC3PPS = PPS_SCK1 -- SPI clock 
+   RC5PPS = PPS_SDA1 -- SPI data in
+   RC4PPS = PPS_SDO1 -- SPI data out
+end if 
+pps_control_lock(TRUE)                 
+
+include print
+include delay
+
+-- Include all used font libraries.
+include glcd_5x7_font
+include glcd_6x8_font
+include glcd_8x12_font
+include glcd_9x16_font
+include glcd_12x16_font
+include glcd_14x30_font
+include glcd_16x32_font
+
+-- Include and initialize the GLCD lib.
+include glcd_ili9341
+ili9341_init()
+
+
+-- Procedure to print all the font characters of the last selected font. 
+-- First the given text is printed.
+procedure print_all_font_characters(byte in text[]) is
+
+   var byte index
+
+   glcd_clear_screen()
+   -- Print the given text.
+   glcd_pen_color = ILI9341_GREEN
+   ili9341_goto(10,10)
+   print_string(glcd, text)
+   -- Print all font characters from space to z.
+   glcd_pen_color = ILI9341_YELLOW
+   ili9341_goto(0,50)
+   for 91 using index loop
+      glcd = index + 32
+      _usec_delay(1_000)
+   end loop
+   
+   delay_1s(2)
+
+end procedure
+
+
+-- Variables.
+var byte rotate = 0
+
+
+-- Main loop.
+forever  loop   
+
+   -- Set and change the screen rotation on the next run. 
+   if rotate == 0 then
+      ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
+      rotate = 1
+   elsif rotate == 1 then
+      ili9341_set_display_rotation(ILI9341_ROTATE_90_DEGREES)
+      -- Reset to 0 but if set to 2 it shows the other rotations too.
+      rotate = 0 
+   elsif rotate == 2 then
+      ili9341_set_display_rotation(ILI9341_ROTATE_180_DEGREES)
+      rotate = 3
+   else 
+      ili9341_set_display_rotation(ILI9341_ROTATE_270_DEGREES)
+      rotate = 0
+   end if  
+
+   -- First show all fonts in diffent colors.
+   glcd_clear_screen()
+   glcd_pen_color = ILI9341_WHITE
+   glcd_font_use(FONT_5X7)
+   ili9341_goto(50,10)
+   print_string(glcd,"Font 5X7")
+
+   glcd_pen_color = ILI9341_ORANGE
+   glcd_font_use(FONT_6X8)
+   ili9341_goto(50,30)
+   print_string(glcd,"Font 6X8")
+
+   glcd_pen_color = ILI9341_OLIVE
+   glcd_font_use(FONT_8X12)
+   ili9341_goto(50,50)
+   print_string(glcd,"Font 8X12")
+
+   glcd_pen_color = ILI9341_RED
+   glcd_font_use(FONT_9X16)
+   ili9341_goto(50,80)
+   print_string(glcd,"Font 9X16")
+
+   glcd_pen_color = ILI9341_GREEN
+   glcd_font_use(FONT_12X16)
+   ili9341_goto(50,110)
+   print_string(glcd,"Font 12X16")
+ 
+   glcd_pen_color = ILI9341_YELLOW
+   glcd_font_use(FONT_14X30)
+   ili9341_goto(50,145)
+   print_string(glcd,"Font 14X30")
+ 
+   glcd_pen_color = ILI9341_CYAN
+   glcd_font_use(FONT_16X32)
+   ili9341_goto(50,190)
+   print_string(glcd,"Font 16X32")
+ 
+   delay_1s(5)
+
+   -- Now print all font characters of all fonts.
+   glcd_font_use(FONT_5X7)
+   print_all_font_characters("Font 5X7")
+ 
+   glcd_font_use(FONT_6X8)
+   print_all_font_characters("Font 6X8")
+
+   glcd_font_use(FONT_8X12)
+   print_all_font_characters("Font 8X12")
+
+   glcd_font_use(FONT_9X16)
+   print_all_font_characters("Font 9X16")
+
+   glcd_font_use(FONT_12X16)
+   print_all_font_characters("Font 12X16")
+
+   glcd_font_use(FONT_14X30)
+   print_all_font_characters("Font 14X30")
+
+   glcd_font_use(FONT_16X32)
+   print_all_font_characters("Font 16X32")
+
+end loop
