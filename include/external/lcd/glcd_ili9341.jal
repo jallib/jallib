@@ -26,8 +26,12 @@
 --
 --        The default display resolution is 240 x 320 pixels If a display with a
 --        different resolution is used you can overrule these as follows (example):
---        const word ILI9341_MAX_X_PIXELS = 128  -- Default width  
---        const word ILI9341_MAX_Y_PIXELS = 160  -- Default height 
+--        const word ILI9341_MAX_X_PIXELS = 128  -- Width  
+--        const word ILI9341_MAX_Y_PIXELS = 160  -- Height 
+--
+--        Depeding on the display mirroring may be needed. Options available:
+--        const ILI9342_MIRROR_X = TRUE -- Will mirror in the x-direction
+--        const ILI9342_MIRROR_Y = TRUE -- Will mirror in the y-direction
 --
 --        The following pins must be defined by the main program before 
 --        including this library. Common pins for using SPI:
@@ -279,14 +283,14 @@ const byte _ILI9341_GMCTRP1    = 0xE0 -- Positive Gamma Correction
 const byte _ILI9341_GMCTRN1    = 0xE1 -- Negative Gamma Correction
 const byte _ILI9341_PWCTR6     = 0xFC
 
--- Display orientation. See register _ILI9341_RDMADCT.
-const byte MADCTL_MY  = 0x80 -- Bottom to top
-const byte MADCTL_MX  = 0x40 -- Right to left
-const byte MADCTL_MV  = 0x20 -- Reverse Mode
-const byte MADCTL_ML  = 0x10 -- LCD refresh Bottom to top
-const byte MADCTL_RGB = 0x00 -- Red-Green-Blue pixel order (bit 3 = 0)
-const byte MADCTL_BGR = 0x08 -- Blue-Green-Red pixel order (bit 3 = 1)
-const byte MADCTL_MH  = 0x04 -- LCD refresh right to left
+-- Display orientation. See register _ILI9341_RDMADCT and the datatsheet
+-- page 208. Depending on the display mirroring may be needed.
+const byte MADCTL_MX_LR = 0x00 -- Left to Right
+const byte MADCTL_MX_RL = 0x40 -- Right to left (default for module MSP2401)
+const byte MADCTL_MY_BT = 0x80 -- Bottom to top 
+const byte MADCTL_MY_TB = 0x00 -- Top to bottom (default for module MSP2401)
+const byte MADCTL_MV    = 0x20 -- Reverse Mode (swap x and y)
+const byte MADCTL_BGR   = 0x08 -- Blue-Green-Red pixel order (bit 3 = 1)
 
 -- Control display settings.
 
@@ -460,6 +464,9 @@ procedure ili9341_init() is
       -- Next command (if not yet done).
       index = index + 1
    end loop
+
+   -- Resetting the display rotation also sets the direction (mirror).
+   ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
    
 end procedure
 
@@ -649,28 +656,55 @@ procedure ili9341_set_display_rotation(byte in rotation) is
    var byte setting
 
    rotation = rotation % 4 -- Mask out unwanted bits.
+   setting = MADCTL_BGR 
    case rotation of
+
       0:
       block -- 0 degrees
-         setting = MADCTL_MX | MADCTL_BGR 
+         if !defined(ILI9341_MIRROR_X) then
+            setting = setting | MADCTL_MX_RL
+         end if 
+         if defined(ILI9341_MIRROR_Y) then
+            setting = setting | MADCTL_MY_BT 
+         end if 
          glcd_display_x_size = ILI9341_MAX_X_PIXELS
          glcd_display_y_size = ILI9341_MAX_Y_PIXELS
       end block
+ 
       1:
-      block -- 90 degrees
-         setting = MADCTL_MV | MADCTL_BGR 
+      block -- 90 degrees, swap x and y.
+         setting = setting | MADCTL_MV 
+         if defined(ILI9341_MIRROR_X) then
+            setting = setting | MADCTL_MY_BT
+         end if 
+         if defined(ILI9341_MIRROR_Y) then
+            setting = setting | MADCTL_MX_RL 
+         end if 
          glcd_display_x_size = ILI9341_MAX_Y_PIXELS
          glcd_display_y_size = ILI9341_MAX_X_PIXELS
       end block
+ 
       2:
       block -- 180 degrees
-         setting = MADCTL_MY | MADCTL_BGR  
+         if defined(ILI9341_MIRROR_X) then
+            setting = setting | MADCTL_MX_RL
+         end if 
+         if !defined(ILI9341_MIRROR_Y) then
+            setting = setting | MADCTL_MY_BT 
+         end if 
          glcd_display_x_size = ILI9341_MAX_X_PIXELS
          glcd_display_y_size = ILI9341_MAX_Y_PIXELS
       end block
+
       3:
       block -- 270 degrees. 
-         setting = MADCTL_MX | MADCTL_MY | MADCTL_MV | MADCTL_BGR 
+         setting = setting | MADCTL_MV
+         if !defined(ILI9341_MIRROR_X) then
+            setting = setting | MADCTL_MY_BT
+         end if 
+         if !defined(ILI9341_MIRROR_Y) then
+            setting = setting | MADCTL_MX_RL 
+         end if 
          glcd_display_x_size = ILI9341_MAX_Y_PIXELS
          glcd_display_y_size = ILI9341_MAX_X_PIXELS
       end block   

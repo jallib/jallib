@@ -15,7 +15,16 @@
 --
 -- Notes: This library supports the control of the touch screen via 4-wire SPI 
 --        It uses its own software SPI since the clocking of data is done on
---        differen edges.
+--        different edges.
+--
+--        The default display resolution is 240 x 320 pixels If a display with a
+--        different resolution is used you can overrule these as follows (example):
+--        const word ADS7843_MAX_X_PIXELS = 128  -- Width  
+--        const word ADS7843_MAX_Y_PIXELS = 160  -- Height 
+--
+--        Depending on the display, mirroring may be needed. Available settings:
+--        const ADS7843_MIRROR_X = TRUE -- Will mirror in the x-direction
+--        const ADS7843_MIRROR_Y = TRUE -- Will mirror in the y-direction
 --
 --        The following pins must be defined by the main program before 
 --        including this library:
@@ -75,7 +84,7 @@ end if
 -- -------------- General touch screen procedure and functions -----------------
 
 -- -----------------------------------------------------------------------------
--- Initialize the ADS7843 library.
+-- Initialize the ADS7843 library. The interrupt output will be enabled.
 -- -----------------------------------------------------------------------------
 procedure ads7843_init()
 
@@ -111,8 +120,8 @@ procedure ads7843_touch_to_display_coordinate(word in touch_x,  word in touch_y,
 -- -------------- Private constants and function prototypes ---------------------
 
 -- Commands for reading X and Y coordinate
-const byte _ADS7843_COMMAND_READ_X = 0xD0
-const byte _ADS7843_COMMAND_READ_Y = 0x90
+const byte _ADS7843_COMMAND_READ_X = 0xD0 -- Power down mode with interrupt enabled.
+const byte _ADS7843_COMMAND_READ_Y = 0x90 -- Power down mode with interrupt enabled.
 
 -- Touch screen min and max values, 12 bits.
 const word _ADS7843_XY_MIN = 0x0000 
@@ -136,9 +145,11 @@ function _ads7843_read_adc(byte in command) return word
 -- ------------------------------- Final implemenation -------------------------
 
 -- -----------------------------------------------------------------------------
--- Initialize the ADS7843 library.
+-- Initialize the ADS7843 library.The interrupt output will be enabled.
 -- -----------------------------------------------------------------------------
 procedure ads7843_init() is
+
+   var word dummy
 
    -- Initialize SPI pins.
    ads7843_csn = HIGH
@@ -148,6 +159,8 @@ procedure ads7843_init() is
    ads7843_sdo_direction = output
    -- Initialize local variables.
    _ads7843_screen_rotation = ADS7843_ROTATE_0_DEGREES
+   -- Do a dummy read to activate the touch screen (mainly the interrupt).
+   dummy = _ads7843_read_adc(_ADS7843_COMMAND_READ_X)
  
 end procedure
 
@@ -227,42 +240,80 @@ procedure ads7843_touch_to_display_coordinate(word in touch_x,  word in touch_y,
    var dword touch_to_pixel_x = 0
    var dword touch_to_pixel_y = 0
 
-   -- Pixel coordindates are depending on the rotation of the screen.
+   -- Pixel coordindates are depending on the rotation of the screen and of the
+   -- way in which the display is written (inverted or not)
    case _ads7843_screen_rotation of
 
       ADS7843_ROTATE_0_DEGREES:
       block -- No rotation.
          touch_to_pixel_x = (dword(ADS7843_X_TOP_LEFT - touch_x) * dword(ADS7843_MAX_X_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
+
          touch_to_pixel_y = (dword(ADS7843_Y_TOP_LEFT - touch_y) * dword(ADS7843_MAX_Y_PIXELS)) / 
                              dword(_ADS7843_Y_RANGE)
+         pixel_x = word(touch_to_pixel_x)
+         pixel_y = word(touch_to_pixel_y) 
+         -- If a mirror is defined, change value.
+         if defined(ADS7843_MIRROR_X) then
+            pixel_x = ADS7843_MAX_X_PIXELS - pixel_x 
+         end if 
+         if defined(ADS7843_MIRROR_Y) then
+            pixel_y = ADS7843_MAX_Y_PIXELS - pixel_y
+         end if 
       end block
+
       ADS7843_ROTATE_90_DEGREES:
-      block -- X becomes Y and Y becomes -X
+      block -- X becomes Y and Y becomes X
          touch_to_pixel_x = (dword(ADS7843_Y_TOP_LEFT - touch_y) * dword(ADS7843_MAX_Y_PIXELS)) / 
                             dword(_ADS7843_Y_RANGE)
          touch_to_pixel_y = (dword(touch_x - ADS7843_X_BOTTOM_RIGHT) * dword(ADS7843_MAX_X_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
+         pixel_x = word(touch_to_pixel_x)
+         pixel_y = word(touch_to_pixel_y) 
+         -- If a mirror is defined, change value.
+         if defined(ADS7843_MIRROR_X) then
+            pixel_x = ADS7843_MAX_Y_PIXELS - pixel_x 
+         end if 
+         if defined(ADS7843_MIRROR_Y) then
+            pixel_y = ADS7843_MAX_X_PIXELS - pixel_y
+         end if 
       end block
+
       ADS7843_ROTATE_180_DEGREES:
       block -- X becomes -X and Y becomes -Y
          touch_to_pixel_x = (dword(touch_x - ADS7843_X_BOTTOM_RIGHT) * dword(ADS7843_MAX_X_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
          touch_to_pixel_y = (dword(touch_y - ADS7843_Y_BOTTOM_RIGHT) * dword(ADS7843_MAX_Y_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
+         pixel_x = word(touch_to_pixel_x)
+         pixel_y = word(touch_to_pixel_y) 
+         -- If a mirror is defined, change value.
+         if defined(ADS7843_MIRROR_X) then
+            pixel_x = ADS7843_MAX_X_PIXELS - pixel_x 
+         end if 
+         if defined(ADS7843_MIRROR_Y) then
+            pixel_y = ADS7843_MAX_Y_PIXELS - pixel_y
+         end if 
        end block
+
       ADS7843_ROTATE_270_DEGREES:
-      block -- X becomes -Y and Y becomes X
+      block -- X becomes -Y and Y becomes -X
          touch_to_pixel_x = (dword(touch_y - ADS7843_Y_BOTTOM_RIGHT) * dword(ADS7843_MAX_Y_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
          touch_to_pixel_y = (dword(ADS7843_X_TOP_LEFT - touch_x) * dword(ADS7843_MAX_X_PIXELS)) / 
                              dword(_ADS7843_X_RANGE)
+         pixel_x = word(touch_to_pixel_x)
+         pixel_y = word(touch_to_pixel_y) 
+         -- If a mirror is defined, change value.
+         if defined(ADS7843_MIRROR_X) then
+            pixel_x = ADS7843_MAX_Y_PIXELS - pixel_x 
+         end if 
+         if defined(ADS7843_MIRROR_Y) then
+            pixel_y = ADS7843_MAX_X_PIXELS - pixel_y
+         end if 
        end block
 
    end case
-
-   pixel_x = word(touch_to_pixel_x) 
-   pixel_y = word(touch_to_pixel_y) 
 
 end procedure
 -- ----------------------------- Private functions ---------------------------
