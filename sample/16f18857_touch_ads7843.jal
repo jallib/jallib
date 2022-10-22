@@ -33,8 +33,8 @@ include 16f18857
 -- pragma target LVP      ENABLED      -- use low voltage programming
 -- pragma target MCLR     EXTERNAL     -- external reset 
 
--- When using internal oscillator at 32 MHz
-pragma target clock    32_000_000       -- oscillator frequency
+-- When using internal oscillator at 16 MHz (PIC running at 3.3 Volt).
+pragma target clock    16_000_000       -- oscillator frequency
 pragma target OSC      OFF              -- internal oscillator
 pragma target RSTOSC   HFINT32          -- select 32 MHz
 pragma target CLKOUTEN DISABLED         -- no clock output
@@ -44,61 +44,78 @@ pragma target FCMEN    DISABLED         -- no clock monitoring
 pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
 pragma target LVP      ENABLED          -- low voltage programming
 pragma target MCLR     EXTERNAL         -- external reset
-OSCFRQ_HFFRQ = 0b110                    -- Fosc 32 MHz
+OSCFRQ_HFFRQ = 0b101                    -- Fosc 32 MHz
 
 enable_digital_io()
 -- Wait some time for the hardware to power up.
 _usec_delay(250_000)
 
--- Define the SPI pins and other used pins to control the ILI9341 display.
+-- Set the pinning for the hardware pins of SPI. This is default but still
+-- needed for this chip. Do not use this when using software SPI since the
+-- pins are then assigned for hardware SPI.
+include pps
+pps_control_lock(FALSE)                
+RC3PPS = PPS_SCK1 -- SPI clock 
+RC5PPS = PPS_SDA1 -- SPI data in
+RC4PPS = PPS_SDO1 -- SPI data out
+pps_control_lock(TRUE)                 
+
+-- Define the SPI pins and other used pins to control the display and
+-- initiaize the pin direction.
 alias ili9341_sck is pin_C3 -- To pin 7 of the module (SCK).
 alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
+ili9341_sck_direction = output
 alias ili9341_sdo is pin_C4 -- To pin 6 of the module (SDI).
 alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
+ili9341_sdo_direction = output
 alias ili9341_sdi is pin_C5 -- To pin 9 of the module (SDO).
 alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
+ili9341_sdi_direction = input
 -- Extra needed for SPI.
 alias ili9341_csn is pin_C2  -- To pin 3 of the module (CS). 
 alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
+ili9341_csn = HIGH -- Disable the ili9341
+ili9341_csn_direction = output
 alias ili9341_dc_rs is pin_C1  -- To pin 5 of the module (DC/RS). 
 alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
+ili9341_dc_rs_direction = output
 -- Optional hardware reset pin. If not defined, software reset will be used. 
 alias ili9341_rst is pin_C0  -- To pin 4 of the module (RESET).
 alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
+ili9341_rst_direction = output
 
--- You can select which SPI interface will be used by the ILI9341. The
--- default is SPI hardware 1. You can select one of the following:
--- const ILI9341_SPI_HW2 = TRUE
--- const ILI9341_SPI_SW  = TRUE
+-- Now include the used SPI interface.
+include spi_master_hw
+-- Set SPI mode 11. When the target clock is > 50 MHz use SPI_RATE_FOSC_16.
+spi_init(SPI_MODE_11, SPI_RATE_FOSC_4) 
+-- Define the interface alias for the ILI9341.
+alias ili9341_spi_host is spi_master_hw
 
--- If the display is mirrored, the touch screen must also be mirrored.
--- Use the following settings for mirroring (also see the display library): 
--- const ADS7843_MIRROR_X = TRUE -- Will mirror in the x-direction
--- const ADS7843_MIRROR_Y = TRUE -- Will mirror in the y-direction
+-- The default display resolution is 240 x 320 pixels If a display with a
+-- different resolution is used you can overrule these as follows (example):
+-- const word ILI9341_MAX_X_PIXELS = 128  -- Width  
+-- const word ILI9341_MAX_Y_PIXELS = 160  -- Height 
+
+-- Some displays require mirroring. When needed use these settings:
+-- const ILI9341_MIRROR_X = TRUE -- Will mirror in the x-direction
+-- const ILI9341_MIRROR_Y = TRUE -- Will mirror in the y-direction
 
 -- Now specify SPI pins aliases for the touch screen. It uses its own
 -- software SPI since it clocks data on different edges.
-alias ads7843_csn is pin_b7 -- Pin 28 (T_CS)
-alias ads7843_csn_direction is pin_b7_direction
-alias ads7843_sck is pin_b6  -- Pin 27 (T_CLK)
-alias ads7843_sck_direction is pin_b6_direction
-alias ads7843_sdi is pin_b5  -- Pin 26 (T_DO)
-alias ads7843_sdi_direction is pin_b5_direction
-alias ads7843_sdo is pin_b4  -- Pin 25 (T_DIN)
-alias ads7843_sdo_direction is pin_b4_direction
+alias ads7843_csn is pin_b5 -- Pin 28 (T_CS)
+alias ads7843_csn_direction is pin_b5_direction
+ads7843_csn = HIGH -- Disable ads7843.
+ads7843_csn_direction = output
+alias ads7843_sck is pin_b4  -- Pin 27 (T_CLK)
+alias ads7843_sck_direction is pin_b4_direction
+ads7843_sck_direction = output
+alias ads7843_sdi is pin_b3  -- Pin 26 (T_DO)
+alias ads7843_sdi_direction is pin_b3_direction
+ads7843_sdi_direction = input
+alias ads7843_sdo is pin_b2  -- Pin 25 (T_DIN)
+alias ads7843_sdo_direction is pin_b2_direction
+ads7843_sdo_direction = output
 
--- Set the pinning for the hardware pins for the ILI9341. This is also 
--- needed for the default setting. Do not use when using software SPI 
--- since the pins are then assigned for hardware SPI.
-if !defined(ILI9341_SPI_SW) then
-   include pps
-   pps_control_lock(FALSE)                
-   -- SPI 1 used by ili9341. Do not map when using ILI9341_SPI_SW.
-   RC3PPS = PPS_SCK1 -- SPI clock 
-   RC5PPS = PPS_SDA1 -- SPI data in
-   RC4PPS = PPS_SDO1 -- SPI data out
-   pps_control_lock(TRUE)                 
-end if 
 -- Some other used libraries.
 include print
 include delay

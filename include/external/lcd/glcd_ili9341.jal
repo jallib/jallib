@@ -9,22 +9,15 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Text and graphics library for the graphic display module using 
---              the ILI9341 display controller. The library supports displays
---              with a resolution of 240 x 320 pixels. The default resolution can be
---              overruled.
+--              the ILI9341 display controller, controlled via a 4-wire SPI 
+--              interface. The library supports displays with a resolution of
+--              240 x 320 pixels. The default resolution can be overruled.
 --
 -- Sources: a-Si TFT LCD Single Chip Driver 240RGBx320 Resolution and 262K color  
 --          Specification version: V1.09   
 --          Inspired by the Adafruit ILI9341 library for Arduino.     
 --
--- Notes: This library supports the control of the display via 4-wire SPI 
---        By default the SPI hardware (1) interface is used. 
---        You can select to use another SPI interface to be used by the ILI9341,
---        by defining one of the following options:
---        const ILI9341_SPI_HW2 = TRUE -- SPI hardware 2
---        const ILI9341_SPI_SW  = TRUE -- SPI Software
---
---        The default display resolution is 240 x 320 pixels If a display with a
+-- Notes: The default display resolution is 240 x 320 pixels If a display with a
 --        different resolution is used you can overrule these as follows (example):
 --        const word ILI9341_MAX_X_PIXELS = 128  -- Width  
 --        const word ILI9341_MAX_Y_PIXELS = 160  -- Height 
@@ -33,25 +26,18 @@
 --        const ILI9342_MIRROR_X = TRUE -- Will mirror in the x-direction
 --        const ILI9342_MIRROR_Y = TRUE -- Will mirror in the y-direction
 --
---        The following pins must be defined by the main program before 
---        including this library. Common pins for using SPI:
---        -) alias ili9341_sck             -- To SCK of the ILI9341
---        -) alias ili9341_sck_direction   
---        -) alias ili9341_sdo             -- To SDI (MOSI) of ILI9341 
---        -) alias ili9341_sdo_direction   
---        -) alias ili9341_sdi             -- To SDO (MISO) of ILI9341 
---        -) alias ili9341_sdi_direction   
---        -) alias ili9341_csn             -- To CS of ILI9341 
---        -) alias ili9341_csn_direction 
---        Other pins needed: 
---        -) alias ili9341_dc_rs           -- To DC/RS (DC/RS of ILI9341
---        -) alias ili9341_dc_rs_direction 
+--        The following interface aliases pins must be defined by the main 
+--        program. This library uses the SPI interface which must be 
+--        initialized with SPI_MODE_00 or SPI_MODE_11:
+--        -) alias ili9341_spi_host  -- E.g. spi_master_hw, spi_master_hw2
+--        -) alias ili9341_csn       -- CS of ILI9341 
+--        -) alias ili9341_dc_rs     -- DC/RS of ILI9341 
 --        Optional: Hardware reset pin. If not defined, software reset will 
 --        be used. Signal is active low.
---        -) alias ili9341_res             -- To RESET of ILI9341 
---        -) alias ili9341_res_direction   
+--        -) alias ili9341_res       -- RESET of ILI9341 
 --        If not defined the RES pin of the module must be connected to another
 --        reset circuit. It is active low.
+--        The user must set the direction of these pins.
 -- 
 --        About the pixel colors:
 --        The 4-line SPI interface uses 16 bits/pixel for RGB, the format
@@ -376,38 +362,6 @@ procedure _ili9341_set_address_window(word in x, word in y, word in width,
 
 -- ------------------------------- Final implemenation -------------------------
 
--- Define required settings for the SPI interface, depending on the
--- selection done by the main program.
-
-if defined(ILI9341_SPI_HW2) then
-   -- SPI hardware 2.
-   include spi_master_hw2
-   alias _ili9341_spi_master is spi_master_hw2
-   alias _ili9341_spi_init   is spi2_init
-elsif defined(ILI9341_SPI_SW) then
-   -- Aliases for pins.
-   alias spi_master_sw_sdi is ili9341_sdi
-   alias spi_master_sw_sdo is ili9341_sdo
-   alias spi_master_sw_sck is ili9341_sck
-   alias spi_master_sw_sdi_direction is ili9341_sdi_direction
-   alias spi_master_sw_sdo_direction is ili9341_sdo_direction
-   alias spi_master_sw_sck_direction is ili9341_sck_direction
-   include spi_master_sw
-
-   -- Aliases for functions and procedures.
-   alias _ili9341_spi_master is spi_master_sw
-
-   procedure _ili9341_spi_init(byte in spi_mode, byte in spi_rate) is
-      -- Software does not have a spi_rate.
-      spi_master_sw_init(spi_mode)   
-   end procedure
-else
-   -- SPI Hardware. This is the default.
-   include spi_master_hw
-   alias _ili9341_spi_master is spi_master_hw
-   alias _ili9341_spi_init   is spi_init
-end if
-
 -- -----------------------------------------------------------------------------
 -- Initialize the control pins, the SPI interface and the initialize the 
 -- ILI9341 module. When the reset hardware pin is defined then the module will 
@@ -418,26 +372,13 @@ procedure ili9341_init() is
    var word index
    var byte nr_of_data_bytes
 
-   -- Initialize SPI pins.
-   ili9341_sck_direction = output
-   ili9341_sdi_direction = input
-   ili9341_sdo_direction = output
-   ili9341_csn_direction = output
-   ili9341_dc_rs_direction = output
+   -- Initialize interface pins.
    ili9341_csn = HIGH
    ili9341_dc_rs = _ILI9341_COMMAND_TRANSMISSION
 
-   -- The display will not work at 64 MHz, works at 48 MHz.
-   if (target_clock > 50_000_000) then
-      _ili9341_spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
-   else
-      _ili9341_spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
-   end if
-
-   -- Reset the device if a hardware reset pin is present. There is quite
+  -- Reset the device if a hardware reset pin is present. There is quite
    -- some wait time needed after the reset is released.
    if defined(ili9341_rst) then
-      ili9341_rst_direction = OUTPUT
       ili9341_rst = HIGH
       _usec_delay(100) -- Give it some time to be inactive.
       ili9341_rst = LOW
@@ -513,8 +454,8 @@ procedure ili9341_fill_screen(word in color) is
    _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
    -- Two bytes (one word) needed for one pixel.
     for total_pixels loop
-       _ili9341_spi_master = color_high
-       _ili9341_spi_master = color_low
+       ili9341_spi_host = color_high
+       ili9341_spi_host = color_low
    end loop
    _ili9341_stop_transmission()
 
@@ -581,8 +522,8 @@ procedure ili9341_draw_image(word in image[],
    _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
    for image_size using index loop
       data = image[index]
-      _ili9341_spi_master = data_high
-      _ili9341_spi_master = data_low
+      ili9341_spi_host = data_high
+      ili9341_spi_host = data_low
    end loop
    _ili9341_stop_transmission()
  end procedure
@@ -736,12 +677,12 @@ procedure ili9341_set_vertical_scroll_area(word in top, word in bottom) is
       _ili9341_write_command(_ILI9341_VSCRDEF)  
       -- ILI9341 is ready for accepting data. 
       _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
-      _ili9341_spi_master = top_high
-      _ili9341_spi_master = top_low
-      _ili9341_spi_master = middle_high
-      _ili9341_spi_master = middle_low
-      _ili9341_spi_master = bottom_high
-      _ili9341_spi_master = bottom_low
+      ili9341_spi_host = top_high
+      ili9341_spi_host = top_low
+      ili9341_spi_host = middle_high
+      ili9341_spi_host = middle_low
+      ili9341_spi_host = bottom_high
+      ili9341_spi_host = bottom_low
       _ili9341_stop_transmission()
    end if 
    
@@ -788,8 +729,8 @@ procedure _ili9341_write_word(word in data) is
    var byte data_low  at data
    var byte data_high at data+1
 
-   _ili9341_spi_master = data_high
-   _ili9341_spi_master = data_low
+   ili9341_spi_host = data_high
+   ili9341_spi_host = data_low
 
 end procedure
 
@@ -803,8 +744,8 @@ function _ili9341_read_word() return word is
    var byte data_low  at return_value
    var byte data_high at return_value + 1
 
-   data_high = _ili9341_spi_master
-   data_low  = _ili9341_spi_master
+   data_high = ili9341_spi_host
+   data_low  = ili9341_spi_host
 
    return return_value
 
@@ -817,7 +758,7 @@ end function
 procedure _ili9341_write_data_byte(byte in data) is
 
    _ili9341_start_transmission(_ILI9341_DATA_TRANSMISSION)
-   _ili9341_spi_master = data
+   ili9341_spi_host = data
    _ili9341_stop_transmission()
 
 end procedure
@@ -840,7 +781,7 @@ end procedure
 procedure _ili9341_write_command(byte in command) is
 
    _ili9341_start_transmission(_ILI9341_COMMAND_TRANSMISSION)
-   _ili9341_spi_master = command
+   ili9341_spi_host = command
    _ili9341_stop_transmission()
 
 end procedure

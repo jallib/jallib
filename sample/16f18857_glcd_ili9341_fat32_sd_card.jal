@@ -38,8 +38,8 @@ include 16f18857
 -- pragma target LVP      ENABLED      -- use low voltage programming
 -- pragma target MCLR     EXTERNAL     -- external reset 
 
--- When using internal oscillator at 32 MHz
-pragma target clock    32_000_000       -- oscillator frequency
+-- When using internal oscillator at 16 MHz (PIC running at 3.3 Volt).
+pragma target clock    16_000_000       -- oscillator frequency
 pragma target OSC      OFF              -- internal oscillator
 pragma target RSTOSC   HFINT32          -- select 32 MHz
 pragma target CLKOUTEN DISABLED         -- no clock output
@@ -49,41 +49,12 @@ pragma target FCMEN    DISABLED         -- no clock monitoring
 pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
 pragma target LVP      ENABLED          -- low voltage programming
 pragma target MCLR     EXTERNAL         -- external reset
-OSCFRQ_HFFRQ = 0b110                    -- Fosc 32 MHz
+OSCFRQ_HFFRQ = 0b101                    -- Fosc 16 MHz
 
 
 enable_digital_io()
 -- Wait some time for the hardware to power up.
 _usec_delay(100_000)
-
--- Define the SPI pins and other used pins to control the ILI9341 display
-alias ili9341_sck is pin_C3 -- This is pin DO on the module (SCK of PIC).
-alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
-alias ili9341_sdo is pin_C4 -- This is pin D1 on the module (SDA of PIC).
-alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
-alias ili9341_sdi is pin_C5 -- This is pin D1 on the module (SDA of PIC).
-alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
--- Extra needed for SPI.
-alias ili9341_csn is pin_C2  -- This is pin CS on the module. 
-alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
-alias ili9341_dc_rs is pin_C1  -- This is pin DC on the module. 
-alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
-alias ili9341_rst is pin_C0  -- This is pin RES on the module.
-alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
-
--- You can select which SPI interface will be used by the ILI9341. The
--- default is SPI hardware 1. You can select one of the following:
--- const ILI9341_SPI_HW2 = TRUE
--- const ILI9341_SPI_SW  = TRUE
-
--- The default display resolution is 240 x 320 pixels If a display with a
--- different resolution is used you can overrule these as follows (example):
--- const word ILI9341_MAX_X_PIXELS = 128  -- Width  
--- const word ILI9341_MAX_Y_PIXELS = 160  -- Height 
-
--- Some displays require mirroring. When needed use these settings:
--- const ILI9341_MIRROR_X = TRUE -- Will mirror in the x-direction
--- const ILI9341_MIRROR_Y = TRUE -- Will mirror in the y-direction
 
 -- -----------------------------------------------------------------
 -- Configure Remappable Pins on MSSP2 to match SPI/SD-Card wiring,
@@ -93,34 +64,65 @@ alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP.
 -- -----------------------------------------------------------------
 include pps
 pps_control_lock(FALSE)
-if !defined(ILI9341_SPI_SW) then
-  -- SPI 1 used by ili9341. Do not map when using ILI9341_SPI_SW.
-  RC3PPS = PPS_SCK1 -- SPI clock 
-  RC5PPS = PPS_SDA1 -- SPI data in
-  RC4PPS = PPS_SDO1 -- SPI data out
-end if
--- SPI 2 used by sd card.
-RB1PPS = PPS_SCK2 -- SPI clock
-RB2PPS = PPS_SDA2 -- SPI data in
-RB3PPS = PPS_SDO2 -- SPI data out 
+-- SPI 1 used by ili9341 and SD card.
+RC3PPS = PPS_SCK1 -- SPI clock 
+RC4PPS = PPS_SDO1 -- SPI data out
+RC5PPS = PPS_SDA1 -- SPI data in
 -- Serial pins.
 RC6PPS = PPS_TX   -- TX1 re-assigned to C6  (default)             
 RXPPS  = PPS_RC7  -- C7 re-assigned to RX1  (default)            
 pps_control_lock(TRUE)  
 
--- Include and initialize the GLCD lib.
-include glcd_ili9341
-ili9341_init()
-glcd_clear_screen()
+-- Define the SPI pins and other used pins to control the display and
+-- initiaize the pin direction.
+alias ili9341_sck is pin_C3   -- PIC SCK to pin 7 of the module (SCK).
+alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
+ili9341_sck_direction = output
+alias ili9341_sdo is pin_C4   -- PIC SDO to pin 6 of the module (SDI - MOSI).
+alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
+ili9341_sdo_direction = output
+alias ili9341_sdi is pin_C5   -- PIC SDI to pin 9 of the module (SDO - MISO).
+alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
+ili9341_sdi_direction = input
+-- Extra needed for SPI.
+alias ili9341_csn is pin_C2   -- PIC CS to pin 3 of the module (CS). 
+alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP.
+ili9341_csn = HIGH -- Disable the ili9341
+ili9341_csn_direction = output
+alias ili9341_dc_rs is pin_C1 -- PIC DC/RS to pin 5 of the module (DC/RS). 
+alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
+ili9341_dc_rs_direction = output
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+alias ili9341_rst is pin_C0   -- PIC RES to pin 4 of the module (RESET).
+alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
+ili9341_rst_direction = output
 
-include delay
+-- Setup the sd card pins.
+alias sd_chip_select is pin_b1
+alias sd_chip_select_direction is pin_b1_direction -- Pin 22 of 28 pin DIP.
+sd_chip_select = high
+sd_chip_select_direction = output
+alias pin_sck is pin_c3 -- PIC SCK to SD_SCK
+alias pin_sdo is pin_c4 -- PIC SDO to SD_MOSI
+alias pin_sdi is pin_c5 -- PIC SDI to SD_MISO
+
+-- Setup SPI library.
+include spi_master_hw
+-- init spi, choose mode and speed
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_16) 
+-- Interface aliases for sd card.
+alias spi_master is spi_master_hw
+alias spi_master_exchange is spi_master_hw_exchange
+alias spi_master_set_mode is spi_master_hw_set_mode
+alias spi_master_set_speed is spi_master_hw_set_speed
+-- Interface alias for the ILI9341.
+alias ili9341_spi_host is spi_master_hw
 
 -- -----------------------------------------------------------------
 -- Most of the rest of this program comes from the fat32_sd_card 
 -- sample program of Matthew Schinkel with some modifications for
 -- this PIC and leaving out parts that are not needed. 
 -- -----------------------------------------------------------------
-
 -- Setup uart for communication
 alias pin_RX_direction is pin_C7_direction -- Pin 18
 alias pin_TX_direction is pin_C6_direction -- Pin 17
@@ -137,43 +139,20 @@ alias serial_data_available is serial_hw_data_available
 const PRINT_MAX_VAR_SIZE = 6
 include print
 include format
+include delay
 
--- Now specify SPI pins aliases for the SD card
-alias pin_ss2 is pin_b0         -- Pin 21 (SD_CS)
-alias pin_ss2_direction is pin_b0_direction
-alias pin_sck is pin_b1 -- Pin 22 (SD_SCK)
-alias pin_sck2_direction is pin_b1_direction
-alias pin_sdi is pin_b2 -- Pin 23 (SD_MISO)
-alias pin_sdi2_direction is pin_b2_direction
-alias pin_sdo is pin_b3 -- Pin 24 (SD_MOSI)
-alias pin_sdo2_direction is pin_b3_direction
-
--- Setup SPI library 2
-include spi_master_hw2         -- includes the spi library
--- define spi inputs/outputs
-pin_sdi2_direction = input    -- spi input
-pin_sdo2_direction = output   -- spi output
-pin_sck2_direction = output   -- spi clock
-
-spi2_init(SPI_MODE_11,SPI_RATE_FOSC_16) -- init spi, choose mode and speed
-alias spi_master is spi_master_hw2
-alias spi_master_exchange is spi_master_hw2_exchange
-alias spi_master_set_mode is spi_master_hw2_set_mode
-alias spi_master_set_speed is spi_master_hw2_set_speed
+-- Include and initialize the GLCD lib. Clear the screen.
+include glcd_ili9341
+ili9341_init()
+glcd_clear_screen()
 
 -- Show that we are starting up. 
 print_string(serial_data,"Jallib Sample Started...")
 print_crlf(serial_data)
 
--- Setup the sd card pins.
-alias sd_chip_select is pin_SS2
-alias sd_chip_select_direction is pin_SS2_direction
-sd_chip_select = high
-sd_chip_select_direction = output
-
 -- Setup the sd card library.
 alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
-const bit SD_ALWAYS_SET_SPI_MODE = TRUE
+const bit SD_DELAY_AFTER_WRITE = TRUE ;Try this if you are having troulbe with your card.
 include sd_card              -- include the sd card ide hard disk library
 sd_init()                    -- initialize startup settings
 
@@ -267,6 +246,9 @@ forever loop
    if defined(serial_data_available) then
       while !serial_data_available loop
       end loop
+      -- Indicate that there is any activity.
+      print_string(serial_data, "Opening file ...\r\n")
+      ili9341_fill_screen(ILI9341_GREEN)
    end if
    -- Read character. We get ASCII from the keyboard so make it binary.
    file_number2 = serial_data - "0"
