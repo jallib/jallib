@@ -33,38 +33,44 @@ enable_digital_io()                     -- make all pins digital I/O
 -- Wait some time for the hardware to power up.
 _usec_delay(100_000)
 
--- Define the SPI pins and other used pins to control the display
-alias ili9341_sck is pin_C3 -- To pin 7 of the module (SCK).
-alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
-alias ili9341_sdo is pin_C4 -- To pin 6 of the module (SDI).
-alias ili9341_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
-alias ili9341_sdi is pin_C5 -- To pin 9 of the module (SDO).
-alias ili9341_sdi_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
--- Extra needed for SPI.
-alias ili9341_csn is pin_C2  -- To pin 3 of the module (CS). 
-alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
-alias ili9341_dc_rs is pin_C1  -- To pin 5 of the module (DC/RS). 
-alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
--- Optional hardware reset pin. If not defined, software reset will be used. 
-alias ili9341_rst is pin_C0  -- To pin 4 of the module (RESET).
-alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
-
--- You can select which SPI interface will be used by the ILI9341. The
--- default is SPI hardware 1. You can select one of the following:
--- const ILI9341_SPI_HW2 = TRUE
--- const ILI9341_SPI_SW  = TRUE
-
--- Map the pinning for the hardware pins for SPI. This is default but still
--- needed. 
 include pps
-pps_control_lock(FALSE)                
--- SPI 1 used by ili9341. Do not map when using ILI9341_SPI_SW.
-if !defined(ILI9341_SPI_SW) then
-   RC3PPS = PPS_SCK1 -- SPI clock 
-   RC5PPS = PPS_SDA1 -- SPI data in
-   RC4PPS = PPS_SDO1 -- SPI data out
-end if 
-pps_control_lock(TRUE)                 
+pps_control_lock(FALSE)
+-- SPI 1 used by ili9341 and SD card.
+RC3PPS = PPS_SCK1 -- SPI clock 
+RC4PPS = PPS_SDA1 -- SPI data in
+RC5PPS = PPS_SDO1 -- SPI data out
+pps_control_lock(TRUE)  
+
+-- Define the SPI pins and other used pins to control the display and
+-- initiaize the pin direction.
+alias ili9341_sck is pin_C3   -- PIC SCK to pin 7 of the module (SCK).
+alias ili9341_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP.
+ili9341_sck_direction = output
+alias ili9341_sdi is pin_C4   -- PIC SDI to pin 9 of the module (SDO - MISO).
+alias ili9341_sdi_direction is pin_C4_direction -- Pin 15 of 28 pin DIP. 
+ili9341_sdi_direction = input
+alias ili9341_sdo is pin_C5   -- PIC SDO to pin 6 of the module (SDI - MOSI).
+alias ili9341_sdo_direction is pin_C5_direction -- Pin 16 of 28 pin DIP. 
+ili9341_sdo_direction = output
+-- Extra needed for SPI.
+alias ili9341_csn is pin_C2   -- PIC CS to pin 3 of the module (CS). 
+alias ili9341_csn_direction is pin_C2_direction  -- Pin 13 of 28 pin DIP. 
+ili9341_csn = high
+ili9341_csn_direction = output
+alias ili9341_dc_rs is pin_C1 -- PIC DC/RS to pin 5 of the module (DC/RS). 
+alias ili9341_dc_rs_direction is pin_C1_direction -- Pin 12 of 28 pin DIP. 
+ili9341_dc_rs_direction = output
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+alias ili9341_rst is pin_C0   -- PIC RES to pin 4 of the module (RESET).
+alias ili9341_rst_direction is pin_C0_direction  -- Pin 11 of 28 pin DIP. 
+ili9341_rst_direction = output
+
+-- Setup SPI library.
+include spi_master_hw
+-- init spi, choose mode and speed. SD card uses mode 11.
+spi_init(SPI_MODE_00,SPI_RATE_FOSC_4) 
+-- Interface alias for the ILI9341.
+alias ili9341_spi_host is spi_master_hw
 
 include print
 include delay
