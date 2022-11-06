@@ -4,7 +4,7 @@ Title: Collect .PIC files of JALV2 supported PICs
 
 Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2020, all rights reserved.
+Adapted-by: Rob Jansen, Copyright (c) 2018..2022, all rights reserved.
 
 Revision: $Revision$
 
@@ -44,9 +44,7 @@ if (platform_name == "Linux"):
    xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Windows"):
    # When using the Windows MPLABX installation from the original location use this:
-   # xml_pfx = os.path.join("C:\\", "Program Files", "microchip", "mplabx", "v" + mplabxversion)
-   # Currently using a local copy from another Windows location as given below:
-   xml_pfx = os.path.join("D:\\", "picscripts", "mplabx", "v" + mplabxversion)
+   xml_pfx = os.path.join("C:\\", "Program Files", "microchip", "mplabx", "v" + mplabxversion)
 elif (platform_name == "Darwin"):
    xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
 else:
@@ -104,6 +102,9 @@ if (__name__ == "__main__"):
          if (f not in unsup):                   # when supported by JalV2 
             with open(f, "r") as fp:
                ln = fp.readline()                # first line
+               # The 'edc:arch' can be on the first or on the second line of the XML file.
+               if not "edc:arch=" in ln:
+                  ln = fp.readline()  # Get second line
                arch_offset = ln.index("edc:arch=")    # search core
                if (arch_offset > 0):             
                   arch = ln[arch_offset + 10 : arch_offset + 13].lower()  # leading 3 chars

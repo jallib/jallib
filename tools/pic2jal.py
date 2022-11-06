@@ -62,7 +62,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.3"     # script version
+scriptversion = "1.5.4"     # script version
 compilerversion = "2.5r6"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -160,8 +160,9 @@ fusedef_kwd = {"ABW": "ABW",
                "CRCSEEDT": "CRCSEEDT",            # PIC18F27/47/57Q84
                "CRCSEEDU": "CRCSEEDU",            # PIC18F27/47/57Q84
                "CSWEN": "CSWEN",
+               "DACAUTOEN" : "DACAUTOEN",         # PIC16F17114/15/24/25/44/45
                "DATABW": "DBW",
-               "DATASCEN": "DATASCEN",           # PIC18F27/47/57Q84
+               "DATASCEN": "DATASCEN",            # PIC18F27/47/57Q84
                "DEBUG": "DEBUG",
                "DSBITEN": "DSBITEN",
                "DSBOREN": "BROWNOUT",
@@ -248,6 +249,7 @@ fusedef_kwd = {"ABW": "ABW",
                "RTCSOSC": "RTCOSC",
                "SAFEN": "SAFEN",
                "SAFSCEN": "SAFSCEN",             # PIC18F27/47/57Q84
+               "SAFSZ": "SAFSZ",                 # PIC18F26/46/56Q71
                "SCANE": "SCANE",
                "SDOMX": "SDOMUX",
                "SOSCSEL": "SOSCSEL",
@@ -588,11 +590,6 @@ def list_devicefile_header(fp, picfile):
                  cfgvar["instructionset_name"] + "\n")
     fp.write("pragma  target  chip     " + picname.upper() + "\n" +
              "pragma  target  bank     0x%04X\n" % cfgvar["banksize"])
-    # Pragma for number of banks is only needed for the compiler when more than 32 banks for PIC with core 14H.
-    # RJ: Removed due to adding instruction set
-    # if (cfgvar["core"] == '14H') & (cfgvar["numbanks"] > 32):
-    #    fp.write("pragma  target  numbanks   %d\n" % cfgvar["numbanks"])
-
     if cfgvar["pagesize"] > 0:
         fp.write("pragma  target  page     0x%04X\n" % cfgvar["pagesize"])
     fp.write("pragma  stack            %d\n" % cfgvar["hwstack"])
@@ -1224,7 +1221,8 @@ def list_muxed_sfr(fp, selectsfr):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                 else:
                     print("Unexpected multiplexed SFR", sfr, "for core", core)
-            elif (core == "16"):
+             # RJ 2022-10-05: MPLABX 6.05. New PICS with core 14H now have multiplexed registers too.
+            elif (core == "14H") | (core == "16"):
                 if sfrname.startswith("PMDOUT"):
                     list_variable(fp, sfrname, 1, sfraddr)  # master/slave: automatic
                 elif (sfrname in ("SSP1MSK", "SSP2MSK")):
@@ -3342,7 +3340,8 @@ def normalize_fusedef_value(key, val, desc):
 
     if kwdvalue == "":  # empty keyword
         print("   No keyword found for fuse_def", key, "<" + desc + ">")
-    elif len(kwdvalue) > 22:
+	# RJ MPLABX6.05 kwdvalue changed from 22 to 80 because of long description.
+    elif len(kwdvalue) > 80:
         print("   fuse_def", key, "keyword excessively long: <" + kwdvalue + ">")
     elif kwdvalue == "   ":  # to be skipped
         kwdvalue = ""
@@ -3483,7 +3482,6 @@ def collect_config_info(root, picname):
         cfgvar["numbanks"] = eval(memtraits[0].getAttribute("edc:bankcount"))
     cfgvar["hwstack"] = eval(memtraits[0].getAttribute("edc:hwstackdepth"))
 
-    #RJ: New. Instruction set
     instrsetnodes = root.getElementsByTagName("edc:InstructionSet")
     instrsetname = "-"
     for node in instrsetnodes:
