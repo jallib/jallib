@@ -1,0 +1,103 @@
+-- Title: SPI host
+-- Author: William Welch Copyright (c) 2009, all rights reserved.
+-- Adapted-by: Sebastien Lelong
+-- Sponsored by: Fiwihex www.fiwihex.com
+-- Compiler: 2.4l
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: SPI host hardware control.
+-- Routines for sending and receiving through the SPI in host mode
+--
+-- Sources: good overview of SPI at http://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
+-- also at: http://elm-chan.org/docs/spi_e.html
+--
+
+include spi_common
+
+-- SPI is full-duplex, so we exchange host and slave data byte
+function spi_host_hw_exchange(byte in m_data) return byte is
+
+   SSPBUF = m_data
+
+   if ( SSPCON1_WCOL != 0 ) then
+      -- FIXME how to report error???
+      return 0xFF
+   end if
+
+   while ( SSPSTAT_BF == 0 ) loop end loop
+
+   -- return slave data
+   return SSPBUF
+end function
+
+-- half-duplex convenience function. send data to slave, discard reply
+procedure spi_host_hw'put(byte in data) is
+   var byte dummy
+   dummy = spi_host_hw_exchange(data)
+end procedure
+
+-- half-duplex convenience function. send 0xFF, get slave data
+function spi_host_hw'get() return byte is
+   var byte data
+   data = spi_host_hw_exchange(0xFF)
+   return data
+end function
+
+procedure spi_host_hw_set_mode_00() is
+   pragma inline
+   SSPCON1_CKP = 0
+   SSPSTAT_CKE = 1
+end procedure
+
+procedure spi_host_hw_set_mode_01() is
+   pragma inline
+   SSPCON1_CKP = 0
+   SSPSTAT_CKE = 0
+end procedure
+
+procedure spi_host_hw_set_mode_10() is
+   pragma inline
+   SSPCON1_CKP = 1
+   SSPSTAT_CKE = 1
+end procedure
+
+procedure spi_host_hw_set_mode_11() is
+   pragma inline
+   SSPCON1_CKP = 1
+   SSPSTAT_CKE = 0
+end procedure
+
+-- Specify SPI mode (see spi_common for predefined constant you can use
+-- as parameters)
+procedure spi_host_hw_set_mode(byte in spi_mode) is
+   pragma inline
+   if spi_mode == SPI_MODE_00 then
+      spi_host_hw_set_mode_00()
+   elsif spi_mode == SPI_MODE_01 then
+      spi_host_hw_set_mode_01()
+   elsif spi_mode == SPI_MODE_10 then
+      spi_host_hw_set_mode_10()
+   else
+      spi_host_hw_set_mode_11()
+   end if
+end procedure
+
+procedure spi_host_hw_set_speed(byte in spi_rate) is
+   pragma inline
+   SSPCON1_SSPM = spi_rate
+end procedure
+
+-- Initialize the SPI registers.
+-- Note: check your datasheet -- TRIS settings, any SPI errata?
+procedure spi_init(byte in spi_mode, byte in spi_rate) is
+   SSPCON1 = 0
+   SSPSTAT_SMP = 0
+
+   spi_host_hw_set_mode(spi_mode)
+   spi_host_hw_set_speed(spi_rate)
+
+   SSPCON1_SSPEN = 1
+end procedure
+
