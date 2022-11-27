@@ -1,0 +1,90 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample data EEPROM write and read for the Microchip PIC16F19176.
+-- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r6
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample data EEPROM write and read for the Microchip PIC16F19176. 
+--              During EEPROM writing and reading the LED is blinking. After 
+--              verifying all 256 EEPROM addresses successfully the LED should 
+--              stay on. If the data read if not the same as the data written 
+--              the LED will be off.            
+--  
+-- Sources:
+-- 
+-- Notes: This PIC uses an offset address of 0xF000 for EEPROM address 0 which
+--        is defined by EEPROM_ADDRESS_OFFSET.  
+--                          
+
+-- chip setup
+include 16f19176
+
+-- We use the internal oscillator at 32 MHz.
+pragma target clock     32_000_000       -- oscillator frequency
+pragma target OSC      OFF               -- internal oscillator
+pragma target RSTOSC   HFINT32           -- select 32 MHz
+pragma target CLKOUTEN DISABLED          -- no clock output
+pragma target WDT      DISABLED          -- watchdog
+pragma target BROWNOUT DISABLED          -- no brownout reset
+pragma target FCMEN    DISABLED          -- no clock monitoring
+pragma target CSWEN    ENABLED           -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED           -- low voltage programming
+pragma target MCLR     EXTERNAL          -- external reset
+OSCFRQ_HFFRQ = 0b110                     -- Fosc 32 -> 32 MHz
+
+-- Set some initial EEPROM data. 
+pragma eedata 129,130,131,132            -- initial contents
+
+enable_digital_io()                      -- disable analog modules
+
+-- Declare the offset address for the EEPROM before including the library.
+const word EEPROM_ADDRESS_OFFSET = 0xF000
+include pic_data_eeprom
+
+-- LED IO definition
+alias led             is pin_a0
+alias led_direction   is pin_a0_direction
+led_direction = output
+
+var byte i,j                          
+var bit led_value = ON
+var bit all_ok = TRUE
+
+led = OFF
+i = 0
+
+forever loop
+    _usec_delay(100_000)           -- wait a little
+
+   -- As long as the led blinks all written data equals the data is read back.
+   -- In case of a difference in data the led will be turned off. After a 
+   -- succesfull write and read cycle of 256 bytes the LED stays on.
+   -- As long as the led blinks all written data equals the data is read back.
+   -- In case of a difference in data the led will be turned off. After a 
+   -- succesfull write and read cycle of 256 bytes the LED stays on.
+   if all_ok then
+      led_value = !led_value      -- toggle the led
+      data_eeprom_write(i,i)      -- write value
+      j = data_eeprom(i)          -- read back
+      if (j != i) then
+         all_ok = FALSE
+         led_value = OFF
+      end if 
+   end if
+   i = i + 1
+
+   led = led_value
+
+   while (i == 0) loop                    -- The end, led should be on if all OK.     
+      if all_ok then
+         led = ON
+      else
+         led = OFF
+      end if
+   end loop          
+ 
+end loop
+
