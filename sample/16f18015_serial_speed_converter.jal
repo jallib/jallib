@@ -1,0 +1,78 @@
+-- ------------------------------------------------------
+-- Title: Serial speed converter with Microchip pic16f18015
+--
+-- Author: Rob Hamerling, Copyright (c) 2008..2022 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler:2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:
+--    Serial speed converter for Microchip pic16f18015
+--    using the internal oscillator.
+--
+-- Sources:
+--
+-- ------------------------------------------------------
+--
+include 16f18015                            -- target PICmicro
+--
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000           -- oscillator frequency
+--
+pragma target OSC      OFF                  -- internal oscillator
+pragma target RSTOSC   HFINTOSC_32MHZ       -- select 32 MHz
+pragma target CLKOUTEN DISABLED             -- no clock output
+pragma target WDT      DISABLED             -- watchdog
+pragma target BROWNOUT DISABLED             -- no brownout reset
+pragma target LVP      ENABLED              -- low voltage programming
+pragma target MCLR     EXTERNAL             -- external reset
+--
+enable_digital_io()                         -- make all pins digital I/O
+--
+-- ----- setup pin assignments (PPS) for both USARTs -----
+include PPS                                 -- PPS library
+pps_control_lock(FALSE)                     -- unlock PPS module
+RA0PPS   = PPS_TX1                          -- serial TX1 (output)
+RX1PPS   = PPS_RA1                          -- serial RX1 (input)
+RA4PPS   = PPS_TX2                          -- serial TX2 (output)
+RX2PPS   = PPS_RA5                          -- serial RX2 (input)
+pps_control_lock(TRUE)                      -- lock PPS module
+
+-- serial interface usart1
+const SERIAL_HW_BAUDRATE = 115200           -- host interface
+const bit serial_overflow_discard = FALSE   -- do not discard overflow data
+alias pin_TX_direction is pin_A0_direction
+alias pin_RX_direction is pin_A1_direction
+alias serial_ctsinv    is pin_A2           -- incoming data flow control
+pin_A2_direction = OUTPUT
+include serial_hw_int_cts                   -- USART1 library
+serial_hw_init()
+
+-- serial interface usart2
+const SERIAL_HW2_BAUDRATE = 31250           -- MIDI interface
+const bit serial2_overflow_discard = FALSE  -- do not discard overflow data
+alias pin_TX2_direction is pin_A4_direction
+alias pin_RX2_direction is pin_A5_direction
+include serial_hw2_int_cts                  -- USART2 library
+serial_hw2_init()
+
+var byte char                               -- received char
+
+forever loop
+
+   -- input on usart1: pass to usart2
+   if (serial_hw_read(char))  then
+      serial_hw2_write(char)
+   end if
+
+   -- input on usart2: pass to usart1
+   if (serial_hw2_read(char))  then
+      serial_hw_write(char)
+   end if
+
+end loop
+--
