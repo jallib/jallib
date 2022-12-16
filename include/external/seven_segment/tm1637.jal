@@ -1,11 +1,9 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for the TM1637 LED drive control special circuit.
---
--- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
---
+-- Author: Rob Jansen, Copyright (c) 2020..2022, all rights reserved.
 -- Adapted-by:
 --
--- Compiler: 2.5r4
+-- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -32,6 +30,7 @@
 --          This can be set by defining an array TM1637_DISPLAY_ORDER where
 --          the rightmost display has number 0 and the leftmost display has
 --          number TM1637_WIDTH - 1.
+--
 --
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
@@ -171,8 +170,9 @@ procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
 function tm1637_digit_to_segment(byte in value) return byte
 
 -- Send the data stored in the global array tm1637_display_data to the displays.
--- The order in which the data from the global array is written is defined by
--- TM1637_DISPLAY_ORDER.
+-- The order in which the data from tm1637_display_data is written is defined by
+-- TM1637_DISPLAY_ORDER. This function only needs to be called by the user when 
+-- the user writes data directly into the global display data buffer. 
 procedure tm1637_display_update()
 
 -- Set the segments for the given display with the given segment data.
@@ -342,8 +342,8 @@ end procedure
 -- be in range 0 (most right) to TM1637_WIDTH - 4 (most left)                           
 procedure tm1637_display_word_hex(word in value, byte in display_number) is
 
-    tm1637_display_byte_hex(value & 0x00FF, display_number)
-    tm1637_display_byte_hex(value >> 8, display_number + 2)
+    tm1637_display_byte_hex(byte(value & 0x00FF), display_number)
+    tm1637_display_byte_hex(byte(value >> 8), display_number + 2)
     
 end procedure
 
@@ -426,7 +426,7 @@ procedure tm1637_display_sdword_dec(sdword in number, byte in display_offset,
    var byte minus_position
                                     
    if (number >= 0) then
-      tm1637_display_dword_dec(number, display_offset, leading_zeros)
+      tm1637_display_dword_dec(dword(number), display_offset, leading_zeros)
    else
       pos_number = dword(-number)
       calc_number = pos_number
@@ -453,8 +453,9 @@ end function
 
 
 -- Send the data stored in the global array tm1637_display_data to the displays.
--- The order in which the data from the global array is written is defined by
--- TM1637_DISPLAY_ORDER.
+-- The order in which the data from tm1637_display_data is written is defined by
+-- TM1637_DISPLAY_ORDER. This function only needs to be called by the user when 
+-- the user writes data directly into the global display data buffer. 
 procedure tm1637_display_update() is
 
    var byte counter, order
@@ -549,7 +550,7 @@ end function
 -- Lower the clock to the TM1673. 
 procedure _tm1673_clock_delay() is
 
-   _usec_delay(3)
+   _usec_delay(4) -- Max clock speed is 250 kHz.
 
 end procedure
 

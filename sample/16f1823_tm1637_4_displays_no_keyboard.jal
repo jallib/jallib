@@ -1,21 +1,16 @@
 -- -----------------------------------------------------------------------------
--- Title: Sample program for the TM1637 with six 7-segment displays.
---
--- Author: Rob Jansen, Copyright (c) 2020..2020 all rights reserved.
---
+-- Title: Test program for the TM1637 with four 7-segment displays.
+-- Author: Rob Jansen, Copyright (c) 2020..2022 all rights reserved.
 -- Adapted-by:
---
--- Compiler: 2.5r4
+-- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Shows all features of the TM1637 library for the display 
---              display functionality as well as the keyboard functionality.
---              The default number of displays is 6 which can be overruled by 
---              defining the constant TM1637_WIDTH with a value of 1 .. 6.
+-- Description: Shows the features of the TM1637 library for the display module.
+--              No keyboard functionality is available. Test is for 4 displays.
 --                 
--- Sources:
+-- Sources: Data sheet TM1637 from Titan Micro Electronics, V2.4.
 --
 -- Notes:   The following pins must be defined by the main program before 
 --          including the library:
@@ -33,10 +28,8 @@
 --          the rightmost display has number 0 and the leftmost display has
 --          number TM1637_WIDTH - 1.
 --
+--
 include 16f1823                 
-
-pragma warn all no              
-pragma opt variable_reduce yes   
 
 -- This program uses the internal oscillator at 32 MHz.
 pragma target clock    32_000_000      -- oscillator frequency
@@ -67,9 +60,9 @@ alias tm1637_dio is pin_C1 -- Pin 9 for 14 pin DIP.
 alias tm1637_dio_direction is pin_C1_direction   
 
 -- You can change the display width (default is 6 when not defined).
-; const byte TM1637_WIDTH = 4
+const byte TM1637_WIDTH = 4
 -- Set the display order, rightmost is 0, leftmost is TM1637_WIDTH - 1.
-; const byte TM1637_DISPLAY_ORDER[TM1637_WIDTH] = {0,1,2,3} 
+const byte TM1637_DISPLAY_ORDER[TM1637_WIDTH] = {3,2,1,0} 
 
 include tm1637
 tm1637_init() 
@@ -77,12 +70,10 @@ tm1637_init()
 --- Display 'hELLo ' on the display.
 const byte DISPLAY_HELLO[TM1637_WIDTH] = 
              {
-             0b1000_0000, -- decimal point
-             0b0101_1100, -- o
-             0b0011_1000, -- L
-             0b0011_1000, -- L
-             0b0111_1001, -- E
-             0b0111_0100  -- h
+             0b0011_0011, -- R
+             0b0011_1110, -- U
+             0b0011_1111, -- O
+             0b0011_0001  -- F
              }
 
 -- Wait for some time. 
@@ -94,27 +85,8 @@ end procedure
 procedure wait_short() is
    _usec_delay(500_000)
 end procedure
-
--- Check if a key is pressed. If so display it and wait for key release.
-procedure do_key() is
-
-   var byte key
-   
-   -- Check if a key was present and display it as ' NR   ' where NR is the
-   -- key number that has been pressed. 
-   key = tm1637_scan_key()
-   if (key != TM1637_NO_KEY) then
-      tm1637_display_clear()
-      tm1637_display_byte_dec(key,3,FALSE)
-   end if
-   while (tm1637_scan_key() != TM1637_NO_KEY) loop
-      -- Wait for key release.
-   end loop
-   
-end procedure
- 
-         
-var dword big_pos_counter
+        
+var sdword big_pos_counter
 var sdword big_neg_counter
 var word word_counter
 var byte counter
@@ -122,12 +94,13 @@ var byte counter
 
 forever loop
 
-   -- Write a 'hELLo ' message by writing the segment data directly into the
+   -- Write a 'Four' message by writing the segment data directly into the
    -- global display data buffer.
    for TM1637_WIDTH using counter loop
       tm1637_display_data[counter] = DISPLAY_HELLO[counter]
    end loop
-   -- We need to update the display with this segment data.
+   -- Because we are using the global display data buffer we need to update 
+   -- the display with this segment data.
    tm1637_display_update() 
    wait_long()
    
@@ -142,9 +115,6 @@ forever loop
       wait_short()
    end loop
 
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-   
    -- Now clear the display, that is all segments are off.
    tm1637_display_clear()
    wait_short()
@@ -156,9 +126,6 @@ forever loop
       tm1637_set_dot(FALSE, counter)
     end loop
 
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-    
    -- Set an individual display and show its number.
    tm1637_display_clear()
    for TM1637_WIDTH using counter loop
@@ -166,9 +133,6 @@ forever loop
       wait_short()
       tm1637_set_display(TM1637_SEGMENT_OFF,counter)
    end loop
-
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
 
    -- Write a hexdecimal nibble on the rightmost display.
    tm1637_display_clear()
@@ -178,9 +142,6 @@ forever loop
    end loop
    wait_short()
   
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-
    -- Write a hexdecimal byte on the rightmost display.
    tm1637_display_clear()
    for 256 using counter loop
@@ -189,9 +150,6 @@ forever loop
    end loop
    wait_short()
    
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-
    -- Write a hexdecimal word on the rightmost display.
    tm1637_display_clear()
    for 512 using word_counter loop
@@ -199,39 +157,20 @@ forever loop
    end loop
    wait_short()
    
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-
    -- Show a counter in another way with leading zero's.
    tm1637_display_clear()
-   for 2021 using big_pos_counter loop
-      tm1637_display_dword_dec(big_pos_counter,0,TRUE)
+   for 2023 using big_pos_counter loop -- Up and until the year 2022 :-)
+      tm1637_display_dword_dec(dword(big_pos_counter),0,TRUE)
    end loop
    wait_short()
    
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-
-   -- Show a counter in another way without leading zero's, skipping 3 positions.
-   tm1637_display_clear()
-   for 1_000 using big_pos_counter loop
-      tm1637_display_dword_dec(big_pos_counter,3,FALSE)
-   end loop
-   wait_short()
-   
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
-
    -- Show a negative counter in another way without leading zero's.
    tm1637_display_clear()
-   for 2021 using big_pos_counter loop
+   for 1000 using big_pos_counter loop
       big_neg_counter = -big_pos_counter
       tm1637_display_sdword_dec(big_neg_counter,0,FALSE)
    end loop
    wait_short()
-
-   -- Check if a key was pressed and if so show its number on the display.
-   do_key()
 
 end loop
 
