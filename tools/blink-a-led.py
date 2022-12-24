@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by: Rob Jansen, Copyright (c) 2018..2021, all rights reserved.
+  Adapted-by: Rob Jansen, Copyright (c) 2018..2022, all rights reserved.
 
   Revision: $Revision$
 
@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.5
+  Version: 0.6
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -58,7 +58,7 @@ platform_name = platform.system()
 # --- general constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5r5"
+CompilerVersion = "2.5r6"
 
 
 # specification of system dependent compiler executable
@@ -335,6 +335,8 @@ def build_sample(pic, pin, osctype, oscword):
 
    # No 4 MHz INTOSC for some PICs indicated by mentioning the OSCCON_IRCF in devicespecific.json but
    # without a value ("-").
+   # RJ: Maybe this can be removed since ["OSCCON_IRCF"] == "-" is removed from devicespecific.json.
+   #     Those devices that where indicated with this option did not have OSCCON_IRCF in the device file.
    if osctype.startswith("INTOSC") & ("OSCCON_IRCF" in picdata):
       if (picdata["OSCCON_IRCF"] == "-"):
          print("   Does not support 4 MHz with internal oscillator")
@@ -357,8 +359,6 @@ def build_sample(pic, pin, osctype, oscword):
    fp.write("-- Author: " + ScriptAuthor + ", Copyright (c) 2008.." + yyyy + " all rights reserved.\n")
    fp.write("--\n")
    fp.write("-- Adapted-by:\n")
-   fp.write("--\n")
-   fp.write("-- Revision: $Revision$\n")
    fp.write("--\n")
    fp.write("-- Compiler:" + CompilerVersion + "\n")
    fp.write("--\n")
