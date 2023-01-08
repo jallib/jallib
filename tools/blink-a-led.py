@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
-  Adapted-by: Rob Jansen, Copyright (c) 2018..2022, all rights reserved.
+  Adapted-by: Rob Jansen, Copyright (c) 2018..2023, all rights reserved.
 
   Revision: $Revision$
 
@@ -27,7 +27,7 @@
 
   Sources:
 
-  Version: 0.6
+  Version: 0.7
 
   Notes:
    - A blink-a-led sample is generated for every device file:
@@ -90,6 +90,7 @@ devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties n
 var = {}
 fusedef = {}
 devspec = {}  # contents of devicespecific.json
+haspgmpin = False # Used for PIC that support lVP but have a pgm pin to give a hint to connect to ground.
 
 # -----------------------------------------------------------
 def collect_fusedef(fp):
@@ -240,6 +241,18 @@ def find_blinkpin(devfile):
    return ""
 
 
+# ------------------------------------------------
+def check_for_pgm_pin(devfile):
+   """ Check if this PIC has a PGM pin.
+   """
+   global haspgmpin
+   with open(os.path.join(devdir, devfile), "r") as fp:
+      fstr = fp.read()                             # whole file
+   if ("pin_PGM" in fstr):
+      haspgmpin = True
+   else:
+      haspgmpin= False
+
 # -------------------------------------------------
 def validate_jalfile(jalfile):
    """ Validate JAL file
@@ -335,6 +348,7 @@ def build_sample(pic, pin, osctype, oscword):
 
    # No 4 MHz INTOSC for some PICs indicated by mentioning the OSCCON_IRCF in devicespecific.json but
    # without a value ("-").
+
    # RJ: Maybe this can be removed since ["OSCCON_IRCF"] == "-" is removed from devicespecific.json.
    #     Those devices that where indicated with this option did not have OSCCON_IRCF in the device file.
    if osctype.startswith("INTOSC") & ("OSCCON_IRCF" in picdata):
@@ -473,7 +487,11 @@ def build_sample(pic, pin, osctype, oscword):
    fusedef_insert("cswen", "ENABLED", "allow writing OSCCON1 NOSC and NDIV")
    fusedef_insert("ieso", "DISABLED", "no int/ext osc switching")
    fusedef_insert("vregen", "ENABLED", "voltage regulator used")
-   fusedef_insert("lvp", "ENABLED", "low voltage programming")
+   # For LVP we add a note for PICs that have a PGM pin.
+   if (haspgmpin == True):
+      fusedef_insert("lvp", "ENABLED", "low voltage programming, pull PGM pin LOW for normal operation")
+   else:
+      fusedef_insert("lvp", "ENABLED", "low voltage programming")
    fusedef_insert("mclr", "EXTERNAL", "external reset")
    fusedef_insert("mvecen", "DISABLED", "Do not use multi vectored interrupts")
    fusedef_insert("jtagen", "DISABLED", "no JTAG to enable all I/O pins")
@@ -627,6 +645,8 @@ def main(runtype, devs):
       blink_pin = find_blinkpin(dev)
       if (blink_pin == ""):                           # no blink pin available
          continue
+      # Check if there is pin_PGM.
+      check_for_pgm_pin(dev)
 
       current_sample_count = sample_count
       if ("osc" not in fusedef):                      # no fusedef osc at all
