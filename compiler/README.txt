@@ -12,7 +12,7 @@ jalv2.exe        : Windows 32-bit binary
 jalv2_64.exe     : Windows 64-bit binary 
 jalv2-i686       : Linux 32-bit binary
 jalv2-x86-64     : Linux 64-bit binary
-jalv2-osx        : MacOS 64-bit binary
+jalv2-osx        : MacOS 64-bit binary (only created for 2.5r6)
 
 Compiler issues can be registered and found at: https://github.com/jallib/jalv2compiler/issues
 
@@ -20,6 +20,9 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
+2.5r7 -- 22 january 2023
+         * Fixed issue#27: Compiler gives a hardware stack INFINITE message even when the hardware stack is big enough.
+
 2.5r6 -- 29 october 2021
          * Added 64-bit compiler for MacOS
          * Removed -Werror compiler warnings for Windows 64-bit compiler and MacOS compiler
