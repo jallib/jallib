@@ -20,7 +20,7 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
-2.5r7 -- 22 january 2023
+2.5r7 -- 29 january 2023
          * Fixed issue#27: Compiler gives a hardware stack INFINITE message even when the hardware stack is big enough.
 
 2.5r6 -- 29 october 2021
