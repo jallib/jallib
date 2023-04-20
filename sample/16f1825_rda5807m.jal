@@ -1,0 +1,235 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the RDA5807M FM Radio Tuner.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r7
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program for controlling the RDA5807M FM radio tuner. 
+--              The program wil tune to a preselected channel and will perform a 
+--              channel search through the FM band.
+--              Information about the FM channel is sent to the serial port.
+-- 
+-- Notes: This chip operates at 3.3 Volt so make sure to use a level shifter 
+--        for the IIC pins if your PIC runs at 5.0 Volt
+--
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(500_000)     -- Give the hardware some time to stabilize.
+
+-- Settings for the USART.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate = 115200
+include serial_hardware
+alias serial is serial_hw_data
+include print
+include delay
+
+-- Settings for the IIC interface used by the RDA5870M. 
+alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
+alias i2c_scl_direction is pin_C0_direction 
+alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+alias i2c_sda_direction is pin_C1_direction 
+const word _i2c_bus_speed = 1 -- 100kHz
+const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
+include i2c_hardware  
+
+-- Include the FM Tuner library.
+include rda5807m
+
+-- Stereo LED.
+alias stereo_led is pin_c3
+pin_c3_direction = OUTPUT
+
+-- -- Constants.
+-- Your favorite radio station. Radio staito frequency is in kHz.
+-- This is the frequency of Sky Radio in The Netherlands.
+const dword RADIO_SKY = 101_600 
+
+-- -- Variables
+var dword frequency -- In kHz.
+var byte index
+
+-- -- Procedures and Functions.
+
+-- Print the given frequency in kHz and MHz.
+procedure print_frequency(dword in frequency_value) is
+
+   print_dword_dec(serial, frequency_value)
+   print_string(serial, " kHz, or ")
+   print_word_dec(serial, word(frequency_value / 1000))
+   serial = "."
+   print_word_dec(serial, word(frequency_value % 1000))
+   print_string(serial, " MHz")
+
+end procedure
+
+
+-- Tune to the next FM channel and return TRUE when found. 
+-- Note that when the whole channel is done, it starts again 
+-- at the beginning of the channel.
+function tune_to_next_channel() return bit is
+
+   var bit channel_found = FALSE
+
+   while !channel_found loop
+      rda5807m_seek_up()
+      -- Give the tuner some time to seek.
+      _usec_delay(100_000)
+      while !rda5807m_seek_completed() loop
+         _usec_delay(10_000)
+      end loop
+      _usec_delay(200_000)
+      -- One spacing seeked, see if there is an FM channel on this frequency.
+      channel_found = rda5807m_channel_is_fm()
+      print_string(serial, "Frequency: ")
+      print_frequency(rda5807m_get_frequency)
+      print_crlf(serial)  
+   end loop
+   return channel_found
+
+end function
+
+
+-- Print the RDS info of this channel, if available. 
+procedure print_rds_info() is
+
+   var word rdsa, rdsb, rdsc, rdsd
+
+   if rda5807m_channel_has_rds() then
+      print_string(serial, "RDS Info: ")
+      rda5807m_get_rds_data(rdsa, rdsb, rdsc, rdsd) 
+      print_word_hex(serial, rdsa)
+      serial = " "
+      print_word_hex(serial, rdsb)
+      serial = " "
+      print_word_hex(serial, rdsc)
+      serial = " "
+      print_word_hex(serial, rdsd)
+      print_crlf(serial)
+   else
+      print_string(serial, "This channel has no RDS.\r\n")
+   end if 
+
+end procedure
+
+
+-- Print the RSSI signal strength in percentage.
+procedure print_signal_strength() is
+
+   var word signal_strength
+
+   signal_strength = word(rda5807m_get_signal_strength()) * 100
+   signal_strength = signal_strength / word(RDA5807M_RSSI_MAX)
+   print_string(serial, "Signal strength at ")
+   print_byte_dec(serial, byte(signal_strength))
+   print_string(serial, " %.\r\n")
+
+end procedure
+
+
+-- Main program.
+stereo_led = LOW
+-- Initialize the used libraries.
+serial_hw_init()
+i2c_initialize()
+print_string(serial, "Initializing RDA5807M ... ")
+rda5807m_init()
+
+-- Do some additional settings.
+rda5807m_set_output_mono()
+rda5807m_disable_bass_boost()
+rda5807m_enable_rds()
+rda5807m_disable_soft_mute()
+rda5807m_set_volume(10)
+rda5807m_enable_output()
+rda5807m_unmute()
+print_string(serial, "done!\r\n")
+
+forever loop
+   
+   -- Find the preselected radio channel. 
+   print_string(serial, "Tuning to my favorite radio station.\r\n")
+   print_string(serial, "Frequency written to RDA5807M: ")
+   print_frequency(RADIO_SKY)
+   print_crlf(serial)
+   -- Tune to this channel.
+   rda5807m_set_frequency(RADIO_SKY)
+   -- Give the tuner some time to seek to this channel.
+   delay_1s(1)
+   -- See if it did.
+   print_string(serial, "Frequency read from RDA5807M: ")
+   print_frequency(rda5807m_get_frequency)
+   print_crlf(serial)
+   if rda5807m_channel_is_fm() then
+     print_string(serial, "This is an FM channel.\r\n")
+   else
+      print_string(serial, "This is not an FM channel.\r\n")
+   end if
+   print_crlf(serial)
+   delay_1s(5)
+
+   -- Now find all channels in this band.
+   print_string(serial, "Channel search started.\r\n")
+   -- Start from the beginning of the band.
+   frequency = rda5807m_band_frequency_low
+   rda5807m_set_frequency(rda5807m_band_frequency_low)
+   -- Give the tuner some time to settle.
+   delay_1ms(200)
+   index = 1
+   -- Stop when we did the whole band (it auto wraps to the start). Note that
+   -- because of the auto wrap it finds the first channel twice.
+   while (frequency >= rda5807m_get_frequency()) loop
+      stereo_led = LOW
+      -- Supress noise during search.
+      rda5807m_mute()
+      -- Find the next channel with FM.
+      if tune_to_next_channel() then
+         print_string(serial, "Channel ")
+         print_byte_dec(serial, index)
+         print_string(serial, " found!\r\n")
+         index = index + 1
+         -- If this channel is in stereo the stereo LED will be on.
+         stereo_led = rda5807m_channel_is_stereo()
+         -- If there is RDS info, print it. Wait some time before checking.
+         -- since it takes time to get the RDS info.
+         delay_1s(1)
+         print_rds_info()
+         -- Print the signal strength.
+         print_signal_strength()
+         -- Let's here the music.
+         rda5807m_unmute()
+         delay_1s(5)
+      end if 
+      -- Store the current frequency.
+      frequency = rda5807m_get_frequency()
+   end loop
+   print_string(serial, "Channel search done!\r\n\r\n")
+   delay_1s(5)
+
+end loop
+
