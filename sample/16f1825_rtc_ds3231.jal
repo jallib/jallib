@@ -1,9 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Sample program for the DS3231 RTC Real Time Clock IC.
--- Author: Rob Jansen, Copyright (c) 2021..2022, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2021..2023, all rights reserved.
 -- Adapted-by:
--- Revision: $Revision$
--- Compiler: 2.5r6
+-- Compiler: 2.5r7
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -46,7 +45,7 @@ include serial_hardware
 include print
 
 -- Settings for the RTC and intialization.
-alias rtc_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias rtc_sck is pin_C0 -- Pin 10 for 14 pin DIP.
 alias rtc_sck_direction is pin_C0_direction
 alias rtc_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
 alias rtc_sdo_direction is pin_C1_direction 
@@ -61,7 +60,7 @@ include rtc_ds3231
 -- const ALARM_ON_INTERRUPT = TRUE 
 
 -- LED
-alias led is pin_C3
+alias led is pin_C3 --Pin 7 for 14 pin DIP.
 pin_C3_direction = output
 
 -- Variables
@@ -86,6 +85,30 @@ procedure print_time() is
    print_crlf(serial_hw_data)
 
 end procedure
+
+-- Print both set alarm times of the rtc.
+procedure print_alarm_time() is
+
+   var byte hours, minutes, seconds
+    
+   rtc_get_alarm_1_time_bin(hours, minutes, seconds)
+   print_string(serial_hw_data, "Alarm 1 set hours:")
+   print_byte_dec(serial_hw_data, hours)
+   print_string(serial_hw_data, " Alarm 1 set minutes:")
+   print_byte_dec(serial_hw_data, minutes)
+   print_string(serial_hw_data, " Alarm 1 set seconds:")
+   print_byte_dec(serial_hw_data, seconds)
+   print_crlf(serial_hw_data)
+   ; Alarm time 2 only has hours and minutes.
+   rtc_get_alarm_2_time_bin(hours, minutes)
+   print_string(serial_hw_data, "Alarm 2 set hours:")
+   print_byte_dec(serial_hw_data, hours)
+   print_string(serial_hw_data, " Alarm 2 set minutes:")
+   print_byte_dec(serial_hw_data, minutes)
+   print_crlf(serial_hw_data)
+
+end procedure
+
 
 
 -- Print the current date of the rtc.
@@ -174,7 +197,9 @@ end procedure
 -- call any of the RTC procedures because it will interfere with the IIC
 -- transmission. We can only set a flag that can be checked later. Note that
 -- the interrupt is edge triggered. The rtc interrupt stays low as long as  
--- the alarm flag of the RTC is set.
+-- the alarm flag of the RTC is set. The INT/SQW pin must be connected to
+-- the INT pin of the PIC. In this case we cannot use the SQW signal since
+-- it serves as interrupt output of the RTC.
 if defined(ALARM_ON_INTERRUPT) then
    procedure alarm_interrupt is pragma interrupt
       if INTCON_INTF then
@@ -215,6 +240,9 @@ if defined(ALARM_ON_INTERRUPT) then
    rtc_enable_alarm_2_interrupt()
 end if
 
+-- Print the currently set alarm time before setting it.
+print_alarm_time()
+
 -- Set some intial time hh:mm:ss in binary format and print it.
 rtc_set_time_bin(15, 59, 30)
 print_time()
@@ -228,6 +256,9 @@ rtc_set_alarm_1_time_bin(15, 59, 45)
 rtc_set_alarm_2_rate(RTC_ALARM_2_HOUR_MIN_MATCH)
 -- Alarm time 2, 30 seconds later than the initial set time.
 rtc_set_alarm_2_time_bin(16, 00)
+
+-- Print the alarm time again to see if it is set correctly.
+print_alarm_time()
 
 -- Set a date yy:mm:dd in binary format.
 rtc_set_date_bin(21,9,25)

@@ -1,8 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for the DS3231 Real Time Clock IC.
--- Author: Rob Jansen, Copyright (c) 2021..2022, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2021..2023, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r6
+-- Compiler: 2.5r7
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -149,12 +149,25 @@ procedure rtc_write_full_year(word in year)
 procedure rtc_set_alarm_1_time_bcd(byte in hour, byte in minutes, byte in seconds) 
 
 -- ----------------------------------------------------------------------------
+-- Get alarm 1 time in hours, minutes and seconds in bcd notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_1_time_bcd(byte out hour, byte out minutes, byte out seconds)
+
+-- ----------------------------------------------------------------------------
 -- Set alarm 1 time in hours, minutes and seconds in binary notation.
 -- Hours must be in 24-hours format.
 -- When the alarm time matches then rtc_alarm_1_flag will be set and must be
 -- cleared by the user.
 -- ----------------------------------------------------------------------------
 procedure rtc_set_alarm_1_time_bin(byte in hour, byte in minutes, byte in seconds) 
+
+-- 
+----------------------------------------------------------------------------
+-- Get alarm 1 time in hours, minutes and seconds in binary notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_1_time_bin(byte out hour, byte out minutes, byte out seconds)
 
 -- ----------------------------------------------------------------------------
 -- Set alarm 1 day (day of the week) in bcd notation. 
@@ -187,8 +200,7 @@ procedure rtc_enable_alarm_1_interrupt()
 procedure rtc_disable_alarm_1_interrupt()
 
 -- ----------------------------------------------------------------------------
--- Alarm 1 flag pseudo variable. Returns TRUE when the set alarm 1 time matches
--- the current RTC time.
+-- Returns TRUE when the set alarm 1 time matches the current RTC time.
 -- ----------------------------------------------------------------------------
 function rtc_alarm_1_flag() return bit 
 
@@ -206,12 +218,24 @@ procedure clear_rtc_alarm_1_flag()
 procedure rtc_set_alarm_2_time_bcd(byte in hour, byte in minutes)
 
 -- ----------------------------------------------------------------------------
+-- Get alarm 2 time in hours and minutes in bcd notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_2_time_bcd(byte out hour, byte out minutes)
+
+-- ----------------------------------------------------------------------------
 -- Set alarm 2 time in hours and minutes in binary notation.
 -- Hours must be in 24-hours format.
 -- When the alarm time matches then rtc_alarm_2_flag will be set and must be
 -- cleared by the user.
 -- ----------------------------------------------------------------------------
 procedure rtc_set_alarm_2_time_bin(byte in hour, byte in minutes)
+
+-- ----------------------------------------------------------------------------
+-- Get alarm 2 time in hours and minutes in binary notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_2_time_bin(byte out hour, byte out minutes) 
 
 -- ----------------------------------------------------------------------------
 -- Set alarm 2 rate according to the given parameter.
@@ -234,8 +258,7 @@ procedure rtc_enable_alarm_2_interrupt()
 procedure rtc_disable_alarm_2_interrupt() 
 
 -- ----------------------------------------------------------------------------
--- Alarm 2 flag pseudo variable. Returns TRUE when the set alarm 2 time matches
--- the current RTC time.
+-- Returns TRUE when the set alarm 2 time matches the current RTC time.
 -- ----------------------------------------------------------------------------
 function rtc_alarm_2_flag() return bit 
 
@@ -629,6 +652,23 @@ procedure rtc_set_alarm_1_time_bcd(byte in hour, byte in minutes, byte in second
 
 end procedure
 
+-- ----------------------------------------------------------------------------
+-- Get alarm 1 time in hours, minutes and seconds in bcd notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_1_time_bcd(byte out hour, byte out minutes, byte out seconds) is
+
+   var byte data 
+
+   rtc_read_register(RTC_ALARM_1_SECONDS_ADDRESS, seconds)
+   seconds = seconds & 0b0111_1111
+   rtc_read_register(RTC_ALARM_1_MINUTES_ADDRESS, minutes)
+   minutes = minutes & 0b0111_1111
+   rtc_read_register(RTC_ALARM_1_HOUR_ADDRESS, hour)
+   hour = hour & 0b0111_1111
+
+end procedure
+
 
 -- ----------------------------------------------------------------------------
 -- Set alarm 1 time in hours, minutes and seconds in binary notation.
@@ -638,6 +678,18 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure rtc_set_alarm_1_time_bin(byte in hour, byte in minutes, byte in seconds) is
     rtc_set_alarm_1_time_bcd(rtc_bin2bcd(hour), rtc_bin2bcd(minutes), rtc_bin2bcd(seconds))
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Get alarm 1 time in hours, minutes and seconds in binary notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_1_time_bin(byte out hour, byte out minutes, byte out seconds) is
+    rtc_get_alarm_1_time_bcd(hour, minutes, seconds)
+    hour = rtc_bcd2bin(hour)
+    minutes = rtc_bcd2bin(minutes)
+    seconds = rtc_bcd2bin(seconds)
 end procedure
 
 
@@ -771,8 +823,7 @@ procedure rtc_disable_alarm_1_interrupt() is
 end procedure 
 
 -- ----------------------------------------------------------------------------
--- Alarm 1 flag pseudo variable. Returns TRUE when the set alarm 1 time matches
--- the current RTC time.
+-- Returns TRUE when the set alarm 1 time matches the current RTC time.
 -- ----------------------------------------------------------------------------
 function rtc_alarm_1_flag() return bit is
    var byte data
@@ -816,6 +867,20 @@ procedure rtc_set_alarm_2_time_bcd(byte in hour, byte in minutes) is
 
 end procedure
 
+
+-- ----------------------------------------------------------------------------
+-- Get alarm 2 time in hours and minutes in bcd notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_2_time_bcd(byte out hour, byte out minutes) is
+
+   rtc_read_register(RTC_ALARM_2_MINUTES_ADDRESS, minutes)
+   minutes = minutes & 0b0111_1111
+   rtc_read_register(RTC_ALARM_2_HOUR_ADDRESS, hour)
+   hour = hour & 0b0111_1111
+
+end procedure
+
 -- ----------------------------------------------------------------------------
 -- Set alarm 2 time in hours and minutes in binary notation.
 -- Hours must be in 24-hours format.
@@ -824,6 +889,17 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure rtc_set_alarm_2_time_bin(byte in hour, byte in minutes) is
     rtc_set_alarm_2_time_bcd(rtc_bin2bcd(hour), rtc_bin2bcd(minutes))
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Get alarm 2 time in hours and minutes in binary notation.
+-- Hours must be in 24-hours format.
+-- ----------------------------------------------------------------------------
+procedure rtc_get_alarm_2_time_bin(byte out hour, byte out minutes) is
+    rtc_get_alarm_2_time_bcd(hour, minutes)
+    hour = rtc_bcd2bin(hour)
+    minutes = rtc_bcd2bin(minutes)
 end procedure
 
 -- ----------------------------------------------------------------------------
@@ -910,8 +986,7 @@ procedure rtc_disable_alarm_2_interrupt() is
 end procedure 
 
 -- ----------------------------------------------------------------------------
--- Alarm 2 flag pseudo variable. Returns TRUE when the set alarm 2 time matches
--- the current RTC time.
+-- Returns TRUE when the set alarm 2 time matches the current RTC time.
 -- ----------------------------------------------------------------------------
 function rtc_alarm_2_flag() return bit is
     var byte data
