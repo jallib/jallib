@@ -1,0 +1,160 @@
+-- -----------------------------------------------------------------------------
+-- Title: Testfile showing how to use adc_hardware library.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r7
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--  
+-- Description: This program shows how to use adc_hardware library. It regurlarly 
+--              performs an Analog-to-Digital Conversion, on channels RA2 and RC2 and 
+--              sends the result through the serial interface.
+--              This sample fils is based on the adc sample file of Sebastien Lelong.
+-- 
+-- Notes: As output, this sample produces characters on a serial link. First be 
+--        sure you're able to send characters over the serial link. 
+--        This PIC needs PPS to be activated for the serial interface.
+--     
+-- Few words about diagram: This program performs ADC on channels RA2 and RC2, so you can
+-- measure any voltage source connected to these channels (no more than 5V please).
+-- See the datasheet on which number to use for the channel selection when reading the 
+-- ADC value with adc_read_high_res(channel). Channel: 2 = RA2, 18 = RC2.
+
+-- To test the whole, you can use a voltage divider:
+-- 		 
+--     5V
+--     |
+--     Z
+--     Z R1        -----------
+--     Z           |
+--     |------ Rx2-|   PIC
+--     Z           |
+--     Z R2        |
+--     Z
+--     |
+--    GND
+--
+--
+-- - R1=1K, R2=1K:   you should get ~127/~512 as ADC value (low/high)
+-- - R1=1K, R2=2.2K: you should get ~175/~704 as ADC value (low/high)
+--
+-- Actual output with the above given resistor values (10% tolerance on resistors):
+-- Channel (high)  2: 506
+-- Channel (low)   2: 126
+-- Channel (high) 18: 702
+-- Channel (low)  18: 175
+--
+-- This file was originally a generated version but was changed by hand 
+-- (and manually maintained) for use with the updated adc library.
+-- 
+-- -----------------------------------------------------------------------------
+--
+include 16f15325
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000   -- oscillator frequency
+--
+pragma target OSC      OFF          -- internal oscillator
+pragma target RSTOSC   HFINT32      -- select 32 MHz
+pragma target CLKOUTEN DISABLED     -- no clock output
+pragma target WDT      DISABLED     -- watchdog
+pragma target BROWNOUT DISABLED     -- no brownout reset
+pragma target FCMEN    DISABLED     -- no clock monitoring
+pragma target CSWEN    ENABLED      -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED      -- low voltage programming
+pragma target MCLR     EXTERNAL     -- external reset
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCFRQ_HFFRQ = 0b110                -- Fosc 32 MHz
+
+-- set all IO as digital, will turn ADC on later
+enable_digital_io()
+
+-- Re-assign the pins for the serial interface. Note: This must always be 
+-- done to let it work even for the default assignment.
+include pps
+pps_control_lock(FALSE)  
+RC4PPS   = PPS_TX1       -- TX1 re-assigned to C4  (default)             
+RX1DTPPS = PPS_RC5       -- C5  re-assigned to RX1 (default)     
+pps_control_lock(TRUE)                 
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP.
+alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+
+include print
+include delay
+
+-- inform user PIC is ready !
+serial_hw_write("!")
+
+-- ---- Configure ADC -----
+-- Step 1: ADC input pin setup for channels RA2 and RC2.
+pin_A2_direction = input                      
+pin_C2_direction = input 
+-- Step 2: Set VDD and VSS as Vref.
+ADCON1_ADPREF = 0b00
+-- Step 3: Use Frc as ADC clock.
+ADCON1_ADCS = 0b111
+-- Now we can include the library.
+include adc
+-- And initialize the whole with our parameters
+adc_init()
+
+-- Channel constants. See datasheet.
+const byte CHANNEL_RA2 = 2
+const byte CHANNEL_RC2 = 18
+
+-- Will periodically send those chars
+var word measure
+var byte lowmeasure
+const byte prefix[] = "Channel "
+const byte highstr[] = " (high) "
+const byte lowstr[] = " (low) "
+const byte suffix[] = ": "
+
+-- Print the ADC result of the given channel in high resolution 
+-- and low resultion. 
+procedure print_adc_result(byte in channel) is
+
+   -- Get ADC result, high resolution
+	measure = adc_read_high_res(channel)
+   -- Send it back through serial
+   print_string(serial_hw_data, prefix)
+   print_string(serial_hw_data, highstr)
+   print_byte_dec(serial_hw_data, channel)
+   print_string(serial_hw_data, suffix)
+   print_word_dec(serial_hw_data, measure) 
+   print_crlf(serial_hw_data)
+   -- And sleep a little...
+   delay_1ms(100)
+
+   -- Even if we set high resolution, we can still access results
+   -- in low resolution (the 2 LSb will be removed).
+   lowmeasure = adc_read_low_res(channel)
+   print_string(serial_hw_data, prefix)
+   print_string(serial_hw_data, lowstr)
+   print_byte_dec(serial_hw_data, channel)
+   print_string(serial_hw_data, suffix)
+   print_byte_dec(serial_hw_data, lowmeasure) 
+   print_crlf(serial_hw_data)
+   -- And sleep a little...
+   delay_1ms(100)
+   print_crlf(serial_hw_data)
+
+end procedure
+
+
+forever loop
+
+   -- Loop over the two channels
+   print_adc_result(CHANNEL_RA2)
+   print_adc_result(CHANNEL_RC2)
+	
+end loop
