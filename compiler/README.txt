@@ -20,8 +20,14 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
+2.5r8 -- 16 may 2023
+         * Fixed issue#28: Program goes haywire when using look-up tables for fonts and code size becomes bigger than 16k.
+         * Fixed issue#30: Const arrays limited to 16k.
+		 * Fixed issue#31: Direct accessing an element in an array does not work for const word array and const dword array.
+		 
 2.5r7 -- 29 january 2023
          * Fixed issue#27: Compiler gives a hardware stack INFINITE message even when the hardware stack is big enough.
+		 * Added -Wstringop-overflow=0 compiler flag to compile for MacOS under Virtual Box (thanks to Rob H)
 
 2.5r6 -- 29 october 2021
          * Added 64-bit compiler for MacOS
