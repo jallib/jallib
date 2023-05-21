@@ -3,14 +3,14 @@ from __future__ import print_function
 #
 # Title: jallib main wrapper script
 #
-# Author: Sebastien Lelong, Copyright (c) 2008..2019, all rights reserved.
+# Author: Sebastien Lelong, Copyright (c) 2008..2023, all rights reserved.
 #
-# Adapted-by: Rob Hamerling
+# Adapted-by: Rob Hamerling, Rob Jansen
 #
 # Compiler:
 #
 # This file is part of jallib (https://github.com/jallib/jallib)
-# Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+# Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 #
 # Sources:
 #
@@ -469,7 +469,7 @@ def validate(filename):
     errors.extend(errs)
     warnings.extend(warns)
     # also extract line number (enumerate from 0, count from 1)
-    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename, encoding='ISO-8859-1').readlines())]
     errors.extend(validate_header(content))
     # remaining content has no more header
     errs = validate_code(content)
