@@ -12,7 +12,7 @@ jalv2.exe        : Windows 32-bit binary
 jalv2_64.exe     : Windows 64-bit binary 
 jalv2-i686       : Linux 32-bit binary
 jalv2-x86-64     : Linux 64-bit binary
-jalv2-osx        : MacOS 64-bit binary (only created for 2.5r6)
+jalv2-osx        : MacOS 64-bit binary
 
 Compiler issues can be registered and found at: https://github.com/jallib/jalv2compiler/issues
 
