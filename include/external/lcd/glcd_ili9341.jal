@@ -1,9 +1,9 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for GLCD using the ILI9341 display controller.
--- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2022..2023, all rights reserved.
 -- Adapted-by:
 -- Revision: $Revision$
--- Compiler: 2.5r6
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -25,6 +25,13 @@
 --        Depeding on the display mirroring may be needed. Options available:
 --        const ILI9342_MIRROR_X = TRUE -- Will mirror in the x-direction
 --        const ILI9342_MIRROR_Y = TRUE -- Will mirror in the y-direction
+--
+--        It is also possible to dynamically change the mirroring for displays
+--        that are assembled differently. In that case use these procedures:
+--        -) ili9341_mirror_x_on(), ili9341_mirror_x_off()
+--        -) ili9341_mirror_y_on(), ili9341_mirror_y_off()
+--        After calling one of these procedures you must call the procedure:
+--        -) ili9341_set_display_rotation() to activate the mirroring. 
 --
 --        The following interface aliases pins must be defined by the main 
 --        program. This library uses the SPI interface which must be 
@@ -165,6 +172,30 @@ procedure ili9341_display_sleep()
 -- Wakeup the display from sleep mode.
 -- -----------------------------------------------------------------------------
 procedure ili9341_display_wakeup()
+
+-- -----------------------------------------------------------------------------
+-- Set mirroring the display in the x-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_x_on() 
+
+-- -----------------------------------------------------------------------------
+-- Reset mirroring the display in the x-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_x_off() 
+
+-- -----------------------------------------------------------------------------
+-- Set mirroring the display in the y-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_y_on() 
+
+-- -----------------------------------------------------------------------------
+-- Reset mirroring the display in the y-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_y_off()
 
 -- -----------------------------------------------------------------------------
 -- Set display rotation to 0, 90, 180 or 270 degrees, see ILI9341_ROTATE.
@@ -323,6 +354,9 @@ const byte _ili9341_initialization_data[] =
    _ILI9341_DISPON,   0                    -- Display on
 }
 
+-- Local variables to support dynamic mirroring.
+var bit _ili9341_mirror_x
+var bit _ili9341_mirror_y
 
 -- -----------------------------------------------------------------------------
 -- Start an SPI data or command transmission. SPI uses 4 wires.
@@ -406,6 +440,20 @@ procedure ili9341_init() is
       -- Next command (if not yet done).
       index = index + 1
    end loop
+
+   -- Check for mirroring.
+   if defined(ILI9341_MIRROR_X) then
+      _ili9341_mirror_x = TRUE
+   else
+      _ili9341_mirror_x = FALSE
+   end if 
+   if defined(ILI9341_MIRROR_Y) then
+      _ili9341_mirror_y = TRUE
+   else
+      _ili9341_mirror_y = FALSE
+   end if 
+
+
 
    -- Resetting the display rotation also sets the direction (mirror).
    ili9341_set_display_rotation(ILI9341_ROTATE_0_DEGREES)
@@ -591,6 +639,40 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
+-- Set mirroring the display in the x-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_x_on() is
+   _ili9341_mirror_x = TRUE
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Reset mirroring the display in the x-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_x_off() is
+   _ili9341_mirror_x = FALSE
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set mirroring the display in the y-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_y_on() is
+   _ili9341_mirror_y = TRUE
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Reset mirroring the display in the y-direction. 
+-- Use ili9341_set_display_rotation() to activate.
+-- -----------------------------------------------------------------------------
+procedure ili9341_mirror_y_off() is
+   _ili9341_mirror_y = FALSE
+end procedure
+
+-- -----------------------------------------------------------------------------
 -- Set display rotation to 0, 90, 180 or 270 degrees, see ILI9341_ROTATE.
 -- -----------------------------------------------------------------------------
 procedure ili9341_set_display_rotation(byte in rotation) is
@@ -603,10 +685,10 @@ procedure ili9341_set_display_rotation(byte in rotation) is
 
       0:
       block -- 0 degrees
-         if !defined(ILI9341_MIRROR_X) then
+         if !_ili9341_mirror_x then
             setting = setting | MADCTL_MX_RL
          end if 
-         if defined(ILI9341_MIRROR_Y) then
+         if _ili9341_mirror_y then
             setting = setting | MADCTL_MY_BT 
          end if 
          glcd_display_x_size = ILI9341_MAX_X_PIXELS
@@ -616,10 +698,10 @@ procedure ili9341_set_display_rotation(byte in rotation) is
       1:
       block -- 90 degrees, swap x and y.
          setting = setting | MADCTL_MV 
-         if defined(ILI9341_MIRROR_X) then
+         if _ili9341_mirror_x then
             setting = setting | MADCTL_MY_BT
          end if 
-         if defined(ILI9341_MIRROR_Y) then
+         if _ili9341_mirror_y then
             setting = setting | MADCTL_MX_RL 
          end if 
          glcd_display_x_size = ILI9341_MAX_Y_PIXELS
@@ -628,10 +710,10 @@ procedure ili9341_set_display_rotation(byte in rotation) is
  
       2:
       block -- 180 degrees
-         if defined(ILI9341_MIRROR_X) then
+         if _ili9341_mirror_x then
             setting = setting | MADCTL_MX_RL
          end if 
-         if !defined(ILI9341_MIRROR_Y) then
+         if !_ili9341_mirror_y then
             setting = setting | MADCTL_MY_BT 
          end if 
          glcd_display_x_size = ILI9341_MAX_X_PIXELS
@@ -641,10 +723,10 @@ procedure ili9341_set_display_rotation(byte in rotation) is
       3:
       block -- 270 degrees. 
          setting = setting | MADCTL_MV
-         if !defined(ILI9341_MIRROR_X) then
+         if !_ili9341_mirror_x then
             setting = setting | MADCTL_MY_BT
          end if 
-         if !defined(ILI9341_MIRROR_Y) then
+         if !_ili9341_mirror_y then
             setting = setting | MADCTL_MX_RL 
          end if 
          glcd_display_x_size = ILI9341_MAX_Y_PIXELS
