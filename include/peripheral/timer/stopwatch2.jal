@@ -1,7 +1,7 @@
 -- Title: Stopwatch library
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4q3
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2023, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -41,9 +41,9 @@ if !defined(STOPWATCH2_MIN_VALUE) then
    const STOPWATCH2_MIN_VALUE = STOPWATCH_NS
 end if
 --
-if !defined(STOPWATCH_USE_TIMER) then
+if !defined(STOPWATCH2_USE_TIMER) then
    -- choose what timer to use
-   const STOPWATCH_USE_TIMER = 1
+   const STOPWATCH2_USE_TIMER = 1
 end if
 
 -- size of stopwatch2 counter
@@ -58,14 +58,14 @@ var byte*4 stopwatch2_high_value at _stopwatch2_counter + 2
 var word _stopwatch2_step_time
 
 -- check if PIC has selected timer
-if defined(STOPWATCH_USE_TIMER) == TRUE then
-   if STOPWATCH_USE_TIMER == 0 then
+if defined(STOPWATCH2_USE_TIMER) == TRUE then
+   if STOPWATCH2_USE_TIMER == 0 then
       _error "this library does not support timer0 module yet"
-   elsif STOPWATCH_USE_TIMER == 1 then
+   elsif STOPWATCH2_USE_TIMER == 1 then
       if !(defined(tmr1) == TRUE) then
          _error "target pic does not have a timer1 module"
       end if
-   elsif STOPWATCH_USE_TIMER == 3 then
+   elsif STOPWATCH2_USE_TIMER == 3 then
       if !(defined(tmr3) == TRUE) then
          _error "target pic does not have a timer3 module"
       end if
@@ -73,16 +73,23 @@ if defined(STOPWATCH_USE_TIMER) == TRUE then
 end if
 
 -- set aliases for timer choosen
-if STOPWATCH_USE_TIMER == 1 then
+if STOPWATCH2_USE_TIMER == 1 then
    -- set special timer1 settings
    -- set timer registers to timer1
    alias stopwatch2_on       is t1con_tmr1on     -- enables timer
    alias stopwatch2_tmr      is TMR1             -- timer interval
-   alias stopwatch2_cs       is T1CON_TMR1CS     -- timer clock source bit
-   alias stopwatch2_ie       is PIE1_TMR1IE      -- interrupt enable
-   alias stopwatch2_if       is PIR1_TMR1IF      -- interrupt overflow bit
    alias stopwatch2_ps       is T1CON_T1CKPS     -- timer prescaler select bits
-elsif STOPWATCH_USE_TIMER == 3 then
+   -- Support for newer PICs (based on 16f15325).
+   if defined(T1CLK) then
+      alias stopwatch2_cs       is T1CLK_CS      -- timer clock source bit
+      alias stopwatch2_ie       is PIE4_TMR1IE   -- interrupt enable
+      alias stopwatch2_if       is PIR4_TMR1IF   -- interrupt overflow bit
+    else
+      alias stopwatch2_cs       is T1CON_TMR1CS  -- timer clock source bit
+      alias stopwatch2_ie       is PIE1_TMR1IE   -- interrupt enable
+      alias stopwatch2_if       is PIR1_TMR1IF   -- interrupt overflow bit
+   end if 
+elsif STOPWATCH2_USE_TIMER == 3 then
    -- set timer registers to timer3
    alias stopwatch2_on       is t3con_tmr3on     -- enables timer
    alias stopwatch2_tmr      is TMR3             -- timer interval
@@ -101,7 +108,11 @@ procedure stopwatch2_init() is
    intcon_peie = on      -- enables all unmasked peripheral interrupts
 
    -- timer3 setup
-   stopwatch2_cs = 0      -- use internal clock
+   if defined(T1CLK) then
+      stopwatch2_cs = 0b0001 -- use internal clock (Fosc/4)
+   else 
+      stopwatch2_cs = 0      -- use internal clock (Fosc/4)
+   end if 
    stopwatch2_ie  = 1     -- enable the timer3 interrupt bit
    stopwatch2_if  = off   -- turn off interrupt overflow flag
    ;stopwatch2_on = 1     -- enables timer

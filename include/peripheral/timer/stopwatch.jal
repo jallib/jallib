@@ -1,7 +1,7 @@
 -- Title: Stopwatch library
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
--- Adapted-by:
--- Compiler: >=2.4q
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2023, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -78,10 +78,17 @@ if STOPWATCH_USE_TIMER == 1 then
    -- set timer registers to timer1
    alias stopwatch_on       is t1con_tmr1on     -- enables timer
    alias stopwatch_tmr      is TMR1             -- timer interval
-   alias stopwatch_cs       is T1CON_TMR1CS     -- timer clock source bit
-   alias stopwatch_ie       is PIE1_TMR1IE      -- interrupt enable
-   alias stopwatch_if       is PIR1_TMR1IF      -- interrupt overflow bit
    alias stopwatch_ps       is T1CON_T1CKPS     -- timer prescaler select bits
+   -- Support for newer PICs (based on 16f15325).
+   if defined(T1CLK) then
+      alias stopwatch_cs       is T1CLK_CS      -- timer clock source bit
+      alias stopwatch_ie       is PIE4_TMR1IE   -- interrupt enable
+      alias stopwatch_if       is PIR4_TMR1IF   -- interrupt overflow bit
+    else
+      alias stopwatch_cs       is T1CON_TMR1CS  -- timer clock source bit
+      alias stopwatch_ie       is PIE1_TMR1IE   -- interrupt enable
+      alias stopwatch_if       is PIR1_TMR1IF   -- interrupt overflow bit
+   end if 
 elsif STOPWATCH_USE_TIMER == 3 then
    -- set timer registers to timer3
    alias stopwatch_on       is t3con_tmr3on     -- enables timer
@@ -100,8 +107,12 @@ procedure stopwatch_init() is
    intcon_gie  = on      -- enables all unmasked interrupts
    intcon_peie = on      -- enables all unmasked peripheral interrupts
 
-   -- timer3 setup
-   stopwatch_cs = 0      -- use internal clock
+   -- timer setup
+   if defined(T1CLK) then
+      stopwatch_cs = 0b0001 -- use internal clock (Fosc/4)
+   else 
+      stopwatch_cs = 0      -- use internal clock (Fosc/4)
+   end if 
    stopwatch_ie  = 1     -- enable the timer3 interrupt bit
    stopwatch_if  = off   -- turn off interrupt overflow flag
    ;stopwatch_on = 1     -- enables timer
