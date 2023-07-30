@@ -1,69 +1,154 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This document was created with Syntext Serna Free. -->
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN"
+"topic.dtd">
 <topic id="template_id">
   <title>ADC - Analog-to-Digital Conversion</title>
+
   <prolog>
     <author>Sébastien Lelong</author>
+
     <publisher>Jallib Group</publisher>
   </prolog>
+
   <body>
-    <p id="firstcontent"><xref href="http://en.wikipedia.org/wiki/Analog-to-digital_converter" format="html" scope="external">Analog-to-Digital Conversion</xref> is yet another nice feature you can get with a PIC. It&apos;s basically used to convert a voltage as an analog source (continuous) into a digital number (discrete).</p>
-    <section>
-      <title>ADC with water...</title>
-      <p id="firstcontent_1">To better understand ADC, imagine you have some water going out of a pipe, and you&apos;d like to know how many water it goes outside. One approach would be to collect all the water in a bucket, and then measure what you&apos;ve collected. But what if water flow never ends ? And, more important, what if water flow isn&apos;t constant and you want to measure the flow in real-time ?</p>
-      <p id="firstcontent_2">The answer is ADC. With ADC, you&apos;re going to extract samples of water. For instance, you&apos;re going to put a little glass for 1 second under the pipe, every ten seconds. Doing the math, you&apos;ll be able to know the mean rate of flow.</p>
-      <p id="firstcontent_3">The faster you&apos;ll collect water, the more accurate the rate will be. That is, if you&apos;re able to collect 10 glasses of water each second, you&apos;ll have a better overview of the rate of water than if you collect 1 glass each ten seconds. This is the process of making a continuous flow a discrete, finite value. And this is about <b>resolution</b>, one important property of ADC (and this is also about clock speed...). The higher the resolution, the more accurate the results.</p>
-      <p id="firstcontent_5">Now, what if the water flow is so high that your glass gets filled before the end of the sample time ? You could use a bigger glass, but let&apos;s assume you can&apos;t (scenario need...). This means you can&apos;t measure any water flow, this one has to be scaled according to your glass. On the contrary, the water flow may be so low samples you extract may not be relevant related to the glass size (only few drops). Fortunately, you can use a smaller glass (yes, scenario need) to scale down your sample. That is about <b>voltage reference</b>, another important property.</p>
-      <p id="firstcontent_4">Leaving our glass of water, many PICs provide several <b>ADC channels</b>: pins that can do this process, measuring voltage as input. In order to use this peripheral, you&apos;ll first have to configure how many ADC channels you want. Then you&apos;ll need to specify the <b>resolution</b>, usually using 8 bits (0 to 255), 10 bits (0 to 1024) or even 12 bits (0 to 4096). Finally,  you&apos;ll have to setup <b>voltage references</b> depending on the voltage spread you plan to measure.</p>
-    </section>
-    <section>
-      <title>ADC with jallib...</title>
-      <p>As usual, Microchip PICs offers a wide choice configuring ADC:<ul>
-          <li>N<b>ot all PICs</b> have ADC module (...)</li>
-          <li>Analog pins are <b>dispatched differently</b> amongst PICs, still for user&apos;s sake, they have to be automatically configured as input. We thus need to know, for each PIC, where analog pins are...</li>
-          <li>Some PICs have their <b>analog pins dependent</b> from each other, and some are <b>independent</b> (more on this later)</li>
-          <li><b>Clock configuration</b> can be different</li>
-          <li>As previously stated, some PICs have <b>8-bits low resolution</b> ADC module, some have <b>10-bits high resolution</b> ADC module<fn> and some have 12-bits, those aren&apos;t currently handled by jallib ADC libraries, That&apos;s a restriction.</fn></li>
-          <li>Some PICs can have <b>two external voltage references</b> (VRef+ and VRef-), only <b>one voltage reference</b> (Vref+ or Vref-) and some <b>can&apos;t handle external voltage references at all</b></li>
-          <li>(and probably other differences I can&apos;t remember :)...</li>
-        </ul></p>
-      <p>Luckily most of these differences are transparent to users...</p>
-    </section>
-    <section>
-      <title>Dependent and independent analog pins</title>
-      <p>OK, let&apos;s write some code ! But before this, you have to understand one very important point: some PICs have their analog pins <i>dependent</i> from each other, some PICs have their analog pins <i>independent</i> from each other. &quot;What is this suppose to mean ?&quot; I can hear...</p>
-      <p>Let&apos;s consider two famous PICs: 16F877 and 16F88. 16F877 datasheet explains how to configure the number of analog pins, and vref, setting <b>PCFG bits</b>:</p>
-      <p><fig>
-          <title>16F877 ADC channels are controlled by PCFG bits</title>
-          <image href="images/adc_16f877_table.jpg" width="400" placement="break" otherprops="clickable"/>
-        </fig></p>
-      <p>Want 6 analog pins, no Vref ? Then PCFG bits must be set to 0b1001. What will then be the analog pins ? RA0, RA1, RA2, RA3, RA5 and RE0. &quot;<i>What if I want 7 analog pins, no Vref ?</i>&quot; You can&apos;t because you&apos;ll get a Vref pin, no choice. &quot;<i>What if I want 2 analog pins being RE1 and RE2 ?</i>&quot; You can&apos;t, because there&apos;s no such combination. So, for this PIC, <b>analog pins are dependent from each other</b>, driven by a combination. In this case, you&apos;ll have to specify: <ul>
-          <li>the <b>number of ADC channels</b> you want,</li>
-          <li>and <i>amongst</i> them, the <b>number of Vref channels</b></li>
-        </ul></p>
-      <p>Now, let&apos;s consider 16F88. In this case, there&apos;s no such table:</p>
-      <p><fig>
-          <title>16F88 ADC channels are controlled by ANS bits</title>
-          <image href="images/adc_16f88_ans.jpg" width="400" placement="break" otherprops="clickable"/>
-        </fig></p>
-      <p>Mmmh... OK, there are <b>ANS bits</b>, one for each analog pins. Setting an ANS bit to 1 sets the corresponding pin to analog. This means I can set whatever pin I want to be analog. &quot;<i>I can have 3 analog pins, configured on RA0, RA4 and RB6. Freedom !</i>&quot;</p>
-      <p><b>Analog pins are independent</b> from each other in this case, you can do what you want. As a consequence, since it&apos;s not driven by a combination, you won&apos;t be able to specify the number of ADC channels here. Instead, you&apos;ll use <codeph>set_analog_pin()</codeph> procedure, and if needed, the reverse <codeph>set_digital_pin()</codeph> procedure. These procedures takes a analog pin number as argument. Say analog pin AN5 is on pin RB6. To turn this pin as analog, you just have to write <codeph>set_analog_pin(5)</codeph>, because this is about analog pin AN<b>5</b>, and not RB<b>6</b>.
-</p>
-      <note type="remember">as a consequence, these procedures don&apos;t exist when analog pins are dependent as in our first case.</note>
-      <note type="caution">it&apos;s not because there are PCFG bits that PICs have dependent analog pins. Some have PCFG bits which act exactly the same as ANS bits (like some of recent 18F) </note>
-      <note type="tip">how to know if your PIC has dependent or independent pins ? First have a look at its datasheet, if you can a table like the one for 16F877, there are dependent. Also, if you configure a PIC with dependent pins as if it was one with independent pins (and vice-versa), you&apos;ll get an error. Finally, if you get an error like: &quot;<i>Unable to configure ADC channels. Configuration is supposed to be done using ANS bits but it seems there&apos;s no ANS bits for this PIC. Maybe your PIC isn&apos;t supported, please report !</i>&quot;, or the like, well, this is not a normal situation, so as stated, please report !</note>
-      <p>Once configured, using ADC is easy. You&apos;ll find <codeph>adc_read_high_res()</codeph> and <b>adc_read_low_res()</b> functions, for respectively read ADC in high and low resolution. Because low resolution is coded on 8-bits, <codeph>adc_read_low_res()</codeph> returns a <codeph>byte</codeph> as the result. <b>adc_read_high_res()</b> returns a <codeph>word</codeph>.</p>
-    </section>
-    <section>
-      <title>Example with 16F877, dependent analog pins</title>
-      <p>The following examples briefly explains how to setup ADC module when analog pins are dependent from each other, using PIC 16F877.</p>
-      <p>The following diagram is here to help knowing where <b>analog pins</b> (blue) are and where <b>Vref pins</b> (red) are:</p>
-      <p><fig>
-          <title>Analog pins and Vref pins on 16F877</title>
-          <image href="images/adc_16f877_diagram.jpg" width="400" placement="break" otherprops="clickable"/>
-        </fig></p>
-      <p><b>Example 1</b>: <i>16F877, with only one analog pin, no external voltage reference</i></p>
-      <p><codeblock>-- beginning is about configuring the chip
+    <p id="firstcontent"><xref format="html"
+    href="http://en.wikipedia.org/wiki/Analog-to-digital_converter"
+    scope="external">Analog-to-Digital Conversion</xref> is yet another nice
+    feature you can get with a PIC. It's basically used to convert a voltage
+    as an analog source (continuous) into a digital number (discrete).</p>
+
+    <section><title>ADC with water...</title><p id="firstcontent_1">To better
+    understand ADC, imagine you have some water going out of a pipe, and you'd
+    like to know how many water it goes outside. One approach would be to
+    collect all the water in a bucket, and then measure what you've collected.
+    But what if water flow never ends ? And, more important, what if water
+    flow isn't constant and you want to measure the flow in real-time ?</p><p
+    id="firstcontent_2">The answer is ADC. With ADC, you're going to extract
+    samples of water. For instance, you're going to put a little glass for 1
+    second under the pipe, every ten seconds. Doing the math, you'll be able
+    to know the mean rate of flow.</p><p id="firstcontent_3">The faster you'll
+    collect water, the more accurate the rate will be. That is, if you're able
+    to collect 10 glasses of water each second, you'll have a better overview
+    of the rate of water than if you collect 1 glass each ten seconds. This is
+    the process of making a continuous flow a discrete, finite value. And this
+    is about <b>resolution</b>, one important property of ADC (and this is
+    also about clock speed...). The higher the resolution, the more accurate
+    the results.</p><p id="firstcontent_5">Now, what if the water flow is so
+    high that your glass gets filled before the end of the sample time ? You
+    could use a bigger glass, but let's assume you can't (scenario need...).
+    This means you can't measure any water flow, this one has to be scaled
+    according to your glass. On the contrary, the water flow may be so low
+    samples you extract may not be relevant related to the glass size (only
+    few drops). Fortunately, you can use a smaller glass (yes, scenario need)
+    to scale down your sample. That is about <b>voltage reference</b>, another
+    important property.</p><p id="firstcontent_4">Leaving our glass of water,
+    many PICs provide several <b>ADC channels</b>: pins that can do this
+    process, measuring voltage as input. In order to use this peripheral,
+    you'll first have to configure how many ADC channels you want. Then you'll
+    need to specify the <b>resolution</b>, usually using 8 bits (0 to 255), 10
+    bits (0 to 1024) or even 12 bits (0 to 4096). Finally, you'll have to
+    setup <b>voltage references</b> depending on the voltage spread you plan
+    to measure.</p></section>
+
+    <section><title>ADC with jallib...</title><p>As usual, Microchip PICs
+    offers a wide choice configuring ADC:<ul>
+        <li>N<b>ot all PICs</b> have ADC module (...)</li>
+
+        <li>Analog pins are <b>dispatched differently</b> amongst PICs, still
+        for user's sake, they have to be automatically configured as input. We
+        thus need to know, for each PIC, where analog pins are...</li>
+
+        <li>Some PICs have their <b>analog pins dependent</b> from each other,
+        and some are <b>independent</b> (more on this later)</li>
+
+        <li><b>Clock configuration</b> can be different</li>
+
+        <li>As previously stated, some PICs have <b>8-bits low resolution</b>
+        ADC module, some have <b>10-bits high resolution</b> ADC module<fn>
+        and some have 12-bits, those aren't currently handled by jallib ADC
+        libraries, That's a restriction.</fn></li>
+
+        <li>Some PICs can have <b>two external voltage references</b> (VRef+
+        and VRef-), only <b>one voltage reference</b> (Vref+ or Vref-) and
+        some <b>can't handle external voltage references at all</b></li>
+
+        <li>(and probably other differences I can't remember :)...</li>
+      </ul></p><p>Luckily most of these differences are transparent to
+    users...</p></section>
+
+    <section><title>Dependent and independent analog pins</title><p>OK, let's
+    write some code ! But before this, you have to understand one very
+    important point: some PICs have their analog pins <i>dependent</i> from
+    each other, some PICs have their analog pins <i>independent</i> from each
+    other. "What is this suppose to mean ?" I can hear...</p><p>Let's consider
+    two famous PICs: 16F877 and 16F88. 16F877 datasheet explains how to
+    configure the number of analog pins, and vref, setting <b>PCFG
+    bits</b>:</p><p><fig>
+        <title>16F877 ADC channels are controlled by PCFG bits</title>
+
+        <image href="images/adc_16f877_table.jpg" otherprops="clickable"
+               placement="inline" width="450"/>
+      </fig></p><p>Want 6 analog pins, no Vref ? Then PCFG bits must be set to
+    0b1001. What will then be the analog pins ? RA0, RA1, RA2, RA3, RA5 and
+    RE0. "<i>What if I want 7 analog pins, no Vref ?</i>" You can't because
+    you'll get a Vref pin, no choice. "<i>What if I want 2 analog pins being
+    RE1 and RE2 ?</i>" You can't, because there's no such combination. So, for
+    this PIC, <b>analog pins are dependent from each other</b>, driven by a
+    combination. In this case, you'll have to specify: <ul>
+        <li>the <b>number of ADC channels</b> you want,</li>
+
+        <li>and <i>amongst</i> them, the <b>number of Vref channels</b></li>
+      </ul></p><p>Now, let's consider 16F88. In this case, there's no such
+    table:</p><p><fig>
+        <title>16F88 ADC channels are controlled by ANS bits</title>
+
+        <image href="images/adc_16f88_ans.jpg" otherprops="clickable"
+               placement="inline" width="450"/>
+      </fig></p><p>Mmmh... OK, there are <b>ANS bits</b>, one for each analog
+    pins. Setting an ANS bit to 1 sets the corresponding pin to analog. This
+    means I can set whatever pin I want to be analog. "<i>I can have 3 analog
+    pins, configured on RA0, RA4 and RB6. Freedom !</i>"</p><p><b>Analog pins
+    are independent</b> from each other in this case, you can do what you
+    want. As a consequence, since it's not driven by a combination, you won't
+    be able to specify the number of ADC channels here. Instead, you'll use
+    <codeph>set_analog_pin()</codeph> procedure, and if needed, the reverse
+    <codeph>set_digital_pin()</codeph> procedure. These procedures takes a
+    analog pin number as argument. Say analog pin AN5 is on pin RB6. To turn
+    this pin as analog, you just have to write
+    <codeph>set_analog_pin(5)</codeph>, because this is about analog pin
+    AN<b>5</b>, and not RB<b>6</b>. </p><note type="remember">as a
+    consequence, these procedures don't exist when analog pins are dependent
+    as in our first case.</note><note type="caution">it's not because there
+    are PCFG bits that PICs have dependent analog pins. Some have PCFG bits
+    which act exactly the same as ANS bits (like some of recent 18F)
+    </note><note type="tip">how to know if your PIC has dependent or
+    independent pins ? First have a look at its datasheet, if you can a table
+    like the one for 16F877, there are dependent. Also, if you configure a PIC
+    with dependent pins as if it was one with independent pins (and
+    vice-versa), you'll get an error. Finally, if you get an error like:
+    "<i>Unable to configure ADC channels. Configuration is supposed to be done
+    using ANS bits but it seems there's no ANS bits for this PIC. Maybe your
+    PIC isn't supported, please report !</i>", or the like, well, this is not
+    a normal situation, so as stated, please report !</note><p>Once
+    configured, using ADC is easy. You'll find
+    <codeph>adc_read_high_res()</codeph> and <b>adc_read_low_res()</b>
+    functions, for respectively read ADC in high and low resolution. Because
+    low resolution is coded on 8-bits, <codeph>adc_read_low_res()</codeph>
+    returns a <codeph>byte</codeph> as the result. <b>adc_read_high_res()</b>
+    returns a <codeph>word</codeph>.</p></section>
+
+    <section><title>Example with 16F877, dependent analog pins</title><p>The
+    following examples briefly explains how to setup ADC module when analog
+    pins are dependent from each other, using PIC 16F877.</p><p>The following
+    diagram is here to help knowing where <b>analog pins</b> (blue) are and
+    where <b>Vref pins</b> (red) are:</p><p><fig>
+        <title>Analog pins and Vref pins on 16F877</title>
+
+        <image href="images/adc_16f877_diagram.jpg" otherprops="clickable"
+               placement="inline" width="450"/>
+      </fig></p><p><b>Example 1</b>: <i>16F877, with only one analog pin, no
+    external voltage reference</i></p><p><codeblock scale="80">-- beginning is about configuring the chip
 -- this is the same for all examples for about 18F877
 include 16f877
 -- setup clock running @20MHz
@@ -73,8 +158,8 @@ pragma target clock 20_000_000
 pragma target WDT  disabled
 pragma target LVP  enabled 
 
--- We&apos;ll start to set all pins as digital
--- then, using ADC, we&apos;ll configure needed
+-- We'll start to set all pins as digital
+-- then, using ADC, we'll configure needed
 -- ones as analog.
 enable_digital_io()
 
@@ -98,13 +183,13 @@ adc_init()
 -- will periodically send those chars
 var word wmeasure
 var byte bmeasure
-const byte wprefix[] = &quot;Result in high resolution: &quot;
-const byte bprefix[] = &quot;Result in low  resolution: &quot;
+const byte wprefix[] = "Result in high resolution: "
+const byte bprefix[] = "Result in low  resolution: "
 
 forever loop
 
    -- get ADC result, on channel 0
-   -- this means we&apos;re currently reading on pin AN0 !
+   -- this means we're currently reading on pin AN0 !
 
    -- access results in high resolution
    wmeasure = adc_read_high_res(0)
@@ -125,11 +210,12 @@ forever loop
    delay_1ms(200)
    
 end loop
-</codeblock></p>
-      <p><b>Example 2</b>: <i>16F877, with 2 analog pins, 1 external voltage reference, that is, Vref+ </i></p>
-      <p>This is almost the same as before, except we now want 2 (analog pins A0 and A1) + 1 (Vref+ A3), so yes we are using 3 analog pins here.</p>
-      <p>The beginning is the same, here&apos;s just the part about ADC configuration and readings. We use a for loop to go over the 2 analog pins A0 and A1:</p>
-      <p><codeblock>-- Step 1: ADC input pin setup we wil use channel 0 and 1 (2 channels)
+</codeblock></p><p><b>Example 2</b>: <i>16F877, with 2 analog pins, 1 external
+    voltage reference, that is, Vref+ </i></p><p>This is almost the same as
+    before, except we now want 2 (analog pins A0 and A1) + 1 (Vref+ A3), so
+    yes we are using 3 analog pins here.</p><p>The beginning is the same,
+    here's just the part about ADC configuration and readings. We use a for
+    loop to go over the 2 analog pins A0 and A1:</p><p><codeblock scale="80">-- Step 1: ADC input pin setup we wil use channel 0 and 1 (2 channels)
 pin_AN0_direction = input 
 pin_AN1_direction = input 
 -- Step 2: Set A0 and A1 analog input and A3 as Vref
@@ -144,10 +230,10 @@ adc_init()
 -- will periodically send those chars
 var word measure
 var byte lowmeasure, channel
-const byte prefix[] = &quot;Channel &quot;
-const byte highstr[] = &quot; (high) &quot;
-const byte lowstr[] = &quot; (low) &quot;
-const byte suffix[] = &quot;: &quot;
+const byte prefix[] = "Channel "
+const byte highstr[] = " (high) "
+const byte lowstr[] = " (low) "
+const byte suffix[] = ": "
 
 forever loop
 
@@ -179,7 +265,6 @@ forever loop
   delay_1ms(100)
 
    end loop
-end loop </codeblock></p>
-    </section>
+end loop </codeblock></p></section>
   </body>
 </topic>

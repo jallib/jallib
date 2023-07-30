@@ -1,27 +1,45 @@
-<?xml version='1.0' encoding='UTF-8'?>
-<!-- This document was created with Syntext Serna Free. --><!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN" "topic.dtd" []>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This document was created with Syntext Serna Free. -->
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN"
+"topic.dtd">
 <topic id="topic-1">
   <title>I²C (Part 3) - Implementing an I²C Slave</title>
+
   <prolog>
     <author>Sébastien Lelong</author>
+
     <publisher>Jallib Group</publisher>
   </prolog>
+
   <body>
-    <p>In previous parts of this tutorial, we&apos;ve seen a little of theory, we&apos;ve also seen how to check if the i2c bus is operational, now the time has come to finally build our i2c slave. But what will slave will do ? For this example, slave is going to do something amazing: it&apos;ll echo received chars. Oh, I&apos;m thinking about something more exciting: it will &quot;almost&quot; echo chars:<ul>
-        <li>if you send &quot;a&quot;, it sends &quot;b&quot;</li>
-        <li>if you send &quot;b&quot;, it sends &quot;c&quot;</li>
-        <li>if you send &quot;z&quot;, it sends &quot;{&quot;<fn>why &quot;{&quot; ? According to ASCII, &quot;z&quot; is the character for position 122. 123 is... &quot;{&quot;)</fn></li>
+    <p>In previous parts of this tutorial, we've seen a little of theory,
+    we've also seen how to check if the i2c bus is operational, now the time
+    has come to finally build our i2c slave. But what will slave will do ? For
+    this example, slave is going to do something amazing: it'll echo received
+    chars. Oh, I'm thinking about something more exciting: it will "almost"
+    echo chars:<ul>
+        <li>if you send "a", it sends "b"</li>
+
+        <li>if you send "b", it sends "c"</li>
+
+        <li>if you send "z", it sends "{"<fn>why "{" ? According to ASCII, "z"
+        is the character for position 122. 123 is... "{")</fn></li>
       </ul></p>
-    <p/>
-    <section>
-      <title>Building the i2c master</title>
-      <p>Let&apos;s start with the easy part. What will master do ? Just collect characters from a serial link, and convert them to i2c commands. So you&apos;ll need a PIC to which you can send data via serial. I mean you&apos;ll need a board with serial com. capabilities. I mean we won&apos;t do this on a breadboard... There are plenty out there on the Internet, pick your choice.</p>
-      <p>My board looks like this:</p>
-      <p><image href="images/i2c_seb_mainboard_up.jpg" width="400" placement="break"/></p>
-      <p><image href="images/i2c_seb_mainboard_facade.jpg" width="400" placement="break"/></p>
-      <p>Two connectors are used for earch port, <i>PORTA</i> and <i>PORTB</i>, to plug daughter boards, or a breadboard in our case.</p>
-      <p>The i2c initialization part is quite straight forward. SCL and SDA pins are declared, we&apos;ll use a standard speed, 400KHz:</p>
-      <p><codeblock>-- I2C io definition
+
+    <section><title>Building the i2c master</title><p>Let's start with the
+    easy part. What will master do ? Just collect characters from a serial
+    link, and convert them to i2c commands. So you'll need a PIC to which you
+    can send data via serial. I mean you'll need a board with serial com.
+    capabilities. I mean we won't do this on a breadboard... There are plenty
+    out there on the Internet, pick your choice.</p><p>My board looks like
+    this:</p><p><image href="images/i2c_seb_mainboard_up.jpg"
+    placement="inline" width="400"/></p><p><image
+    href="images/i2c_seb_mainboard_facade.jpg" placement="inline"
+    width="400"/></p><p>Two connectors are used for earch port, <i>PORTA</i>
+    and <i>PORTB</i>, to plug daughter boards, or a breadboard in our
+    case.</p><p>The i2c initialization part is quite straight forward. SCL and
+    SDA pins are declared, we'll use a standard speed,
+    400KHz:</p><p><codeblock scale="80">-- I2C io definition
 var volatile bit i2c_scl            is pin_b4
 var volatile bit i2c_scl_direction  is pin_b4_direction
 var volatile bit i2c_sda            is pin_b1
@@ -30,25 +48,31 @@ var volatile bit i2c_sda_direction  is pin_b1_direction
 const word _i2c_bus_speed = 4 ; 400kHz
 const bit _i2c_level = true   ; i2c levels (not SMB)
 include i2c_software
-i2c_initialize()</codeblock></p>
-      <p>We&apos;ll also use the level 1 i2c library. The principle is easy: you declare two buffers, one for receiving and one for sending bytes, and then you call procedure specifying how many bytes you want to send, and how many are expected to be returned. Joep has written <xref href="http://jallib.blogspot.com/2008/12/i2c-master.html" format="html" scope="external">a nice post about this</xref>, if you want to read more about this. We&apos;ll send one byte at a time, and receive one byte at a time, so buffers should be one byte long.</p>
-      <p><codeblock>const single_byte_tx_buffer = 1 -- only needed when length is 1
+i2c_initialize()</codeblock></p><p>We'll also use the level 1 i2c library. The
+    principle is easy: you declare two buffers, one for receiving and one for
+    sending bytes, and then you call procedure specifying how many bytes you
+    want to send, and how many are expected to be returned. Joep has written
+    <xref format="html"
+    href="http://jallib.blogspot.com/2008/12/i2c-master.html"
+    scope="external">a nice post about this</xref>, if you want to read more
+    about this. We'll send one byte at a time, and receive one byte at a time,
+    so buffers should be one byte long.</p><p><codeblock scale="80">const single_byte_tx_buffer = 1 -- only needed when length is 1
 var byte i2c_tx_buffer[1]
 var byte i2c_rx_buffer[1]
-include i2c_level1</codeblock></p>
-      <p>What&apos;s next ? Well, master also has to read chars from a serial line. Again, easy:</p>
-      <p><codeblock>const usart_hw_serial = true
+include i2c_level1</codeblock></p><p>What's next ? Well, master also has to
+    read chars from a serial line. Again, easy:</p><p><codeblock scale="80">const usart_hw_serial = true
 const serial_hw_baudrate = 57_600
 include serial_hardware
 serial_hw_init()
--- Tell the world we&apos;re ready !
-serial_hw_write(&quot;!&quot;)</codeblock></p>
-      <p>
-So when the master is up, it should at least send the &quot;!&quot; char.</p>
-      <p>Then we need to specify the slave&apos;s address. This is a 8-bits long address, the 8th bits being the bit specifying if operation is a read or write one (see <xref href="tutorial_i2c1.xml">part 1</xref> for more). We then need to collect those chars coming from the PC and sends them to the slave.</p>
-      <p>
-The following should do the trick (believe me, it does :))</p>
-      <p><codeblock>var byte icaddress = 0x5C   -- slave address
+-- Tell the world we're ready !
+serial_hw_write("!")</codeblock></p><p> So when the master is up, it should at
+    least send the "!" char.</p><p>Then we need to specify the slave's
+    address. This is a 8-bits long address, the 8th bits being the bit
+    specifying if operation is a read or write one (see <xref
+    href="tutorial_i2c1.xml">part 1</xref> for more). We then need to collect
+    those chars coming from the PC and sends them to the slave.</p><p> The
+    following should do the trick (believe me, it does :))</p><p><codeblock
+    scale="80">var byte icaddress = 0x5C   -- slave address
 
 forever loop
    if serial_hw_read(pc_char)
@@ -62,97 +86,138 @@ forever loop
       ic_char = i2c_rx_buffer[0]
       serial_hw_write(ic_char)
    end if
-end loop</codeblock></p>
-      <p>
-The whole program is available on under the name 16f88_i2c_sw_master_echo.jal in the sample directory of your Jallib installation.</p>
-    </section>
-    <section>
-      <title>Building the i2c slave</title>
-      <p>So this is the main part ! As exposed on <xref href="tutorial_i2c1.xml">first post</xref>, we&apos;re going to implement a <i>finite state machine</i>. jallib comes with a library where all the logic is already coded, in a ISR. You just have to define what to do for each state encountered during the program execution. To do this, we&apos;ll have to <b>define several callbacks</b>, that is procedures that will be called on appropriate state.</p>
-      <p>Before this, we need to <b>setup and initialize our slave</b>. i2c address should exactly be the same as the one defined in the master section. This time, we won&apos;t use interrrupts on Start/Stop signals; we&apos;ll just let the SSP module triggers an interrupts when the i2c address is recognized (no interrupts means address issue, or hardware problems, or...). Finally, since slave is expected to receive a char, and send char + 1, we need a global variable to store the results. This gives:</p>
-      <p><codeblock>include i2c_hw_slave
+end loop</codeblock></p><p> The whole program is available on under the name
+    16f88_i2c_sw_master_echo.jal in the sample directory of your Jallib
+    installation.</p></section>
+
+    <section><title>Building the i2c slave</title><p>So this is the main part
+    ! As exposed on <xref href="tutorial_i2c1.xml">first post</xref>, we're
+    going to implement a <i>finite state machine</i>. jallib comes with a
+    library where all the logic is already coded, in a ISR. You just have to
+    define what to do for each state encountered during the program execution.
+    To do this, we'll have to <b>define several callbacks</b>, that is
+    procedures that will be called on appropriate state.</p><p>Before this, we
+    need to <b>setup and initialize our slave</b>. i2c address should exactly
+    be the same as the one defined in the master section. This time, we won't
+    use interrrupts on Start/Stop signals; we'll just let the SSP module
+    triggers an interrupts when the i2c address is recognized (no interrupts
+    means address issue, or hardware problems, or...). Finally, since slave is
+    expected to receive a char, and send char + 1, we need a global variable
+    to store the results. This gives:</p><p><codeblock scale="80">include i2c_hw_slave
 
 const byte SLAVE_ADDRESS = 0x5C
 i2c_hw_slave_init(SLAVE_ADDRESS)
 
 -- will store what to send back to master
--- so if we get &quot;a&quot;, we need to store &quot;a&quot; + 1
-var byte data</codeblock></p>
-      <p>Before this, let&apos;s try to understand how master will talk to the slave (<i>italic</i>) and what the slave should do (<u>underlined</u>), according to each state (with code following):<ul>
-          <li><b>state 1</b>: <i>master initiates a write operation</i> (but does not send data yet). Since no data is sent, <u>slave should just do... nothing</u> (slave just knows someone wants to send data).<p><codeblock>procedure i2c_hw_slave_on_state_1(byte in _trash) is
+-- so if we get "a", we need to store "a" + 1
+var byte data</codeblock></p><p>Before this, let's try to understand how
+    master will talk to the slave (<i>italic</i>) and what the slave should do
+    (<u>underlined</u>), according to each state (with code following):<ul>
+        <li><b>state 1</b>: <i>master initiates a write operation</i> (but
+        does not send data yet). Since no data is sent, <u>slave should just
+        do... nothing</u> (slave just knows someone wants to send
+        data).<p><codeblock scale="80">procedure i2c_hw_slave_on_state_1(byte in _trash) is
    pragma inline
-   -- _trash is read from master, but it&apos;s a dummy data
+   -- _trash is read from master, but it's a dummy data
    -- usually (always ?) ignored
 end procedure</codeblock></p></li>
-          <li><b>state 2</b>: <i>master actually sends data, that is one character</i>. <u>Slave should get this char, and process it (char + 1) for further sending</u>.<p><codeblock>procedure i2c_hw_slave_on_state_2(byte in rcv) is
+
+        <li><b>state 2</b>: <i>master actually sends data, that is one
+        character</i>. <u>Slave should get this char, and process it (char +
+        1) for further sending</u>.<p><codeblock scale="80">procedure i2c_hw_slave_on_state_2(byte in rcv) is
    pragma inline
    -- ultimate data processing... :)
    data = rcv + 1
 end procedure</codeblock></p></li>
-          <li><b>state 3</b>: <i>master initiates a read operation, it wants to get the echo back</i>. <u>Slave should send its processed char</u>.<p><codeblock>procedure i2c_hw_slave_on_state_3() is
+
+        <li><b>state 3</b>: <i>master initiates a read operation, it wants to
+        get the echo back</i>. <u>Slave should send its processed
+        char</u>.<p><codeblock scale="80">procedure i2c_hw_slave_on_state_3() is
    pragma inline
    i2c_hw_slave_write_i2c(data)
 end procedure</codeblock></p></li>
-          <li><b>state 4</b>: <i>master still wants to read some information</i>. This should never occur, since one char is sent and read at a time. <u>Slave should thus produce an error</u>.<p><codeblock>procedure i2c_hw_slave_on_state_4() is
+
+        <li><b>state 4</b>: <i>master still wants to read some
+        information</i>. This should never occur, since one char is sent and
+        read at a time. <u>Slave should thus produce an
+        error</u>.<p><codeblock scale="80">procedure i2c_hw_slave_on_state_4() is
    pragma inline
-   -- This shouldn&apos;t occur in our i2c echo example
+   -- This shouldn't occur in our i2c echo example
    i2c_hw_slave_on_error()
 end procedure</codeblock></p></li>
-          <li><b>state 5</b>: <i>master hangs up the connection</i>. <u>Slave should reset its state</u>.<p><codeblock>procedure i2c_hw_slave_on_state_5() is
+
+        <li><b>state 5</b>: <i>master hangs up the connection</i>. <u>Slave
+        should reset its state</u>.<p><codeblock scale="80">procedure i2c_hw_slave_on_state_5() is
    pragma inline
    data = 0
 end procedure</codeblock></p></li>
-        </ul></p>
-      <p>Finally, we need to define a callback in case of error. You could do anything, like resetting the PIC, and sending log/debug data, etc... In our example, we&apos;ll blink forever:</p>
-      <p><codeblock>procedure i2c_hw_slave_on_error() is
+      </ul></p><p>Finally, we need to define a callback in case of error. You
+    could do anything, like resetting the PIC, and sending log/debug data,
+    etc... In our example, we'll blink forever:</p><p><codeblock scale="80">procedure i2c_hw_slave_on_error() is
    pragma inline
-   -- Just tell user user something&apos;s got wrong
+   -- Just tell user user something's got wrong
    forever loop
       led = on
       _usec_delay(200000)
       led = off
       _usec_delay(200000)
    end loop
-end procedure</codeblock></p>
-      <p>Once callbacks are defined, we can include the famous ISR library.</p>
-      <p><codeblock>include i2c_hw_slave_isr</codeblock></p>
-      <p>So the sequence is:<ol>
-          <li><b>include i2c_hw_slave</b>, and setup your slave</li>
-          <li>define your callbacks,</li>
-          <li>include the ISR</li>
-        </ol></p>
-    </section>
-    <p>The full code is available from jallib&apos;s SVN repository:<ul>
+end procedure</codeblock></p><p>Once callbacks are defined, we can include the
+    famous ISR library.</p><p><codeblock scale="80">include i2c_hw_slave_isr</codeblock></p><p>So
+    the sequence is:<ol>
+        <li><b>include i2c_hw_slave</b>, and setup your slave</li>
+
+        <li>define your callbacks,</li>
+
+        <li>include the ISR</li>
+      </ol></p></section>
+
+    <p>The full code is available from jallib's SVN repository:<ul>
         <li>i2c_hw_slave.jal</li>
+
         <li>i2c_hw_slave_isr.jal</li>
+
         <li>16f88_i2c_sw_master_echo.jal</li>
+
         <li>16f88_i2c_hw_slave_echo.jal</li>
       </ul></p>
-    <p>All those files and other dependencies are also available in latest jallib-pack (see jallib <xref href="http://justanotherlanguage.org/downloads" format="html" scope="external">downloads</xref>)</p>
-    <section>
-      <title>Connecting and testing the whole thing...</title>
-      <p>As previously said, the board I use is ready to be used with a serial link. It&apos;s also i2c ready, I&apos;ve put the two pull-ups resistors. If your board doesn&apos;t have those resistors, you&apos;ll have to add them on the breadboard, or it won&apos;t work (read <xref href="tutorial_i2c2.xml">part 2</xref> to know and see why...).</p>
-      <p>
-I use a connector adapted with a PCB to connect my main board with my breadboard. Connector&apos;s wires provide power supply, 5V-regulated, so no other powered wires it required.</p>
-      <p><fig>
-          <image href="images/i2c_connector.jpg" width="400" placement="break"/>
-          <p><i>Connector, with power wires </i></p>
-        </fig></p>
-      <p><fig>
-          <image href="images/i2c_details.jpg" width="400" placement="break"/>
-          <p><i>Everything is ready...</i></p>
-        </fig></p>
-      <p><fig>
-          <image href="images/i2c_crimescene.jpg" width="400" placement="break"/>
-          <p><i>Crime scene: main board, breadboard and battery pack</i></p>
-        </fig></p>
-      <p>Once connected, power the whole and use a terminal to test it. When pressing &quot;a&quot;, you&apos;ll get a &quot;a&quot; as an echo from the master, then &quot;b&quot; as result from the slave.</p>
-      <p><image href="images/i2c_pseudoecho.png" placement="break"/></p>
-    </section>
-    <section>
-      <title>What now ?</title>
-      <p>We&apos;ve seen how to implement a simple i2c hardware slave. The ISR library provides all the logic about the finite state machine. <i>You just have to define callbacks, according to your need</i>.</p>
-      <p>i2c is a widely used protocol. Most of the time, you access i2c devices, acting as a master. We&apos;ve seen how to be on the other side, on the slave side. Being on the slave side means you can build modular boards, accessible with a standard protocol.</p>
-    </section>
+
+    <p>All those files and other dependencies are also available in latest
+    jallib-pack (see jallib <xref format="html"
+    href="http://justanotherlanguage.org/downloads"
+    scope="external">downloads</xref>)</p>
+
+    <section><title>Connecting and testing the whole thing...</title><p>As
+    previously said, the board I use is ready to be used with a serial link.
+    It's also i2c ready, I've put the two pull-ups resistors. If your board
+    doesn't have those resistors, you'll have to add them on the breadboard,
+    or it won't work (read <xref href="tutorial_i2c2.xml">part 2</xref> to
+    know and see why...).</p><p> I use a connector adapted with a PCB to
+    connect my main board with my breadboard. Connector's wires provide power
+    supply, 5V-regulated, so no other powered wires it required.</p><p><fig>
+        <image href="images/i2c_connector.jpg" placement="inline" width="400"/>
+
+        <p><i>Connector, with power wires </i></p>
+      </fig></p><p><fig>
+        <image href="images/i2c_details.jpg" placement="inline" width="400"/>
+
+        <p><i>Everything is ready...</i></p>
+      </fig></p><p><fig>
+        <image href="images/i2c_crimescene.jpg" placement="inline" width="400"/>
+
+        <p><i>Crime scene: main board, breadboard and battery pack</i></p>
+      </fig></p><p>Once connected, power the whole and use a terminal to test
+    it. When pressing "a", you'll get a "a" as an echo from the master, then
+    "b" as result from the slave.</p><p><image
+    href="images/i2c_pseudoecho.png" placement="inline"
+    width="400"/></p></section>
+
+    <section><title>What now ?</title><p>We've seen how to implement a simple
+    i2c hardware slave. The ISR library provides all the logic about the
+    finite state machine. <i>You just have to define callbacks, according to
+    your need</i>.</p><p>i2c is a widely used protocol. Most of the time, you
+    access i2c devices, acting as a master. We've seen how to be on the other
+    side, on the slave side. Being on the slave side means you can build
+    modular boards, accessible with a standard protocol.</p></section>
   </body>
 </topic>
