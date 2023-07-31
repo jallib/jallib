@@ -244,5 +244,5 @@ bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 
 pdfbooks:
 	# Tutorial book in pdf and html.
-	$$DITA_HOME/dita-ot-3.7.2/bin/dita -project=`pwd`/../doc/dita/tutorials/pdf.xml -o $$HOME/tmp/pdfbooks_${VERSION}
-	$$DITA_HOME/dita-ot-3.7.2/bin/dita -project=`pwd`/../doc/dita/tutorials/html.xml -o $$HOME/tmp/pdfbooks_${VERSION}
+	$$DITA_HOME/bin/dita -project=`pwd`/../doc/dita/tutorials/pdf.xml -o $$HOME/tmp/pdfbooks_${VERSION}
+	$$DITA_HOME/bin/dita -project=`pwd`/../doc/dita/tutorials/html.xml -o $$HOME/tmp/pdfbooks_${VERSION}
