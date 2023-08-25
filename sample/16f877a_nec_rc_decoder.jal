@@ -1,0 +1,109 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the NEC Remote Control Decoder
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program that shows NEC Remote Control commands on an 
+--              serial interface using the external interrupt of the PIC.
+-- 
+-- Notes:       The 38 kHz Infra Red receiver (active low)  must be connected
+--              to the external interrupt pin.
+--
+
+include 16f877a                     -- target PICmicro
+--
+-- This program assumes that a 20 MHz resonator or crystal.
+pragma target clock 20_000_000      -- oscillator frequency
+--
+pragma target OSC      HS           -- crystal or resonator
+pragma target WDT      DISABLED     -- watchdog
+pragma target DEBUG    DISABLED     -- no debugging
+pragma target BROWNOUT DISABLED     -- no brownout reset
+pragma target LVP      ENABLED      -- low voltage programming, pull PGM pin LOW for normal operation
+
+enable_digital_io()
+-- Wait some time for the hardware to power up.
+_usec_delay(250_000)
+
+-- Serial hardware pin aliases.
+const serial_hw_baudrate = 115200            
+include serial_hardware
+alias serial is serial_hw_data
+serial_hw_init()
+include print
+
+-- Settings for the NEC Remote Control Decoder. Decoder times are based
+-- on Timer 1 running at 1.0 MHz. Since 20 MHz will not give exactly
+-- 1 MHz we do the following:
+-- -) Use Fosc/4. This gives 5 MHz.
+-- -) Use a prescaler of 1:4. This gives 1.25 MHz.
+T1CON_TMR1CS = FALSE -- Clock source Fosc/4 gives 5 MHz
+T1CON_T1CKPS = 0b10  -- Prescaler 1:4 gives 1.25 MHz
+-- Since the clock runs 1.25 times faster than the default of 1 MHz 
+-- we need to scale the bit times accordingly (see library).
+const dword NEC_RC_SCALING = 125
+-- Interrupt pin.
+alias nec_rc_decoder_pin_direction is pin_b0_direction 
+-- Now we can include the library.
+include nec_rc_decoder
+init_nec_rc_decoder()
+
+-- There is also an extended NEC Remote Control Protocol. In this 
+-- sample program you can switch to this by defining the following 
+-- local constant:
+-- const USE_NEC_EXTENDED_PROTOCOL = TRUE
+if defined(USE_NEC_EXTENDED_PROTOCOL) then
+   nec_rc_set_protocol_extended()
+end if
+
+-- Variables.
+var word repeat_counter = 0 
+if defined(USE_NEC_EXTENDED_PROTOCOL) then
+   var word address
+else
+   var byte address
+end if 
+var byte command
+
+-- Main program starts here.
+print_crlf(serial)
+print_string(serial,"NEC REMOTE CONTROL ")
+if defined(USE_NEC_EXTENDED_PROTOCOL) then
+   print_string(serial,"EXTENDED DECODER")
+else
+   print_string(serial,"STANDARD DECODER")
+end if
+print_crlf(serial)
+
+forever  loop 
+
+   if nec_rc_message_received() then
+      -- Reset repeat counter since new message.
+      repeat_counter = 0
+      -- Print the (extended) address
+      print_string(serial, "ADDRESS: ")
+      if defined(USE_NEC_EXTENDED_PROTOCOL) then
+         nec_rc_get_data_extended(address, command)
+         print_word_dec(serial, address)
+      else 
+         nec_rc_get_data_standard(address, command)
+         print_byte_dec(serial, address)
+      end if 
+      print_crlf(serial)
+      -- Print the command.
+      print_string(serial, "COMMAND: ")
+      print_byte_dec(serial, command)
+      print_crlf(serial)
+   elsif nec_rc_repeat_received then
+      -- Only a repeat message, increment repeat counter.
+      repeat_counter = repeat_counter + 1
+      print_string(serial, "REPEAT: ")
+      print_word_dec(serial, repeat_counter)
+      print_crlf(serial)
+   end if 
+   
+end loop

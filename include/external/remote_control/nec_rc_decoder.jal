@@ -1,0 +1,614 @@
+--===============================================================================
+-- Title: NEC Infra Red Remote Control Decoder Library.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for decoding NEC Remote Control messages. The library 
+--              can be configured to use either the external interrupt or an 
+--              IOC interrupt to decode the Remote Control Messages.
+--              The default is using an external interupt. In order to switch 
+--              to using an IOC interrupt the user must initialize the IOC
+--              to be active on both the rising and falling edge and must
+--              define the following alias (example for IOC on pin A2):
+--              alias nec_rc_decoder_ioc_flag is IOCAF_IOCAF2 
+--
+--              The library uses Timer 1 to measure the the bit times 
+--              The user must initialize Timer 1. Bit times are based on 1 us.
+--              If Timer 1 does not run at 1 MHz then the user has to define 
+--              the dword constant NEC_RC_SCALING, where a value of 100 equals
+--              Timer 1 running at 1 MHz. When Timer 1 runs at 1.25 MHz the 
+--              dword constant NEC_RC_SCALING must equal 125. Same when 
+--              Timer 1 runs at 0.75 MHz NEC_RC_SCALING must equal 75.
+--
+--              The standard NEC protocol (default) or the extended 
+--              NEC protocol can be selected for decoding.
+--
+-- Notes:       The 38 kHz Infra Red receiver (active low) must be connected
+--              to the external interrupt pin or the used IOC pin.
+--        
+-- Sources:    Documentation on the NEC protocol:
+--             https://www.renesas.com/us/en/document/apn/1184-remote-control-ir-receiver-decoder
+--
+
+
+-- ----------------------------------------------------------------------------
+-- -------------------------- Public API --------------------------------------
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- Initialize the NEC Remote Control Decoder. This will initialize timer 1
+-- and will enable the required interrupts. The Remote Control Decoder is set 
+-- to support the standard NEC protocol.
+-- ----------------------------------------------------------------------------
+procedure init_nec_rc_decoder()
+
+-- ----------------------------------------------------------------------------
+-- Set the library to support the standard protocol. This is the default.
+-- ----------------------------------------------------------------------------
+procedure nec_rc_set_protocol_standard()
+
+-- ----------------------------------------------------------------------------
+-- Set the library to support the extended protocol.
+-- ----------------------------------------------------------------------------
+procedure nec_rc_set_protocol_extended()
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a valid Remote Control message was received.
+-- ----------------------------------------------------------------------------
+function nec_rc_message_received() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE is a valid Remote Control repeate message was received.
+-- When called, the repeat flag is cleared.
+-- ----------------------------------------------------------------------------
+function nec_rc_repeat_received() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Return the last received Remote Control data using the standard protocol. 
+-- When called, the message received flag is cleared. 
+-- ----------------------------------------------------------------------------
+procedure nec_rc_get_data_standard(byte out address, byte out command)
+
+-- ----------------------------------------------------------------------------
+-- Return the last received Remote Control data using the extended protocol. 
+-- When called, the message received flag is cleared. 
+-- ----------------------------------------------------------------------------
+procedure nec_rc_get_data_extended(word out address, byte out command)
+
+-- ----------------------------------------------------------------------------
+-- ---------------------------- Implementation --------------------------------
+-- ----------------------------------------------------------------------------
+
+-- This library needs a 16-bit Timer 1.
+if !defined(TMR1H) then
+   _error "This library requires a PIC with a 16-bit Timer 1."
+end if 
+
+-- =========================== Some aliases ===================================
+
+-- Timer 1 aliases.
+alias NEC_RC_TMR1    is TMR1            
+alias NEC_RC_TMR1_ON is T1CON_TMR1ON     
+
+-- Timer 1 Interrupt registers.
+if defined(PIE4_TMR1IE) then
+   alias NEC_RC_TMR1_IE  is PIE4_TMR1IE
+   alias NEC_RC_TMR1_IF  is PIR4_TMR1IF 
+elsif defined(PIE1_TMR1IE) then
+   alias NEC_RC_TMR1_IE  is PIE1_TMR1IE
+   alias NEC_RC_TMR1_IF  is PIR1_TMR1IF
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- External and IOC interrupt.
+if defined(PIE0_INTE) then
+   if defined(nec_rc_decoder_ioc_flag) then
+      -- IOC version.
+      alias NEC_RC_IOC_IE  is PIE0_IOCIE
+   else
+      -- External interrupt version.
+      alias NEC_RC_INTE    is PIE0_INTE
+      alias NEC_RC_INTF    is PIR0_INTF
+      alias NEC_RC_INT_EDG is INTCON_INTEDG
+   end if 
+elsif defined(INTCON_INT0IE) then
+   -- Note: Only external interrupt 0 supported.
+   if defined(nec_rc_decoder_ioc_flag) then
+      -- IOC version. This alias is not tested.
+      alias NEC_RC_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias NEC_RC_INTE    is INTCON_INT0IE
+      alias NEC_RC_INTF    is INTCON_INT0IF
+      alias NEC_RC_INT_EDG is INTCON2_INTEDG0
+   end if 
+elsif defined(INTCON_INTE) then
+   if defined(nec_rc_decoder_ioc_flag) then
+      -- IOC version.
+      alias NEC_RC_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias NEC_RC_INTE    is INTCON_INTE
+      alias NEC_RC_INTF    is INTCON_INTF
+      alias NEC_RC_INT_EDG is OPTION_REG_INTEDG
+   end if 
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- Global and peripheral interupt
+alias NEC_RC_PEIE is INTCON_PEIE
+alias NEC_RC_GIE  is INTCON_GIE 
+
+-- ========= Private constants, variables and function prototypes =============
+
+-- Specification of NEC IR protocol:
+-- Logical '0': A 562.5 us pulse burst followed by a 562.5 us space,
+--              with a total transmit time of 1.125 ms
+-- Logical '1': A 562.5 us pulse burst followed by a 1.6875ms space,
+--              with a total transmit time of 2.25 ms
+-- *) Start with 9 ms leading pulse burst (16 times the pulse burst length used
+--    for a logical data bit) followed by a a 4.5 ms space.
+-- *) 8-bit address for the receiving device or 16 bit for the extended protocol
+-- *) 8-bit logical inverse of the address or high byte for the extended protocol.
+-- *) 8-bit command.
+-- *) 8-bit logical inverse of the command.
+-- *) Final 562.5 us pulse burst to signify the end of message transmission.
+-- *) The four bytes of data bits are each sent least significant bit first.
+-- *) After a command is tranmitted and the key on the remote control is still
+--    pressed only a repeat message is sent consisting of a start pulse of
+--    9 ms, followed by a 2.25 ms space.
+
+-- The following constants are based on timer 1 running at 1 MHz or 1 us.
+
+-- For minimum and maximum bit times we accept 25% tolerance to increase
+-- sensitivity. Times are given in us.
+if !defined(NEC_RC_SCALING) then
+   const dword NEC_RC_SCALING = 100
+end if 
+
+-- Nominal is 9000 us.
+const dword _NEC_RC_LEAD_MIN       = (6750 * NEC_RC_SCALING) / 100 
+const dword _NEC_RC_LEAD_MAX       = (11250 * NEC_RC_SCALING) / 100 
+-- Nominal is 4500 us. 
+const dword _NEC_RC_LEAD_SPACE_MIN = (3375 * NEC_RC_SCALING) / 100 
+const dword _NEC_RC_LEAD_SPACE_MAX = (5625 * NEC_RC_SCALING) / 100  
+-- Nominal is 2500 us.
+const dword _NEC_RC_REP_SPACE_MIN  = (1688 * NEC_RC_SCALING) / 100  
+const dword _NEC_RC_REP_SPACE_MAX  = (2812 * NEC_RC_SCALING) / 100  
+-- Nominal is 562.5 us
+const dword _NEC_RC_BURST_MIN      = (422 * NEC_RC_SCALING) / 100  
+const dword _NEC_RC_BURST_MAX      = (703 * NEC_RC_SCALING) / 100  
+-- Nominal is 562.5 us.
+const dword _NEC_RC_0_MIN          = (422 * NEC_RC_SCALING) / 100   
+const dword _NEC_RC_0_MAX          = (703 * NEC_RC_SCALING) / 100  
+-- Nominal is 1687 us.
+const dword _NEC_RC_1_MIN          = (1267 * NEC_RC_SCALING) / 100  
+const dword _NEC_RC_1_MAX          = (2109 * NEC_RC_SCALING) / 100  
+
+-- We decode the IR bitstream on both edges for better performance.
+const _NEC_RC_EDGE_RISING  = TRUE
+const _NEC_RC_EDGE_FALLING = FALSE
+
+-- Max value of timer 1 before overflow.
+const word _NEC_RC_OVERFLOW = 65535  
+
+-- Decoder states.
+const byte _NEC_RC_IDLE       = 0
+const byte _NEC_RC_LEAD       = 1
+const byte _NEC_RC_SPACE      = 2
+const byte _NEC_RC_DATA       = 3
+const byte _NEC_RC_END_DATA   = 4
+const byte _NEC_RC_END_REPEAT = 5
+
+-- Number of bits in RC message.
+const byte _NEC_RC_BITS = 32  
+
+-- Internal decoding variables.
+var dword _nec_rc_message          -- Storing all bits from the NEC RC message
+-- Layout of the _nec_rc_bits:
+-- bit 07 .. 00 = Address
+-- bit 15 .. 08 = Address Not
+-- bit 23 .. 16 = Command
+-- bit 31 .. 24 = Command Not
+var word _nec_rc_bit_time          -- Storing the time of one IR bit in timer ticks
+var byte _nec_rc_state             -- IR Decoder state machine variable
+var byte _nec_rc_count             -- Bit counter
+var byte _nec_rc_address           -- Holds the received address
+var byte _nec_rc_address_n         -- Holds the inverted received address
+var byte _nec_rc_command           -- Holds the received command
+var byte _nec_rc_command_n         -- Holds the inverted received command
+var bit  _nec_rc_repeat            -- Indicates when a message is just a repeat
+var bit  _nec_rc_available         -- Indicates that an RC message is available
+var bit  _nec_rc_burst_pulse       -- Indicates that we expect a burst pulse
+var bit  _nec_rc_timer1_expired    -- If set timer has overflow
+var bit  _nec_rc_protocol_standard -- If set the standard protocol is supported
+
+-- ====================== Internal function prototypes ========================
+
+--- ---------------------------------------------------------------------------
+-- Stop Timer 1 and return the value of Timer 1. We return the Timer value if 
+-- it has not overflown otherwise this function returns the overflow value.
+-- ----------------------------------------------------------------------------
+function _nec_rc_get_timer1_value() return word 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset Timer 1 and start the timer.
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_timer1_reset() 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset the Remote Control to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_reset_decoder()
+
+-- ============== Implementation of the functions and procedures ==============
+
+-- ----------------------------------------------------------------------------
+-- Initialize the NEC Remote Control Decoder. This will initialize timer 1
+-- and will enable the required interrupts. The Remote Control Decoder is set 
+-- to support the standard NEC protocol.
+-- ----------------------------------------------------------------------------
+procedure init_nec_rc_decoder() is
+
+   nec_rc_decoder_pin_direction = input
+   _nec_rc_reset_decoder()
+   _nec_rc_available = FALSE
+   _nec_rc_repeat = FALSE
+   nec_rc_set_protocol_standard()
+   -- Enable all used interrupts.
+   NEC_RC_TMR1_IE = TRUE
+   NEC_RC_PEIE = TRUE 
+if defined(nec_rc_decoder_ioc_flag) then 
+   -- IOC version
+   NEC_RC_IOC_IE = TRUE
+else
+   -- External interrupt version
+   NEC_RC_INTE = TRUE     
+end if 
+   NEC_RC_PEIE = TRUE 
+   NEC_RC_GIE = TRUE     
+ 
+end procedure  
+
+
+-- ----------------------------------------------------------------------------
+-- Set the library to support the standard protocol. This is the default.
+-- ----------------------------------------------------------------------------
+procedure nec_rc_set_protocol_standard() is
+  
+   _nec_rc_protocol_standard = TRUE
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Set the library to support the extended protocol.
+-- ----------------------------------------------------------------------------
+procedure nec_rc_set_protocol_extended() is
+  
+   _nec_rc_protocol_standard = FALSE
+   
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a valid Remote Control message was received.
+-- ----------------------------------------------------------------------------
+function nec_rc_message_received() return bit is
+
+   return _nec_rc_available
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE is a valid Remote Control repeate message was received.
+-- When called, the repeat flag is cleared.
+-- ----------------------------------------------------------------------------
+function nec_rc_repeat_received() return bit is
+
+   if _nec_rc_repeat then
+      _nec_rc_repeat = FALSE
+      return TRUE
+   else
+      return FALSE
+   end if 
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Return the last received Remote Control data using the standard protocol. 
+-- When called, the message received flag is cleared. 
+-- ----------------------------------------------------------------------------
+procedure nec_rc_get_data_standard(byte out address, byte out command) is
+
+   address = _nec_rc_address
+   command = _nec_rc_command
+   _nec_rc_available = FALSE
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- Return the last received Remote Control data using the extended protocol. 
+-- When called, the message received flag is cleared. 
+-- ----------------------------------------------------------------------------
+procedure nec_rc_get_data_extended(word out address, byte out command) is
+
+   address = word(_nec_rc_address << 8) | word(_nec_rc_address_n)
+   command = _nec_rc_command
+   _nec_rc_available = FALSE
+
+end procedure 
+
+
+--- ----------------------------------------------------------------------------
+-- Stop Timer 1 and return the value of Timer 1. We return the Timer value if 
+-- it has not overflown otherwise this function returns the overflow value.
+-- ----------------------------------------------------------------------------
+function _nec_rc_get_timer1_value() return word is
+
+   NEC_RC_TMR1_ON = FALSE
+   if _nec_rc_timer1_expired then
+      return _NEC_RC_OVERFLOW
+   else
+      return NEC_RC_TMR1
+   end if 
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset Timer 1 and start the timer.
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_timer1_reset() is
+
+   NEC_RC_TMR1 = 0
+   _nec_rc_timer1_expired = FALSE 
+   NEC_RC_TMR1_IF = FALSE 
+   NEC_RC_TMR1_ON = TRUE
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Timer1 interrupt. Occurs when the timer overflows.
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_timer1_interrupt() is pragma interrupt
+
+   if NEC_RC_TMR1_IF then
+      -- Stop the timer.
+      NEC_RC_TMR1_ON = FALSE
+      NEC_RC_TMR1_IF = FALSE
+      _nec_rc_timer1_expired = TRUE 
+      if defined(nec_rc_decoder_ioc_flag) then
+         -- IOC version
+         -- Trigger the ioc interrupt.
+         nec_rc_decoder_ioc_flag = TRUE 
+      else
+         -- External interrupt version
+         -- Trigger the external interrupt.
+         NEC_RC_INTF = TRUE 
+      end if 
+   end if
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset the Remote Control to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_reset_decoder() is
+
+   _nec_rc_state = _NEC_RC_IDLE
+   _nec_rc_burst_pulse = FALSE
+   -- Stop the timer.
+   NEC_RC_TMR1_ON = FALSE
+   _nec_rc_timer1_expired = FALSE 
+   NEC_RC_TMR1_IF = FALSE 
+   -- Clear the interrupt flag.
+   if defined(nec_rc_decoder_ioc_flag) then
+      -- IOC version.
+      nec_rc_decoder_ioc_flag = FALSE 
+   else 
+      -- External interupt version.
+      -- Set initial interrupt to falling edge.  
+      NEC_RC_INT_EDG = _NEC_RC_EDGE_FALLING
+      NEC_RC_INTF = FALSE
+   end if 
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- This procedure handles the interupt flag. Reason for this procedure is to be
+-- able to use two differnt interrupt types, IOC and external.
+-- ----------------------------------------------------------------------------
+function _nec_rc_handle_interrupt_flag() return bit is
+
+   var bit interrupt_was_active = FALSE
+
+   if defined(nec_rc_decoder_ioc_flag) then
+      -- IOC version.
+      if nec_rc_decoder_ioc_flag then
+         nec_rc_decoder_ioc_flag = FALSE 
+         interrupt_was_active = TRUE
+      end if 
+   else 
+      -- External interupt version.
+      if NEC_RC_INTF then
+         -- Clear interrupt flag and toggle interrupt edge.
+         NEC_RC_INTF = FALSE
+         NEC_RC_INT_EDG = !NEC_RC_INT_EDG
+         interrupt_was_active = TRUE 
+      end if 
+   end if 
+
+   return interrupt_was_active
+
+end function
+
+-- ----------------------------------------------------------------------------
+-- External interrupt. 
+-- ----------------------------------------------------------------------------
+procedure _nec_rc_interrupt() is pragma interrupt
+
+   if _nec_rc_handle_interrupt_flag() then
+    
+      -- Get the Timer value in us and (re) start the timer for the next
+      -- measurement.
+      _nec_rc_bit_time = _nec_rc_get_timer1_value()
+      _nec_rc_timer1_reset()
+
+      -- Now check where we are in decoding the remote control message.
+      case _nec_rc_state of
+
+         _NEC_RC_IDLE:
+         block
+           -- This is the start of the message or an overflow from the timer.
+           _nec_rc_state = _NEC_RC_LEAD
+         end block 
+      
+         _NEC_RC_LEAD:
+         block
+            -- This must be leading start pulse.
+            if (_nec_rc_bit_time >= _NEC_RC_LEAD_MIN) & 
+               (_nec_rc_bit_time <= _NEC_RC_LEAD_MAX) then
+               -- Leader received. Next must be space.
+               _nec_rc_state = _NEC_RC_SPACE
+            else 
+               _nec_rc_reset_decoder()
+            end if 
+         end block 
+
+         _NEC_RC_SPACE:
+         block
+            -- This must be the space pulse. This can either be the space for a
+            -- normal message or the space for a repeat message.
+            if (_nec_rc_bit_time >= _NEC_RC_LEAD_SPACE_MIN) &
+               (_nec_rc_bit_time <= _NEC_RC_LEAD_SPACE_MAX) then
+               -- Lead space received. Next must be Data.
+               _nec_rc_burst_pulse = TRUE ; Start with burst of bit expected.
+               _nec_rc_message = 0 ; Clear shift register
+               _nec_rc_count = 0 ; No data received yet
+               _nec_rc_state = _NEC_RC_DATA
+            elsif (_nec_rc_bit_time >= _NEC_RC_REP_SPACE_MIN) &
+                  (_nec_rc_bit_time <= _NEC_RC_REP_SPACE_MAX) then
+               -- Repeat message, wait for end burst.
+               _nec_rc_state = _NEC_RC_END_REPEAT
+            else 
+               _nec_rc_reset_decoder()
+            end if 
+         end block 
+
+         _NEC_RC_DATA:
+         block
+            -- Depending on the bit time we have to take different actions.
+            -- Check if we were waiting for the burst pulse.
+            if _nec_rc_burst_pulse then
+               -- Bit time must be in range of burst.
+               if (_nec_rc_bit_time >= _NEC_RC_BURST_MIN) & 
+                  (_nec_rc_bit_time <= _NEC_RC_BURST_MAX) then
+                  -- Burst received.
+                  _nec_rc_burst_pulse = FALSE
+               else 
+                  _nec_rc_reset_decoder()
+               end if
+            else
+               -- Receiving data, can be '0' or '1'check which one it is.
+               if (_nec_rc_bit_time >= _NEC_RC_0_MIN) & 
+                  (_nec_rc_bit_time <= _NEC_RC_0_MAX) then
+                  -- Received a '0'. Do nothing on the shift register.
+                  _nec_rc_burst_pulse = TRUE ; Next one must be burst again.
+               elsif (_nec_rc_bit_time >= _NEC_RC_1_MIN) & 
+                     (_nec_rc_bit_time <= _NEC_RC_1_MAX) then
+                  -- Received a '1'. Add bit to shift register. LSB is first.
+                  _nec_rc_message = _nec_rc_message | 0x80_00_00_00
+                  _nec_rc_burst_pulse = TRUE ; Next one must be burst.
+               else 
+                  _nec_rc_reset_decoder()
+               end if
+            end if
+            -- We can see if a bit is received by checking the bit that indicates
+            -- that a burst pulse is expected (== start of next bit).
+            if _nec_rc_burst_pulse then
+               _nec_rc_count = _nec_rc_count + 1 ; Bit received.
+               if (_nec_rc_count == _NEC_RC_BITS) then
+                  -- All bits done, set for last burst of data bit to receive.
+                  _nec_rc_state = _NEC_RC_END_DATA
+               else
+                  -- Not done yet, shift this bit to make room for the next bit.
+                  _nec_rc_message = (_nec_rc_message >> 1)
+               end if
+            end if 
+         end block 
+
+         _NEC_RC_END_DATA:
+         block
+            -- Last data bit was received. This bit must be the final burst pulse.
+            if (_nec_rc_bit_time >= _NEC_RC_BURST_MIN) & 
+               (_nec_rc_bit_time <= _NEC_RC_BURST_MAX) then
+               -- Burst received. Check if the message is valid. Extract data. Note
+               -- that the data was shifted out with lsb first so in fact the output
+               -- is mirrored. It is stored in _nec_rc_message as follows:
+               -- Command_N - Command - Address_N - Address
+               _nec_rc_address = byte(_nec_rc_message & 0x00_00_00_FF)
+               _nec_rc_message = _nec_rc_message >> 8
+               _nec_rc_address_n = byte(_nec_rc_message & 0x00_00_00_FF)
+               _nec_rc_message = _nec_rc_message >> 8
+               _nec_rc_command = byte(_nec_rc_message & 0x00_00_00_FF)
+               _nec_rc_message = _nec_rc_message >> 8
+               _nec_rc_command_n = byte(_nec_rc_message & 0x00_00_00_FF)
+               -- Invert the inverted address and command.
+               _nec_rc_address_n = (_nec_rc_address_n ^ 0xFF)
+               _nec_rc_command_n = (_nec_rc_command_n ^ 0xFF)
+               -- Now check if they are the same as the non-inverted data. This is
+               -- depending on which protocol is supported.
+               if _nec_rc_protocol_standard then
+                  -- Standard. Compare address and command with inverted ones.
+                  if (_nec_rc_address == _nec_rc_address_n) &
+                     (_nec_rc_command == _nec_rc_command_n) then
+                     -- Valid message received.
+                     _nec_rc_available = TRUE
+                     _nec_rc_repeat = FALSE -- This message is not repeated (yet).
+                  end if 
+               else
+                  -- Extended. Compare only command with inverted one.
+                  if (_nec_rc_command == _nec_rc_command_n) then
+                     -- Valid message received.
+                     _nec_rc_available = TRUE
+                     _nec_rc_repeat = FALSE -- This message is not repeated (yet).
+                  end if 
+               end if 
+               -- Were always done, ready to receive the next message.
+               _nec_rc_reset_decoder() 
+            else 
+               _nec_rc_reset_decoder() 
+            end if
+         end block 
+       
+         _NEC_RC_END_REPEAT:
+         block
+            -- We expect the final burst pulse of the repeat message.
+            if (_nec_rc_bit_time >= _NEC_RC_BURST_MIN) & 
+               (_nec_rc_bit_time <= _NEC_RC_BURST_MAX) then
+               _nec_rc_repeat = TRUE
+            end if 
+            -- Were are always done, ready to receive the next message.
+            _nec_rc_reset_decoder() 
+         end block 
+
+      end case 
+
+   end if 
+end procedure 
+
+
