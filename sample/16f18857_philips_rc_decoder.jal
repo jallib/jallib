@@ -1,0 +1,160 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the Philips Remote Control Decoder
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program that shows Philips Remote Control commands on an 
+--              serial interface using the external interrupt (0) of the PIC.
+--              An example is also included when using a local constant
+--              IOC_VERSION to use the IOC instead of the external interrupt.
+-- 
+-- Notes:       The 36 kHz Infra Red receiver (active low) must be connected
+--              to the external interrupt pin or the used IOC pin.
+--           
+include 16f18857
+
+-- Using internal oscillator at 16 MHz.
+pragma target clock    16_000_000       -- oscillator frequency
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINT32          -- select 32 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCFRQ_HFFRQ = 0b101                    -- Fosc 16 MHz
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUB = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+
+enable_digital_io()
+-- Wait some time for the hardware to power up.
+_usec_delay(250_000)
+
+-- We need to re-assign the pins to their default value.
+include pps
+pps_control_lock(FALSE)                
+-- USART pins.
+RC6PPS = PPS_TX  -- TX1 re-assigned to C6  (default)             
+RXPPS  = PPS_RC7 -- C7 re-assigned to RX1  (default) 
+pps_control_lock(TRUE)                 
+
+-- Serial hardware pin aliases.
+alias pin_RX_direction  is pin_C7_direction  -- Pin 18 for 28 pin DIP
+alias pin_TX_direction  is pin_C6_direction  -- Pin 17 for 28 pin DIP.
+const serial_hw_baudrate = 115200            
+include serial_hardware
+alias serial is serial_hw_data
+serial_hw_init()
+include print
+
+-- Settings for the Philips Remote Control Decoder. The decoder uses timer 1
+-- running at 1 MHz. We use Fosc/4 and a prescaler of 1:4 to get the 
+-- 1 MHz timer 1 clock since the target clock is at 16 MHz.
+-- Note: When a MHz clock cannot be obtained the user must use PHILPS_RC_SCALING.
+T1CLK_CS = 0b0001  -- Clock source Fosc/4 gives 4 MHz
+T1CON_CKPS = 0b10  -- Prescaler 1:4 gives 1 MHz
+-- The following local constant is normally not required but is used here to 
+-- demonstrate the use of the IOC version. If you comment this constant
+-- out the Remote Control decoder will use the external interrupt (default).
+-- const IOC_VERSION = TRUE
+if defined(IOC_VERSION) then
+   -- Set the IOC interrupt on both edges and defined the and aliases 
+   -- for the decoder routine. We use pin A2 in this example.
+   IOCAP_IOCAP2 = TRUE -- Set ioc interrupt on positive edge
+   IOCAN_IOCAN2 = TRUE -- Set ioc interrupt on negative edge.
+   alias philips_rc_decoder_ioc_flag is IOCAF_IOCAF2
+   -- Interupt pin using IOC.
+   alias philips_rc_decoder_pin_direction is pin_a2_direction -- Pin 4 for 28 pin DIP
+else
+   -- Interupt pin using the external interrupt. The default 
+   -- is B0 but can be re-assigned.
+   alias philips_rc_decoder_pin_direction is pin_b0_direction -- Pin 21 for 28 pin DIP
+end if 
+-- Now we can include the library.
+include philips_rc_decoder
+init_philips_rc_decoder()
+
+var word repeat_counter = 0 
+var byte last_address = 255
+var byte last_command = 255
+var bit  last_toggle = FALSE
+var bit  rc5_received = FALSE
+var bit  rc6_received = FALSE
+
+-- ------- Procedures ------------------------
+
+-- Print the received remote control data. When data is requested
+-- the remote control message received flag is cleared. 
+procedure print_remote_control_data() is
+
+   var byte command, address
+   var bit toggle 
+
+   philips_rc_get_data(toggle, address, command)
+   -- If new data is received, the repeat counter is reset.
+   if (last_toggle != toggle) | (last_address != address) | 
+      (last_command != command) then
+      repeat_counter = 0
+      last_toggle = toggle
+      last_address = address
+      last_command = command
+   else  
+      repeat_counter = repeat_counter + 1
+   end if 
+
+   -- Print the contents of the RC5 or RC6 message.
+   if toggle then
+      print_string(serial, "Toggle bit: 1, ")
+   else
+      print_string(serial, "Toggle bit: 0, ")
+   end if 
+
+   print_string(serial, "Address: ")
+   print_byte_dec(serial, address)
+
+   print_string(serial, ", Command: ")
+   print_byte_dec(serial, command)
+
+   print_string(serial, ", Repeat: ")
+   print_word_dec(serial, repeat_counter)
+   print_crlf(serial)
+
+end procedure
+
+-- -------- Main program starts here -------------
+
+print_crlf(serial)
+print_string(serial,"PHILIPS RC5/RC6 MODE 0 REMOTE CONTROL DECODER.\r\n")
+
+forever  loop 
+
+   if philips_rc5_message_received()then
+      print_string(serial, "Message: RC5, ")
+      rc5_received = TRUE
+      if rc6_received then
+         rc6_received = FALSE
+         repeat_counter = 0
+      end if 
+      -- Print the data. This will also clear the message received.
+      print_remote_control_data() 
+   elsif philips_rc6_message_received then
+      print_string(serial, "Message: RC6, ")
+      rc6_received = TRUE
+      if rc5_received then
+         rc5_received = FALSE
+         repeat_counter = 0
+      end if 
+      -- Print the data. This will also clear the message received.
+      print_remote_control_data() 
+   end if 
+   
+end loop

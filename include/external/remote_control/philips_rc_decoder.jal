@@ -1,0 +1,594 @@
+-- Title: Philips Infra Red Remote Control Decoder Library.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for decoding Philps RC5 and RC6 mode 0 Remote Control messages. 
+--              The library can be configured to use either the external interrupt (0) 
+--              or an IOC interrupt to decode the Remote Control Messages.
+--              The default is using an external interupt (0). In order to switch 
+--              to using an IOC interrupt the user must initialize the IOC
+--              to be active on both the rising and falling edge and must
+--              define the following alias (example for IOC on pin A2):
+--              alias philips_rc_decoder_ioc_flag is IOCAF_IOCAF2 
+--
+--              The library uses Timer 1 to measure the the bit times 
+--              The user must initialize Timer 1. Bit times are based on 1 us.
+--              If Timer 1 does not run at 1 MHz then the user has to define 
+--              the dword constant PHILIPS_RC_SCALING, where a value of 100 equals
+--              Timer 1 running at 1 MHz. When Timer 1 runs at 1.25 MHz the 
+--              dword constant PHILIPS_RC_SCALING must equal 125. Same when 
+--              Timer 1 runs at 0.75 MHz PHILIPS_RC_SCALING must equal 75.
+--
+-- Notes:       The 36 kHz Infra Red receiver (active low) must be connected
+--              to the external interrupt pin or the used IOC pin.
+--        
+--
+-- Sources:     Documentation on RC5 and RC6 mode 0 protocol.
+--              https://en.wikipedia.org/wiki/RC-5
+--
+
+
+-- ----------------------------------------------------------------------------
+-- -------------------------- Public API --------------------------------------
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- Initialize the Philps RC5/RC6 Remote Control Decoder. This will enable the
+-- interrupts used by this library.
+-- ----------------------------------------------------------------------------
+procedure init_philips_rc_decoder()
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if a valid RC5 message was received.
+-- ----------------------------------------------------------------------------
+function philips_rc5_message_received() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if a valid RC6 mode 0 message was received.
+-- ----------------------------------------------------------------------------
+function philips_rc6_message_received() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Return the last received RC5 or RC6 mode 0 message After called, the message 
+-- received flags are cleared. 
+-- ----------------------------------------------------------------------------
+procedure philips_rc_get_data(bit out toggle, byte out address, byte out command) 
+
+-- ----------------------------------------------------------------------------
+-- ---------------------------- Implementation --------------------------------
+-- ----------------------------------------------------------------------------
+
+-- This library needs a 16-bit Timer 1.
+if !defined(TMR1H) then
+   _error "This library requires a PIC with a 16-bit Timer 1."
+end if 
+
+-- Timer 1 aliases.
+alias PHILIPS_RC_TMR1    is TMR1            
+alias PHILIPS_RC_TMR1_ON is T1CON_TMR1ON     
+
+-- Timer 1 Interrupt registers.
+if defined(PIE4_TMR1IE) then
+   alias PHILIPS_RC_TMR1_IE  is PIE4_TMR1IE
+   alias PHILIPS_RC_TMR1_IF  is PIR4_TMR1IF 
+elsif defined(PIE1_TMR1IE) then
+   alias PHILIPS_RC_TMR1_IE  is PIE1_TMR1IE
+   alias PHILIPS_RC_TMR1_IF  is PIR1_TMR1IF
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- External and IOC interrupt.
+if defined(PIE0_INTE) then
+   if defined(philips_rc_decoder_ioc_flag) then
+      -- IOC version.
+      alias PHILIPS_RC_IOC_IE  is PIE0_IOCIE
+   else
+      -- External interrupt version.
+      alias PHILIPS_RC_INTE    is PIE0_INTE
+      alias PHILIPS_RC_INTF    is PIR0_INTF
+      alias PHILIPS_RC_INT_EDG is INTCON_INTEDG
+   end if 
+elsif defined(INTCON_INT0IE) then
+   -- Note: Only external interrupt 0 supported.
+   if defined(philips_rc_decoder_ioc_flag) then
+      -- IOC version. This alias is not tested.
+      alias PHILIPS_RC_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias PHILIPS_RC_INTE    is INTCON_INT0IE
+      alias PHILIPS_RC_INTF    is INTCON_INT0IF
+      alias PHILIPS_RC_INT_EDG is INTCON2_INTEDG0
+   end if 
+elsif defined(INTCON_INTE) then
+   if defined(philips_rc_decoder_ioc_flag) then
+      -- IOC version.
+      alias PHILIPS_RC_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias PHILIPS_RC_INTE    is INTCON_INTE
+      alias PHILIPS_RC_INTF    is INTCON_INTF
+      alias PHILIPS_RC_INT_EDG is OPTION_REG_INTEDG
+   end if 
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- Global and peripheral interupt
+alias PHILIPS_RC_PEIE is INTCON_PEIE
+alias PHILIPS_RC_GIE  is INTCON_GIE 
+
+-- ========= Private constants, variables and function prototypes =============
+
+-- The following constants are based on timer 1 running at 1 MHz or 1 us.
+
+-- For minimum and maximum bit times we accept 25% tolerance to increase
+-- sensitivity. Times are given in us.
+if !defined(PHILIPS_RC_SCALING) then
+   const dword PHILIPS_RC_SCALING = 100
+end if 
+
+-- RC5 Contants. A half bit time is 888 us or 888 timer ticks. For minimum
+-- and maximum bit times we accept 25% tolerance to increase sensitivity.
+const dword _PHILIPS_RC5_1T_MIN = (666 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC5_1T_MAX = (1110 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC5_2T_MIN = (1334 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC5_2T_MAX = (2220 * PHILIPS_RC_SCALING) / 100 
+
+-- RC6 Contants. A half bit time is 444 us or 444 timer ticks. For minimum
+-- and maximum bit times we accept 25% tolerance to increase sensitivity.
+const dword _PHILIPS_RC6_1T_MIN = (310 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_1T_MAX = (577 * PHILIPS_RC_SCALING) / 100  
+const dword _PHILIPS_RC6_2T_MIN = (621 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_2T_MAX = (1154 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_3T_MIN = (932 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_3T_MAX = (1731 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_6T_MIN = (1864 * PHILIPS_RC_SCALING) / 100 
+const dword _PHILIPS_RC6_6T_MAX = (3463 * PHILIPS_RC_SCALING) / 100 
+
+-- We decode the IR bitstream on both edges for better performance.
+const _PHILIPS_RC_EDGE_RISING  = TRUE
+const _PHILIPS_RC_EDGE_FALLING = FALSE
+
+-- Max value of timer 1 before overflow.
+const word _PHILIPS_RC_OVERFLOW = 65535  
+
+-- Decoder states.
+const byte _PHILIPS_RC_IDLE    = 0
+const byte _PHILIPS_RC_START   = 1
+const byte _PHILIPS_RC5_DATA   = 2
+const byte _PHILIPS_RC6_HEADER = 3
+const byte _PHILIPS_RC6_DATA   = 4
+const byte _PHILIPS_RC_PENDING = 5
+
+-- Number of bits in RC messages.
+const byte PHILIPS_RC5_BITS = 13   -- Number of bits in RC5 message
+const byte PHILIPS_RC6_BITS = 21   -- Number of bits in RC6 message
+
+-- Internal decoding variables.
+var dword _philips_rc_message  -- Storing all bits from the RC5 or RC6 message
+-- Layout of Philips Remote Control message for RC5:
+-- bit 15 .. 13 = 0_philips_edge
+-- bit 12       = Second start bit. Must be '1'
+-- bit 11       = Toggle bit (1)
+-- bit 10 .. 6  = Address bits (5)
+-- bit  5 .. 0  = Command bits (6)
+-- Layout of Philips Remot Control message for RC6:
+-- bit 31 .. 21 = 0
+-- bit 20       = Second start bit. Must be '1'
+-- bit 19 .. 17 = Mode bits (3)
+-- bit 16       = Toggle bit (1)
+-- bit 15 .. 8  = Address bits (8)
+-- bit  7 .. 0  = Command bits (8)
+var word _philips_rc_bit_time      -- Storing the time of one IR bit in timer ticks
+var byte _philips_rc_state         -- Decoder state machine variable
+var byte _philips_rc_count         -- Received bits counter
+var byte _philips_rc_mode          -- Holds the received mode (RC6 only)
+var byte _philips_rc_address       -- Holds the received address
+var byte _philips_rc_command       -- Holds the received command
+var bit _philips_rc_toggle         -- Holds the received RC5 toggle bit
+var bit _philips_rc5_pending       -- Indicates that an RC5 message is almost received
+var bit _philips_rc6_pending       -- Indicates that an RC6 message is almost received
+var bit _philips_rc5_available     -- Indicates that an RC5 message is available
+var bit _philips_rc6_available     -- Indicates that an RC6 message is available
+var bit _philips_rc_bit_half       -- Indicates that we are half way a bit
+var bit _philips_edge              -- If set, the interrupt will trigger on a rising edge
+var bit _philips_rc_timer1_expired -- If set, timer has overflown
+
+-- ====================== Internal function prototypes ========================
+
+-- ----------------------------------------------------------------------------
+-- Return the value of Timer 1. We return the Timer value if it has not
+-- overflown otherwise this function returns the overflow value.
+-- ----------------------------------------------------------------------------
+function _philips_rc_get_timer1_value() return word 
+
+-- ----------------------------------------------------------------------------
+-- Preset Timer 1 rand start the timer.
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_timer1_preset(word in preset_value) 
+
+-- ----------------------------------------------------------------------------
+-- Reset the Remote Control to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_reset_decoder()
+
+-- ============== Implementation of the functions and procedures ==============
+
+-- ----------------------------------------------------------------------------
+-- Initialize the Philps RC5/RC6 Remote Control Decoder. This will initialize
+-- the required interrupts.
+-- ----------------------------------------------------------------------------
+procedure init_philips_rc_decoder() is
+
+   philips_rc_decoder_pin_direction = INPUT
+   _philips_rc_reset_decoder()
+   _philips_rc5_available = FALSE
+   _philips_rc6_available = FALSE
+   -- Enable all used interrupts.
+   PHILIPS_RC_TMR1_IE = TRUE
+   if defined(philips_rc_decoder_ioc_flag) then 
+      -- IOC version
+      PHILIPS_RC_IOC_IE = TRUE
+   else
+      -- External interrupt version
+      PHILIPS_RC_INTE = TRUE     
+   end if 
+   PHILIPS_RC_PEIE = TRUE 
+   PHILIPS_RC_GIE = TRUE     
+
+end procedure  
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE is a valid RC5 Remote Control message was received.
+-- ----------------------------------------------------------------------------
+function philips_rc5_message_received() return bit is
+
+   return _philips_rc5_available
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE is a valid RC6 mode 0 Remote Control message was received.
+-- ----------------------------------------------------------------------------
+function philips_rc6_message_received() return bit is
+
+   return _philips_rc6_available
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Return the last received RC5 or RC6 data. After called, the message received 
+-- flags are cleared. 
+-- ----------------------------------------------------------------------------
+procedure philips_rc_get_data(bit out toggle, byte out address, byte out command) is
+
+   toggle = _philips_rc_toggle
+   address = _philips_rc_address
+   command = _philips_rc_command
+   _philips_rc5_available = FALSE
+   _philips_rc6_available = FALSE
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- Return the value of Timer 1. We return the Timer value if it has not
+-- overflown otherwise this function returns the overflow value.
+-- ----------------------------------------------------------------------------
+function _philips_rc_get_timer1_value() return word is
+
+   if _philips_rc_timer1_expired then
+      return _PHILIPS_RC_OVERFLOW
+   else
+      return PHILIPS_RC_TMR1
+   end if 
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Preset Timer 1 and start the timer.
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_timer1_preset(word in preset_value) is
+
+   PHILIPS_RC_TMR1 = preset_value
+   _philips_rc_timer1_expired = FALSE 
+   PHILIPS_RC_TMR1_IF = FALSE 
+   PHILIPS_RC_TMR1_ON = TRUE  
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Timer1 interrupt. Occurs when the timer overflows.
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_timer1_interrupt() is 
+  pragma interrupt
+
+   -- The overflow is used later to indicate that the IR message was received
+   -- completely. According to the RC5 and RC6 standard the message is complete
+   -- when there is no signal for a certain time after having received the
+   -- last bit.
+   if PHILIPS_RC_TMR1_IF then
+      PHILIPS_RC_TMR1_ON = FALSE
+      PHILIPS_RC_TMR1_IF = FALSE
+      _philips_rc_timer1_expired = TRUE 
+      if defined(philips_rc_decoder_ioc_flag) then
+         -- IOC version. Trigger the ioc interrupt.
+         philips_rc_decoder_ioc_flag = TRUE 
+      else
+         -- External interrupt version. Trigger the external interrupt.
+         PHILIPS_RC_INTF = TRUE 
+      end if 
+   end if
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset the Remote Control decoder to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_reset_decoder() is
+
+   _philips_rc_state = _PHILIPS_RC_IDLE
+   _philips_rc5_pending = FALSE
+   _philips_rc6_pending = FALSE
+   -- Stop the timer.
+   PHILIPS_RC_TMR1_ON = FALSE
+   _philips_rc_timer1_expired = FALSE 
+   PHILIPS_RC_TMR1_IF = FALSE 
+   -- Clear the interrupt flag.
+   if defined(philips_rc_decoder_ioc_flag) then
+      -- IOC version.
+      _philips_edge = _PHILIPS_RC_EDGE_FALLING
+      philips_rc_decoder_ioc_flag = FALSE 
+   else 
+      -- External interupt version.
+      -- Set initial interrupt to falling edge.  
+      _philips_edge = _PHILIPS_RC_EDGE_FALLING
+      PHILIPS_RC_INT_EDG = _philips_edge
+      PHILIPS_RC_INTF = FALSE
+   end if 
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- This procedure handles the interupt flag. Reason for this procedure is to be
+-- able to use two differnt interrupt types, IOC and external.
+-- ----------------------------------------------------------------------------
+function _philips_rc_handle_interrupt_flag() return bit is
+
+   var bit interrupt_was_active = FALSE
+
+   if defined(philips_rc_decoder_ioc_flag) then
+      -- IOC version.
+      if philips_rc_decoder_ioc_flag then
+         philips_rc_decoder_ioc_flag = FALSE 
+         _philips_edge = !_philips_edge 
+         interrupt_was_active = TRUE
+      end if 
+   else 
+      -- External interupt version.
+      if PHILIPS_RC_INTF then
+         -- Clear interrupt flag and toggle interrupt edge.
+         PHILIPS_RC_INTF = FALSE
+         _philips_edge  = !_philips_edge 
+         PHILIPS_RC_INT_EDG = _philips_edge
+         interrupt_was_active = TRUE 
+      end if 
+   end if 
+
+   return interrupt_was_active
+
+end function
+
+-- ----------------------------------------------------------------------------
+-- External interrupt. 
+-- ----------------------------------------------------------------------------
+procedure _philips_rc_interrupt() is 
+   pragma interrupt
+
+   if _philips_rc_handle_interrupt_flag() then
+    
+      -- Get the Timer value in us and (re) start the timer for the next
+      -- measurement.
+      _philips_rc_bit_time = _philips_rc_get_timer1_value()
+      _philips_rc_timer1_preset(0)
+
+      -- Now check where we are in decoding the rc5 or rc6 message.
+      case _philips_rc_state of
+    
+         _PHILIPS_RC_IDLE:
+         block
+            -- This is the start of the message or an overflow from the timer.
+            _philips_rc_state  = _PHILIPS_RC_START
+         end block 
+      
+         _PHILIPS_RC_START:
+         block
+            -- This must be the first start bit of RC5 or the header of RC6.
+            if (_philips_rc_bit_time >= _PHILIPS_RC5_1T_MIN) & 
+               (_philips_rc_bit_time <= _PHILIPS_RC5_1T_MAX) then
+               -- RC5 start bit. Next bit is half of second start bit
+               _philips_rc_bit_half = TRUE -- We get an interrupt half way the second start bit.
+               _philips_rc_message  = 0 -- Clear shift register
+               _philips_rc_count = 0 -- No data received yet
+               _philips_rc_state  = _PHILIPS_RC5_DATA
+            elsif (_philips_rc_bit_time >= _PHILIPS_RC6_6T_MIN) & 
+                  (_philips_rc_bit_time <= _PHILIPS_RC6_6T_MAX) then
+               _philips_rc_state  = _PHILIPS_RC6_HEADER
+            else 
+               _philips_rc_reset_decoder()
+            end if 
+         end block 
+
+         _PHILIPS_RC5_DATA:
+         block
+            -- Depending on the bit time we have to take different actions.
+            -- Check for 1T bit time.
+            if (_philips_rc_bit_time >= _PHILIPS_RC5_1T_MIN) & 
+               (_philips_rc_bit_time <= _PHILIPS_RC5_1T_MAX) then
+               -- 1T, depening if we are in the firt or second haf of a bit we
+               -- have to do something different.
+               if _philips_rc_bit_half then
+                  -- Halfway a bit which means a bit is received.
+                  _philips_rc_count = _philips_rc_count + 1 -- bit received.
+                  _philips_rc_message = _philips_rc_message << 1
+                  -- Interrupt low means that trigger was by interrupt high but
+                  -- because receiver data is inverted we use still high.
+                  if _philips_edge then
+                     _philips_rc_message = _philips_rc_message | 0x01
+                  end if
+                  _philips_rc_bit_half = FALSE
+               else
+                  _philips_rc_bit_half = TRUE -- In second half, only change bit half.
+               end if
+            elsif (_philips_rc_bit_time >= _PHILIPS_RC5_2T_MIN) & 
+                  (_philips_rc_bit_time <= _PHILIPS_RC5_2T_MAX) then
+               -- 2T we always have to store a bit here. We do not switch _PHILIPS_RC_bit_half.
+               _philips_rc_count = _philips_rc_count + 1 -- bit received.
+               _philips_rc_message = _philips_rc_message << 1
+               -- Interrupt low means that trigger was by interrupt high but
+               -- because receiver data is inverted we use still high.
+               if _philips_edge then 
+                  _philips_rc_message = _philips_rc_message | 0x01
+               end if
+            else 
+               _philips_rc_reset_decoder() -- Incorrect bit_Time
+            end if  
+            -- Check if all bits received. If so, check data and copy
+            if (_philips_rc_count == PHILIPS_RC5_BITS) then
+               -- All bits received. Check for second start bit and move data.
+               if (_philips_rc_message & 0x_00_00_10_00) != 0 then
+                  -- OK, move data.
+                  _philips_rc_toggle = ((_philips_rc_message & 0x_00_00_08_00) > 0)
+                  -- Mask off Start and Toggle bits
+                  _philips_rc_message = (_philips_rc_message & 0x00_00_07_FF)
+                  _philips_rc_address = byte (_philips_rc_message >> 6)
+                  _philips_rc_command = byte (_philips_rc_message & 0x00_00_00_3F)
+                  _philips_rc5_pending = TRUE
+                  -- The message is actually valid after a 2T timeout (no signal).
+                  -- In order to measure this we reload the timer with a value so
+                  -- that it overflows after this period.
+                  _philips_rc_timer1_preset(_PHILIPS_RC_OVERFLOW - word(_PHILIPS_RC5_2T_MAX))
+                  _philips_rc_state  = _PHILIPS_RC_PENDING
+               else 
+                  _philips_rc_reset_decoder() -- No start bit received.
+               end if 
+            end if 
+         end block 
+
+         _PHILIPS_RC6_HEADER :
+         block
+           -- RC6 header of 6T received, check for 2T.
+            if (_philips_rc_bit_time >= _PHILIPS_RC6_2T_MIN) & 
+               (_philips_rc_bit_time <= _PHILIPS_RC6_2T_MAX) then
+               -- OK, next is a start bit followed by 3 mode bits
+              _philips_rc_bit_half = TRUE -- We get an interrupt half way the second start bit.
+              _philips_rc_message  = 0 -- Clear shift register
+              _philips_rc_count = 0 -- No data received yet
+              _philips_rc_state  = _PHILIPS_RC6_DATA
+            else 
+               _philips_rc_reset_decoder()
+           end if
+         end block 
+
+         _PHILIPS_RC6_DATA:
+         block
+            -- Depending on the bit time we have to take different actions.
+            -- Check for 1T bit time.
+            if (_philips_rc_bit_time >= _PHILIPS_RC6_1T_MIN) & 
+               (_philips_rc_bit_time <= _PHILIPS_RC6_1T_MAX) then
+               -- 1T, depening if we are in the firt or second haf of a bit we
+               -- have to do something different.
+               if _philips_rc_bit_half then
+                  -- Halfway a bit which means a bit is received.
+                  _philips_rc_count = _philips_rc_count + 1 -- bit received.
+                  _philips_rc_message = _philips_rc_message << 1
+                  if !_philips_edge then
+                     -- Interrupt low means that trigger was by interrupt high but
+                     -- because receiver data is inverted we use low.
+                     _philips_rc_message = _philips_rc_message | 0x01
+                  end if
+                  _philips_rc_bit_half = FALSE
+               else  
+                  _philips_rc_bit_half = TRUE -- In second half, only change bit half.
+               end if
+            elsif (_philips_rc_bit_time >= _PHILIPS_RC6_2T_MIN) & 
+                  (_philips_rc_bit_time <= _PHILIPS_RC6_2T_MAX) then
+                  -- Check if the toggle bit - which is anti-phase - was already clocked.
+                  -- If so then we should not clock this 2T half.
+                  if (_philips_rc_count != 5) then
+                     -- 2T we always have to store a bit here. 
+                     -- We do not switch _PHILIPS_RC_bit_half.
+                     _philips_rc_count = _philips_rc_count + 1 -- bit received.
+                     _philips_rc_message = _philips_rc_message << 1
+                     if !_philips_edge then
+                        -- Interrupt low means that trigger was by interrupt high but
+                        -- because receiver data is inverted we use low.
+                        _philips_rc_message = _philips_rc_message | 0x01
+                     end if
+                  end if
+            elsif (_philips_rc_bit_time >= _PHILIPS_RC6_3T_MIN) & 
+                  (_philips_rc_bit_time <= _PHILIPS_RC6_3T_MAX) then
+                  _philips_rc_count = _philips_rc_count + 1 -- bit received.
+                  _philips_rc_message = _philips_rc_message << 1
+                  if !_philips_edge then
+                     _philips_rc_message = _philips_rc_message | 0x01
+                  end if
+                  _philips_rc_bit_half = FALSE
+            else 
+               _philips_rc_reset_decoder() -- Incorrect bit_Time
+            end if  
+            -- If we are going to receive the anti-phase toggle bit we need to
+            -- change state.
+            if (_philips_rc_count == PHILIPS_RC6_BITS) then
+               -- All bits received. Check for second start bit and move data.
+               if (_philips_rc_message & 0x00_10_00_00) != 0 then
+                  -- OK, move data.
+                  _philips_rc_mode = byte (_philips_rc_message >> 17) & 0x07
+                  -- We only accept RC6 mode 0.
+                  if (_philips_rc_mode == 0) then
+                     _philips_rc_toggle = ((_philips_rc_message & 0x00_01_00_00) > 0)
+                     -- Mask off Start, Mode and Toggle bits
+                     _philips_rc_message = (_philips_rc_message & 0x_00_00_FF_FF)
+                     _philips_rc_address = byte (_philips_rc_message >> 8)
+                     _philips_rc_command = byte (_philips_rc_message & 0x00_00_00_FF)
+                     _philips_rc6_pending = TRUE
+                  else
+                     _philips_rc_reset_decoder() -- Incorrect mode.
+                  end if 
+                  -- The message is actually valid after a 2T timeout (no signal).
+                  -- In order to measure this we reload the timer with a value so
+                  -- that it overflows after this period.
+                  _philips_rc_timer1_preset(_PHILIPS_RC_OVERFLOW - word(_PHILIPS_RC6_2T_MAX))
+                  _philips_rc_state = _PHILIPS_RC_PENDING
+               else 
+                  _philips_rc_reset_decoder() -- No start bit received
+               end if 
+            end if 
+         end block 
+
+         _PHILIPS_RC_PENDING:
+         block
+            -- We were waiting for the last bit to be correctly received by a
+            -- timeout.
+           _philips_rc5_available = _philips_rc5_pending
+           _philips_rc6_available = _philips_rc6_pending
+           _philips_rc_reset_decoder()
+         end block 
+
+      end case 
+
+   end if 
+end procedure 
+
+
