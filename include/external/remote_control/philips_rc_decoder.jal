@@ -6,9 +6,10 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Library for decoding Philps RC5 and RC6 mode 0 Remote Control messages. 
---              The library can be configured to use either the external interrupt (0) 
---              or an IOC interrupt to decode the Remote Control Messages.
+-- Description: Library for decoding Philps RC5 (extended) and RC6 mode 0 
+--              Remote Control messages. 
+--              The library can be configured to use either the external interrupt 
+--              (0) or an IOC interrupt to decode the Remote Control Messages.
 --              The default is using an external interupt (0). In order to switch 
 --              to using an IOC interrupt the user must initialize the IOC
 --              to be active on both the rising and falling edge and must
@@ -26,7 +27,6 @@
 -- Notes:       The 36 kHz Infra Red receiver (active low) must be connected
 --              to the external interrupt pin or the used IOC pin.
 --        
---
 -- Sources:     Documentation on RC5 and RC6 mode 0 protocol.
 --              https://en.wikipedia.org/wiki/RC-5
 --
@@ -172,12 +172,12 @@ const byte PHILIPS_RC6_BITS = 21   -- Number of bits in RC6 message
 -- Internal decoding variables.
 var dword _philips_rc_message  -- Storing all bits from the RC5 or RC6 message
 -- Layout of Philips Remote Control message for RC5:
--- bit 15 .. 13 = 0_philips_edge
--- bit 12       = Second start bit. Must be '1'
+-- bit 15 .. 13 = 0
+-- bit 12       = Field bit (1). '1' = RC5 standard,'0' = RC5 extended
 -- bit 11       = Toggle bit (1)
--- bit 10 .. 6  = Address bits (5)
+-- bit 10 .. 6  = Address bits (5) or + 1 for RC5 extended
 -- bit  5 .. 0  = Command bits (6)
--- Layout of Philips Remot Control message for RC6:
+-- Layout of Philips Remote Control message for RC6:
 -- bit 31 .. 21 = 0
 -- bit 20       = Second start bit. Must be '1'
 -- bit 19 .. 17 = Mode bits (3)
@@ -198,6 +198,7 @@ var bit _philips_rc6_available     -- Indicates that an RC6 message is available
 var bit _philips_rc_bit_half       -- Indicates that we are half way a bit
 var bit _philips_edge              -- If set, the interrupt will trigger on a rising edge
 var bit _philips_rc_timer1_expired -- If set, timer has overflown
+var bit _philips_rc5_extended      -- When set, it is an RC5 extended message.
 
 -- ====================== Internal function prototypes ========================
 
@@ -396,6 +397,7 @@ end function
 procedure _philips_rc_interrupt() is 
    pragma interrupt
 
+
    if _philips_rc_handle_interrupt_flag() then
     
       -- Get the Timer value in us and (re) start the timer for the next
@@ -453,7 +455,8 @@ procedure _philips_rc_interrupt() is
                end if
             elsif (_philips_rc_bit_time >= _PHILIPS_RC5_2T_MIN) & 
                   (_philips_rc_bit_time <= _PHILIPS_RC5_2T_MAX) then
-               -- 2T we always have to store a bit here. We do not switch _PHILIPS_RC_bit_half.
+               -- 2T we always have to store a bit here. We do not switch 
+               -- _philips_rc_bit_half.
                _philips_rc_count = _philips_rc_count + 1 -- bit received.
                _philips_rc_message = _philips_rc_message << 1
                -- Interrupt low means that trigger was by interrupt high but
@@ -464,26 +467,28 @@ procedure _philips_rc_interrupt() is
             else 
                _philips_rc_reset_decoder() -- Incorrect bit_Time
             end if  
-            -- Check if all bits received. If so, check data and copy
+            -- Check if all bits received. If so, check data and copy.
             if (_philips_rc_count == PHILIPS_RC5_BITS) then
-               -- All bits received. Check for second start bit and move data.
-               if (_philips_rc_message & 0x_00_00_10_00) != 0 then
-                  -- OK, move data.
-                  _philips_rc_toggle = ((_philips_rc_message & 0x_00_00_08_00) > 0)
-                  -- Mask off Start and Toggle bits
-                  _philips_rc_message = (_philips_rc_message & 0x00_00_07_FF)
-                  _philips_rc_address = byte (_philips_rc_message >> 6)
-                  _philips_rc_command = byte (_philips_rc_message & 0x00_00_00_3F)
-                  _philips_rc5_pending = TRUE
-                  -- The message is actually valid after a 2T timeout (no signal).
-                  -- In order to measure this we reload the timer with a value so
-                  -- that it overflows after this period.
-                  _philips_rc_timer1_preset(_PHILIPS_RC_OVERFLOW - word(_PHILIPS_RC5_2T_MAX))
-                  _philips_rc_state  = _PHILIPS_RC_PENDING
-               else 
-                  _philips_rc_reset_decoder() -- No start bit received.
+               -- All bits received. Check field bit for RC5 standard (1) 
+               -- or RC5 extended (0).
+               _philips_rc5_extended = ((_philips_rc_message & 0x_00_00_10_00) == 0)
+               -- Move data.
+               _philips_rc_toggle = ((_philips_rc_message & 0x_00_00_08_00) > 0)
+               -- Mask off Start and Toggle bits
+               _philips_rc_message = (_philips_rc_message & 0x00_00_07_FF)
+               _philips_rc_address = byte (_philips_rc_message >> 6)
+               _philips_rc_command = byte (_philips_rc_message & 0x00_00_00_3F)
+               -- If RC5 extended then the RC5 command range starts at 64.
+               if _philips_rc5_extended then
+                  _philips_rc_command = _philips_rc_command | 0x40
                end if 
-            end if 
+               _philips_rc5_pending = TRUE
+               -- The message is actually valid after a 2T timeout (no signal).
+               -- In order to measure this we reload the timer with a value so
+               -- that it overflows after this period.
+               _philips_rc_timer1_preset(_PHILIPS_RC_OVERFLOW - word(_PHILIPS_RC5_2T_MAX))
+               _philips_rc_state  = _PHILIPS_RC_PENDING
+             end if 
          end block 
 
          _PHILIPS_RC6_HEADER :
