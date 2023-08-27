@@ -343,7 +343,13 @@ end procedure
 -- ----------------------------------------------------------------------------
 procedure nec_rc_get_data_extended(word out address, byte out command) is
 
-   address = word(_nec_rc_address << 8) | word(_nec_rc_address_n)
+   var word high_address
+
+   -- In the extended protocol the byte that was used in the standard protocol
+   -- as inverted address (for verification) is now the high byte of a word
+   -- address. Tne inverted address was already inverted during decoding.
+   high_address = word(_nec_rc_address_n)
+   address = (high_address << 8) | word(_nec_rc_address)
    command = _nec_rc_command
    _nec_rc_available = FALSE
 
@@ -567,7 +573,7 @@ procedure _nec_rc_interrupt() is pragma interrupt
                _nec_rc_command = byte(_nec_rc_message & 0x00_00_00_FF)
                _nec_rc_message = _nec_rc_message >> 8
                _nec_rc_command_n = byte(_nec_rc_message & 0x00_00_00_FF)
-               -- Invert the inverted address and command.
+               -- Invert the inverted address and command as to verify the message.
                _nec_rc_address_n = (_nec_rc_address_n ^ 0xFF)
                _nec_rc_command_n = (_nec_rc_command_n ^ 0xFF)
                -- Now check if they are the same as the non-inverted data. This is
