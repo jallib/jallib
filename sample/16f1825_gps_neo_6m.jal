@@ -1,7 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Sample program for the GPS NEO-6M library.
--- Author: Rob Jansen, Copyright (c) 2021..2021 all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2021..2023 all rights reserved.
 -- Adapted-by:
+-- Revision: $Revision$
 --
 -- Compiler: 2.5r6
 --
@@ -9,13 +10,13 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Demonstrates the features of the GPS NEO-6M library printing
---              the time and data via the serial interface.
+--              the GPS time, GPS date and GPS location using the serial interface.
 --                 
 -- Sources:
 --
 -- Notes: The GPS NEO-6M receiver uses a serial interface so at least one of the 
---        JAL serial libraries must be included and initialized by the main program
---        before including the GPS NEO-6M library.      
+--        JAL serial hardware libraries must be included and initialized by the 
+--        main program before including the GPS NEO-6M library.      
 --
 include 16f1825                 
 
@@ -28,7 +29,7 @@ pragma target PWRTE    ENABLED         -- Power up timer enabled
 pragma target BROWNOUT DISABLED        -- No brownout reset
 pragma target FCMEN    DISABLED        -- No clock monitoring
 pragma target IESO     DISABLED        -- int/ext osc. switch
-pragma target LVP      DISABLED        -- No low voltage programming
+pragma target LVP      ENABLED         -- Low voltage programming
 pragma target MCLR     EXTERNAL        -- Reset external
 -- Set the internal clock frequency to 32 MHz.
 OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
@@ -43,36 +44,29 @@ enable_digital_io()
 -- Give the hardware some time to stabilize.
 _usec_delay(100_000)
 
--- Before including the GPS library, select a serial interface. You can select from
--- serial_software, serial_hardware or serial_hw_int_cts. 
--- Here we use serial_hw_int_cts. 
+-- Before including the GPS library, select a serial interface. You can select
+-- from serial_hardware or serial_hardware2, this because the library captures 
+-- and processes the data on an interrupt basis. Only USART reception is used
+-- by the library. The main program can still use the USART for transmission.
 alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP to TX of GPS Module
 alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP to Computer
-const serial_hw_baudrate = 9600
-const SERIAL_XMTBUFSIZE  = 5                   -- No need for a big transmit buffer
-const SERIAL_RCVBUFSIZE  = 5                   -- No need for a big receive buffer
-include serial_hw_int_cts
--- include serial_hardware                     -- Alternative for serial_hw_int_cts
+const serial_hw_baudrate = 9600                -- Module uses 9600 baud.
+include serial_hardware                        -- Alternative for serial_hw_int_cts
 alias serial_data is serial_hw_data
 serial_hw_init
 
--- When using serial software interface use this code.
--- alias serial_sw_tx_pin is pin_C4
--- pin_C4_direction = output
--- alias serial_sw_rx_pin is pin_C5
--- pin_C5_direction = input
--- const serial_sw_baudrate = 9600
--- include serial_software
--- alias serial_data is serial_sw_data
--- serial_sw_init()
-
--- Now we can include the GPS library.
+-- Set-up required aliases for the GPS library.
+alias gps_neo_6m_serial_data is serial_hw_data
+alias GPS_NEO_6M_SERIAL_RX_INT_FLAG is PIR1_RCIF
+alias GPS_NEO_6M_SERIAL_RX_INT_ENABLE is PIE1_RCIE
 include gps_neo_6m
+gps_neo_6m_init() 
 include print
 
 -- Variables --
 var byte hours, minutes, seconds
 var byte date, month, year
+var byte index
 
 -- Local procedures --
 
@@ -92,11 +86,35 @@ procedure print_decimal(byte in value) is
    print_byte_dec(serial_data, value)
 end procedure
 
+
+-- Print the given float value with the given precision.
+procedure print_float_value(float in value, byte in precision) is
+
+   var dword no_float_value
+ 
+   no_float_value = dword(value)
+   print_dword_dec(serial_data, no_float_value)
+   serial_data = "."
+   -- Print the faction
+   for precision loop
+     value = value * 10.0
+     no_float_value = dword(value) % 10
+     serial_data = byte(no_float_value) + "0"
+   end loop
+
+end procedure
+
 -- The main program starts here --
+print_crlf(serial_data)
+print_string(serial_data, "GPS NEO 6M sample program showing, the GPS Time, Date and GPS Coordinates.\r\n")
 
 forever loop
 
-   if gps_neo_6m_get_time(hours, minutes, seconds) then
+   if gps_neo_6m_data_available() then
+
+      -- Print the time.
+      print_crlf(serial_data)
+      gps_neo_6m_get_time(hours, minutes, seconds)
       -- Data is BCD, convert to binary before printing.
       print_string(serial_data, "GPS time in UTC + 1 is (hours:minutes:seconds): ")
       -- Make the hours UTC + 1, wrap when GPS time is 23.
@@ -106,11 +124,9 @@ forever loop
       print_string(serial_data, ":")
       print_decimal(bcd2bin(seconds))
       print_crlf(serial_data)
-   else
-      print_string(serial_data, "Could not obtain the GPS time.\r\n")
-   end if
 
-   if gps_neo_6m_get_date(date, month, year) then
+      -- Print the date.
+      gps_neo_6m_get_date(date, month, year)
       -- Data is BCD, convert to binary before printing.
       print_string(serial_data, "GPS date is (date-month-year): ")
       print_decimal(bcd2bin(date))
@@ -120,9 +136,32 @@ forever loop
       -- Add the century to the year.
       print_word_dec(serial_data, word(bcd2bin(year)) + 2000)
       print_crlf(serial_data)
-   else
-      print_string(serial_data, "Could not obtain the GPS date.\r\n")
+
+      -- Check if GPS data is available (GPS status is active).
+      if gps_neo_6m_status_active() then
+         print_string(serial_data, "GPS location data is available.\r\n")
+
+         print_string(serial_data, "GPS lattitude: ")
+         print_float_value(gps_neo_6m_get_lattitude(), 5)
+         serial_data = ","
+         serial_data = gps_neo_6m_get_lattitude_direction()
+         print_crlf(serial_data)
+
+         print_string(serial_data, "GPS longtitude: ")
+         print_float_value(gps_neo_6m_get_longtitude(),5)
+         serial_data = ","
+         serial_data = gps_neo_6m_get_longtitude_direction()
+         print_crlf(serial_data)
+      else
+         print_string(serial_data, "GPS location data is not available.\r\n")
+      end if
+  
+      -- Print the number of satellites that we see.
+      print_string(serial_data, "Number of satellites: ")
+      print_byte_dec(serial_data, gps_neo_6m_get_nr_of_statellites())
+      print_crlf(serial_data)
+
    end if
- 
+
 end loop
 
