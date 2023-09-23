@@ -1,0 +1,685 @@
+--===============================================================================
+-- Title: DCF77 Decoder Library.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for decoding the DCF77 format. The library
+--              can be configured to use either the external interrupt or an 
+--              IOC interrupt to decode the Remote Control Messages.
+--              The default is using an external interrupt. In order to switch 
+--              to using an IOC interrupt the user must initialize the IOC
+--              to be active on both the rising and falling edge and must
+--              define the following alias (example for IOC on pin A2):
+--              alias dcf77_decoder_ioc_flag is IOCAF_IOCAF2 
+--
+--              The library uses Timer 1 to measure the the bit-times 
+--              The user must initialize Timer 1 to overflow every 1 ms. For
+--              that the constant DCF77_TIMER_1_RELOAD must be defined by
+--              the main program to generate an overflow after 1 ms.
+
+--
+-- Notes:       A DCF77 receiver must be connected to the external interrupt pin
+--              or the used IOC pin. Receivers can be active low or active
+--              high. The default setting is active high but this can be changed
+--              to active low.
+--        
+-- Sources:    Technical Note: Overview of DCF77 Time Protocol TN-103, SEP-2017.
+--             https://en.wikipedia.org/wiki/DCF77
+--
+
+-- ----------------------------------------------------------------------------
+-- -------------------------- Public API --------------------------------------
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- Initialize the DCF77 Decoder. This will initialize timer 1 and will enable 
+-- the required interrupts. 
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_init()
+
+-- ----------------------------------------------------------------------------
+-- Set the decoder to decode an incomming stream that uses an active high pulse.
+-- Note: Only relevant when using the external interrupt, not for IOC.
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_pulse_high()
+
+-- ----------------------------------------------------------------------------
+-- Set the decoder to decode an incomming stream that uses an active low pulse.
+-- Note: Only relevant when using the external interrupt, not for IOC.
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_pulse_low()
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a valid DCF77 message was received. Calling this function
+-- will clear the message received flag and will enable the reception of the
+-- next DCF77 message.
+-- ----------------------------------------------------------------------------
+function dcf77_message_received() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns the received hours. Hours are BCD coded.
+-- ----------------------------------------------------------------------------
+function dcf77_get_hours() return byte 
+
+-- ----------------------------------------------------------------------------
+-- Returns the received minuted. Minutes are BCD coded.
+-- ----------------------------------------------------------------------------
+function dcf77_get_minutes() return byte 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if the time is Central European Time (CET).
+-- ----------------------------------------------------------------------------
+function dcf77_time_is_cet() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if the time is Central European Summer Time (CEST).
+-- ----------------------------------------------------------------------------
+function dcf77_time_is_cest() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns the day of the week (1..7), where day 1 is Monday and 7 is Sunday.
+-- ----------------------------------------------------------------------------
+function dcf77_get_day_of_week() return byte 
+
+-- ----------------------------------------------------------------------------
+-- Returns the day of the month (1..31).
+-- ----------------------------------------------------------------------------
+function dcf77_get_day_of_month() return byte 
+
+-- ----------------------------------------------------------------------------
+-- Returns the month (1..12).
+-- ----------------------------------------------------------------------------
+function dcf77_get_month() return byte 
+
+-- ----------------------------------------------------------------------------
+-- Returns the year wihin the century (00..99).
+-- ----------------------------------------------------------------------------
+function dcf77_get_year_within_century() return byte 
+
+-- ----------------------------------------------------------------------------
+-- ---------------------------- Implementation --------------------------------
+-- ----------------------------------------------------------------------------
+
+-- This library needs a 16-bit Timer 1.
+if !defined(TMR1H) then
+   _error "DCF77: This library requires a PIC with a 16-bit Timer 1."
+end if 
+
+-- =========================== Some aliases ===================================
+
+-- Timer 1 aliases.
+alias DCF77_TMR1    is TMR1            
+alias DCF77_TMR1_ON is T1CON_TMR1ON     
+
+-- Timer 1 Interrupt registers.
+if defined(PIE4_TMR1IE) then
+   alias DCF77_TMR1_IE  is PIE4_TMR1IE
+   alias DCF77_TMR1_IF  is PIR4_TMR1IF 
+elsif defined(PIE1_TMR1IE) then
+   alias DCF77_TMR1_IE  is PIE1_TMR1IE
+   alias DCF77_TMR1_IF  is PIR1_TMR1IF
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- External and IOC interrupt.
+if defined(PIE0_INTE) then
+   if defined(dcf77_decoder_ioc_flag) then
+      -- IOC version.
+      alias DCF77_IOC_IE  is PIE0_IOCIE
+   else
+      -- External interrupt version.
+      alias DCF77_INTE    is PIE0_INTE
+      alias DCF77_INTF    is PIR0_INTF
+      alias DCF77_INT_EDG is INTCON_INTEDG
+   end if 
+elsif defined(INTCON_INT0IE) then
+   -- Note: Only external interrupt 0 supported.
+   if defined(dcf77_decoder_ioc_flag) then
+      -- IOC version. This alias is not tested.
+      alias DCF77_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias DCF77_INTE    is INTCON_INT0IE
+      alias DCF77_INTF    is INTCON_INT0IF
+      alias DCF77_INT_EDG is INTCON2_INTEDG0
+   end if 
+elsif defined(INTCON_INTE) then
+   if defined(dcf77_decoder_ioc_flag) then
+      -- IOC version.
+      alias DCF77_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias DCF77_INTE    is INTCON_INTE
+      alias DCF77_INTF    is INTCON_INTF
+      alias DCF77_INT_EDG is OPTION_REG_INTEDG
+   end if 
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- Global and peripheral interupt
+alias DCF77_PEIE is INTCON_PEIE
+alias DCF77_GIE  is INTCON_GIE 
+
+-- ========= Private constants, variables and function prototypes =============
+
+
+-- The following constants are based on timer 1 overflowing once every ms.
+
+-- Timing constants based on a 1 ms tick-time. Included is 33% tolerance. This
+-- is the maximum we can use without bit-times overlapping.
+-- Nominal is 100 ms.
+const word _DCF77_BIT_0_MIN = 67   
+const word _DCF77_BIT_0_MAX = 133
+-- Nominal is 900 ms.
+const word _DCF77_PAUSE_0_MIN = 603
+const word _DCF77_PAUSE_0_MAX = 1197
+-- Nominal is 200 ms.
+const word _DCF77_BIT_1_MIN = 134   
+const word _DCF77_BIT_1_MAX = 266
+-- Nominal is 800 ms.
+const word _DCF77_PAUSE_1_MIN = 536
+const word _DCF77_PAUSE_1_MAX = 1064
+-- Nominal is 2000 ms.
+const word _DCF77_SEQUENCE_MIN = 1340
+const word _DCF77_SEQUENCE_MAX = 2660
+
+-- We decode the IR bitstream on both edges for better performance.
+const _DCF77_EDGE_RISING  = TRUE
+const _DCF77_EDGE_FALLING = FALSE
+
+-- Decoder bit states.
+const byte _DCF77_BIT_IDLE  = 0
+const byte _DCF77_BIT_PULSE = 1
+const byte _DCF77_BIT_PAUSE = 2
+
+-- Decoder message states.
+const byte _DCF77_MESSAGE_IDLE                = 0
+const byte _DCF77_MESSAGE_START               = 1
+const byte _DCF77_MESSAGE_CET                 = 2
+const byte _DCF77_MESSAGE_TIME_START          = 3
+const byte _DCF77_MESSAGE_MINUTES             = 4
+const byte _DCF77_MESSAGE_HOURS               = 5
+const byte _DCF77_MESSAGE_DAY_OF_MONTH        = 6
+const byte _DCF77_MESSAGE_DAY_OF_WEEK         = 7
+const byte _DCF77_MESSAGE_MONTH_NUMBER        = 8
+const byte _DCF77_MESSAGE_YEAR_WITHIN_CENTURY = 9
+
+-- Mutiplier array
+const byte _DCF77_MULTIPLIER[8] = {1, 2, 4, 8, 10, 20, 40, 80}
+
+-- Internal decoding variables.
+var word _dcf77_bit_time      
+var byte _dcf77_bit_state       
+var byte _dcf77_bit_count
+var byte _dcf77_message_state   
+var byte _dcf77_minutes, _dcf77_hours
+var byte _dcf77_day_of_week, _dcf77_day_of_month
+var byte _dcf77_month, _dcf77_year_within_century
+var bit  _dcf77_bit_is_1
+var bit  _dcf77_cet_time, _dcf77_cet_summer_time
+var bit  _dcf77_parity
+var bit  _dcf77_parity_ok
+var bit  _dcf77_new_bit
+var bit  _dcf77_pulse_high
+var bit  _dcf77_message_received
+
+-- ====================== Internal function prototypes ========================
+
+-- ----------------------------------------------------------------------------
+-- Reset the Remote Control to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _dcf77_reset_decoder()
+
+-- ============== Implementation of the functions and procedures ==============
+
+-- ----------------------------------------------------------------------------
+-- Initialize the DCF77 Decoder. This will enable the required interrupts. The
+-- decoder is set to decode an incomming stream that uses an active high pulse.
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_init() is
+
+   DCF77_decoder_pin_direction = input
+   dcf77_decoder_pulse_high()
+   _dcf77_message_received = FALSE
+   _dcf77_reset_decoder()
+   -- Enable all used interrupts.
+   DCF77_TMR1_IE = TRUE
+   DCF77_PEIE = TRUE 
+if defined(dcf77_decoder_ioc_flag) then 
+   -- IOC version
+   DCF77_IOC_IE = TRUE
+else
+   -- External interrupt version
+   DCF77_INTE = TRUE     
+end if 
+   DCF77_PEIE = TRUE 
+   DCF77_GIE = TRUE     
+ 
+end procedure  
+
+-- ----------------------------------------------------------------------------
+-- Set the decoder to decode an incomming stream that uses an active high pulse.
+-- Note: Only relevant when using the external interrupt, not for IOC.
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_pulse_high() is
+
+   _dcf77_pulse_high = TRUE
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Set the decoder to decode an incomming stream that uses an active low pulse.
+-- Note: Only relevant when using the external interrupt, not for IOC.
+-- ----------------------------------------------------------------------------
+procedure dcf77_decoder_pulse_low() is
+
+   _dcf77_pulse_high = FALSE
+
+end procedure
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a valid DCF77 message was received. Calling this function
+-- will clear the message received flag and will enable the reception of the
+-- next DCF77 message.
+-- ----------------------------------------------------------------------------
+function dcf77_message_received() return bit is
+
+   if _dcf77_message_received then
+      _dcf77_message_received = FALSE
+      return TRUE
+   else
+      return FALSE
+   end if 
+
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns the received hours. Hours are BCD coded.
+-- ----------------------------------------------------------------------------
+function dcf77_get_hours() return byte is
+
+   return _dcf77_hours
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Returns the received minuted. Minutes are BCD coded.
+-- ----------------------------------------------------------------------------
+function dcf77_get_minutes() return byte is
+
+   return _dcf77_minutes
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if the time is Central European Time (CET).
+-- ----------------------------------------------------------------------------
+function dcf77_time_is_cet() return bit is
+
+   return _dcf77_cet_time
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE if the time is Central European Summer Time (CEST).
+-- ----------------------------------------------------------------------------
+function dcf77_time_is_cest() return bit is
+
+   return _dcf77_cet_summer_time
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns the day of the week (1..7), where day 1 is Monday and 7 is Sunday.
+-- ----------------------------------------------------------------------------
+function dcf77_get_day_of_week() return byte is
+
+   return _dcf77_day_of_week
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns the day of the month (1..31).
+-- ----------------------------------------------------------------------------
+function dcf77_get_day_of_month() return byte is
+
+   return _dcf77_day_of_month
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns the month (1..12).
+-- ----------------------------------------------------------------------------
+function dcf77_get_month() return byte is
+
+   return _dcf77_month
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Returns the year wihin the century (0..99).
+-- ----------------------------------------------------------------------------
+function dcf77_get_year_within_century() return byte is
+
+   return _dcf77_year_within_century
+
+end function 
+
+-- ----------------------------------------------------------------------------
+-- Timer1 interrupt. Occurs when the timer overflows after 1 ms.
+-- ----------------------------------------------------------------------------
+procedure _dcf77_timer1_interrupt() is pragma interrupt
+
+   if DCF77_TMR1_IF then
+      DCF77_TMR1_ON = FALSE
+      DCF77_TMR1_IF = FALSE
+      _dcf77_bit_time = _dcf77_bit_time + 1
+      DCF77_TMR1 = DCF77_TIMER_1_RELOAD
+      DCF77_TMR1_ON = TRUE
+   end if
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- Reset the DCF77 decoder to its initial state.
+-- ----------------------------------------------------------------------------
+procedure _dcf77_reset_decoder() is
+
+   DCF77_TMR1_ON = FALSE
+   _dcf77_bit_state = _DCF77_BIT_IDLE
+   _dcf77_message_state = _DCF77_MESSAGE_IDLE
+   _dcf77_bit_time = 0
+   _dcf77_new_bit = FALSE
+   DCF77_TMR1 = DCF77_TIMER_1_RELOAD
+   DCF77_TMR1_IF = FALSE 
+   -- Clear the interrupt flag.
+   if defined(dcf77_decoder_ioc_flag) then
+      -- IOC version.
+      dcf77_decoder_ioc_flag = FALSE 
+   else 
+      -- External interupt version.
+      -- Set initial interrupt to the correct edge
+      if _dcf77_pulse_high then 
+         DCF77_INT_EDG = _DCF77_EDGE_RISING
+      else
+         DCF77_INT_EDG = _DCF77_EDGE_FALLING
+      end if 
+      DCF77_INTF = FALSE
+   end if 
+   DCF77_TMR1_ON = TRUE
+
+end procedure 
+
+-- ----------------------------------------------------------------------------
+-- This procedure handles the interupt flag. Reason for this procedure is to be
+-- able to use two differnt interrupt types, IOC and external.
+-- ----------------------------------------------------------------------------
+function _dcf77_handle_interrupt_flag() return bit is
+
+   var bit interrupt_was_active = FALSE
+
+   if defined(dcf77_decoder_ioc_flag) then
+      -- IOC version.
+      if dcf77_decoder_ioc_flag then
+         dcf77_decoder_ioc_flag = FALSE 
+         interrupt_was_active = TRUE
+      end if 
+   else 
+      -- External interupt version.
+      if DCF77_INTF then
+         -- Clear interrupt flag and toggle interrupt edge.
+         DCF77_INTF = FALSE
+         DCF77_INT_EDG = !DCF77_INT_EDG
+         interrupt_was_active = TRUE 
+      end if 
+   end if 
+
+   return interrupt_was_active
+
+end function
+
+-- ----------------------------------------------------------------------------
+-- Interrupt, external or IOC.
+-- ----------------------------------------------------------------------------
+procedure _dcf_interrupt() is pragma interrupt
+
+   if _dcf77_handle_interrupt_flag() then
+   
+      -- The first state machine checks which type of bit is received.
+      case _dcf77_bit_state of
+
+         _DCF77_BIT_IDLE:
+         block
+            -- This is the start of the first bit we will receive. We
+            -- stay here when there is a message pending.
+            if !dcf77_message_received then
+               _dcf77_bit_state = _DCF77_BIT_PULSE
+            end if 
+         end block 
+      
+         _DCF77_BIT_PULSE:
+         block
+            -- Set for next state.
+            _dcf77_bit_state = _DCF77_BIT_PAUSE
+            _dcf77_bit_count = _dcf77_bit_count + 1
+            _dcf77_new_bit = TRUE
+            -- Check for bit 0 or 1.
+            if (_dcf77_bit_time >= _DCF77_BIT_0_MIN) &
+               (_dcf77_bit_time <= _DCF77_BIT_0_MAX) then
+               _dcf77_bit_is_1 = FALSE
+            elsif (_dcf77_bit_time >= _DCF77_BIT_1_MIN) &
+                  (_dcf77_bit_time <= _DCF77_BIT_1_MAX) then
+               _dcf77_bit_is_1 = TRUE
+            else 
+               _dcf77_reset_decoder()
+            end if 
+         end block 
+
+         _DCF77_BIT_PAUSE:
+         block
+            -- Set for next state.
+            _dcf77_bit_state = _DCF77_BIT_PULSE
+            -- Check for pause 0 or 1. This must match the received bit.
+            if (_dcf77_bit_time >= _DCF77_PAUSE_0_MIN) &
+               (_dcf77_bit_time <= _DCF77_PAUSE_0_MAX) &
+               !_dcf77_bit_is_1 then
+               -- This bit is done.
+               _dcf77_new_bit = FALSE
+            elsif (_dcf77_bit_time >= _DCF77_PAUSE_1_MIN) &
+                  (_dcf77_bit_time <= _DCF77_PAUSE_1_MAX) &
+                  _dcf77_bit_is_1 then
+               -- This bit is done.
+               _dcf77_new_bit = FALSE
+            elsif (_dcf77_bit_time >= _DCF77_SEQUENCE_MIN) &
+                  (_dcf77_bit_time <= _DCF77_SEQUENCE_MAX) then
+               -- This bit is done.
+               _dcf77_new_bit = FALSE
+               -- We start the decoder when no message is pending.
+               if !_dcf77_message_received then 
+                  _dcf77_message_state = _DCF77_MESSAGE_START
+               end if 
+            end if
+            -- Bit must have been done (cleared).
+            if _dcf77_new_bit then
+               _dcf77_reset_decoder()
+            end if 
+
+         end block 
+
+      end case 
+
+      _dcf77_bit_time = 0
+
+      -- Only go through the state machine when a new bit has arrived.
+      if _dcf77_new_bit then
+
+         -- The second state machine handles the processing of the incoming message.
+         case _dcf77_message_state of
+
+            _DCF77_MESSAGE_IDLE:
+            block
+            end block 
+
+            _DCF77_MESSAGE_START:
+            block
+               _dcf77_bit_count = 0
+               -- This is the start of the message. This is bit 0, which must be 0.
+               if _dcf77_bit_is_1 then
+                  _dcf77_message_state = _DCF77_MESSAGE_IDLE
+               else
+                  _dcf77_message_state = _DCF77_MESSAGE_CET
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_CET:
+            block
+               -- For now we skip everything until we get the CET - summer - time.
+               if (_dcf77_bit_count == 17) then
+                  _dcf77_cet_summer_time = _dcf77_bit_is_1
+               elsif (_dcf77_bit_count == 18) then
+                  _dcf77_cet_time = _dcf77_bit_is_1
+                  -- Only one of the two can be active at the same time.
+                  if (_dcf77_cet_summer_time == _dcf77_cet_time) then
+                     -- Error.
+                     _dcf77_message_state = _DCF77_MESSAGE_IDLE
+                  else
+                     _dcf77_message_state = _DCF77_MESSAGE_TIME_START
+                  end if 
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_TIME_START:
+            block
+               if (_dcf77_bit_count == 20) then
+                  -- Must be 1.
+                  if _dcf77_bit_is_1 then
+                     -- Preset values for minutes.
+                     _dcf77_minutes = 0
+                     _dcf77_parity = FALSE
+                     _dcf77_message_state = _DCF77_MESSAGE_MINUTES
+                  else
+                     _dcf77_message_state = _DCF77_MESSAGE_IDLE
+                  end if
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_MINUTES:
+            block
+               -- For now we skip everything until we get the minutes.
+               if (_dcf77_bit_count == 28) then
+                  -- Parity must be even.
+                  _dcf77_parity_ok = (_dcf77_bit_is_1 == _dcf77_parity)
+                  if _dcf77_parity_ok then
+                     -- Preset values for hours.
+                     _dcf77_hours = 0
+                     _dcf77_parity = FALSE
+                     _dcf77_message_state = _DCF77_MESSAGE_HOURS
+                  else
+                     _dcf77_message_state = _DCF77_MESSAGE_IDLE
+                  end if 
+               else
+                  -- Calcultate the minutes.
+                  if _dcf77_bit_is_1 then
+                     _dcf77_parity = !_dcf77_parity
+                     _dcf77_minutes = _dcf77_minutes + _DCF77_MULTIPLIER[_dcf77_bit_count - 21]
+                  end if
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_HOURS:
+            block
+               -- For now we skip everything until we get the hours.
+               if (_dcf77_bit_count == 35) then
+                  -- Parity must be even.
+                  _dcf77_parity_ok = (_dcf77_bit_is_1 == _dcf77_parity)
+                  if _dcf77_parity_ok then
+                     -- Parity over bit 36-58 must be even.
+                     _dcf77_parity = FALSE
+                     _dcf77_day_of_month = 0
+                     _dcf77_message_state = _DCF77_MESSAGE_DAY_OF_MONTH
+                  else
+                     _dcf77_message_state = _DCF77_MESSAGE_IDLE
+                  end if 
+               else
+                  -- Calcultate the hours.
+                  if _dcf77_bit_is_1 then
+                     _dcf77_parity = !_dcf77_parity
+                     _dcf77_hours = _dcf77_hours + _DCF77_MULTIPLIER[_dcf77_bit_count - 29]
+                  end if
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_DAY_OF_MONTH:
+            block
+               -- Calcultate the day of the month.
+               if _dcf77_bit_is_1 then
+                  _dcf77_parity = !_dcf77_parity
+                  _dcf77_day_of_month = _dcf77_day_of_month + _DCF77_MULTIPLIER[_dcf77_bit_count - 36]
+               end if
+               -- For now we skip everything until we get the day of month (date).
+               if (_dcf77_bit_count == 41) then
+                  _dcf77_day_of_week = 0
+                  _dcf77_message_state = _DCF77_MESSAGE_DAY_OF_WEEK
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_DAY_OF_WEEK:
+            block
+               -- Calcultate the day.
+               if _dcf77_bit_is_1 then
+                  _dcf77_parity = !_dcf77_parity
+                  _dcf77_day_of_week = _dcf77_day_of_week + _DCF77_MULTIPLIER[_dcf77_bit_count - 42]
+               end if
+               -- For now we skip everything until we get the day of the week (day).
+               if (_dcf77_bit_count == 44) then
+                  _dcf77_month = 0
+                  _dcf77_message_state = _DCF77_MESSAGE_MONTH_NUMBER
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_MONTH_NUMBER:
+            block
+               -- Calcultate the month number.
+               if _dcf77_bit_is_1 then
+                  _dcf77_parity = !_dcf77_parity
+                  _dcf77_month = _dcf77_month + _DCF77_MULTIPLIER[_dcf77_bit_count - 45]
+               end if
+               -- For now we skip everything until we get the month.
+               if (_dcf77_bit_count == 49) then
+                  _dcf77_year_within_century = 0
+                  _dcf77_message_state = _DCF77_MESSAGE_YEAR_WITHIN_CENTURY
+               end if 
+            end block 
+
+            _DCF77_MESSAGE_YEAR_WITHIN_CENTURY:
+            block
+               -- For now we skip everything until we get the year.
+               if (_dcf77_bit_count == 58) then
+                  -- Parity over bit 36-58 must be even.
+                  _dcf77_message_received = (_dcf77_bit_is_1 == _dcf77_parity)
+                  -- Always back to idle.
+                  _dcf77_message_state = _DCF77_MESSAGE_IDLE
+               else
+                  -- Calcultate the year.
+                  if _dcf77_bit_is_1 then
+                     _dcf77_parity = !_dcf77_parity
+                     _dcf77_year_within_century = _dcf77_year_within_century + _DCF77_MULTIPLIER[_dcf77_bit_count - 50]
+                  end if
+               end if 
+            end block 
+
+         end case 
+      end if 
+
+   end if 
+end procedure 
+
+
