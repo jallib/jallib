@@ -1,0 +1,189 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the Philips Remote Control Decoder using an SSD1306
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program that shows Philips Remote Control commands on an 
+--              SSD1306, controlled via an IIC interface using the external 
+--              interrupt of the PIC.
+--              An example is also included when using a local constant
+--              IOC_VERSION to use the IOC instead of the external interrupt.
+-- 
+-- Notes:       The 36 kHz Infra Red receiver (active low) must be connected
+--              to the external interrupt pin or the used IOC pin.
+--           
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(250_000)     -- Give the hardware some time to stabilize.
+
+-- Define the pinsfor the SSD1306. In this case we define only the IIC.
+alias ssd1306_sck is pin_C0 -- Pin 10 for 14 pin DIP
+alias ssd1306_sck_direction is pin_C0_direction
+alias ssd1306_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
+alias ssd1306_sdo_direction is pin_C1_direction 
+-- Since this PIC does not have more than 1024 bytes of data memory we use
+-- will write the text only mode.
+const SSD1306_TEXT_ONLY = TRUE
+include print
+
+-- Font library.
+include glcd_6x8_font
+include glcd_font
+glcd_font_use(FONT_6X8)
+
+-- Include and initialize the GLCD lib. This will also initialize the
+-- IIC interface.
+include glcd_ssd1306
+ssd1306_init()
+
+-- Settings for the Philips Remote Control Decoder. The decoder uses timer 1
+-- which must run at 1 MHz. We use Fosc/4 and a prescaler of 1:8 to 
+-- get the 1 MHz timer 1 clock since the target clock is at 32 MHz.
+-- Note: When a MHz clock cannot be obtained the user must use PHILIPS_RC_SCALING.
+T1CON_TMR1CS = 0b00 -- Clock source Fosc/4, gives 8 MHz.
+T1CON_T1CKPS = 0b11 -- Prescaler 1:8, gives 1 MHz.
+-- The following local constant is normally not required but is used here to 
+-- demonstrate the use of the IOC version. If you comment this constant
+-- out the Remote Control decoder will use the external interrupt (default).
+-- const IOC_VERSION = TRUE
+if defined(IOC_VERSION) then
+   -- Set the IOC interrupt on both edges and define the and aliases 
+   -- for the decoder routine. We use pin A5 in this example.
+   IOCAP_IOCAP5 = TRUE -- Set ioc interrupt on positive edge
+   IOCAN_IOCAN5 = TRUE -- Set ioc interrupt on negative edge.
+   alias philips_rc_decoder_ioc_flag is IOCAF_IOCAF5
+   -- Interupt pin using IOC.
+   alias philips_rc_decoder_pin_direction is pin_a5_direction -- Pin 2 for 14 pin DIP
+else
+   -- Interupt pin using the external interrupt.
+   alias philips_rc_decoder_pin_direction is pin_a2_direction -- Pin 11 for 14 pin DIP
+end if 
+-- Now we can include the library.
+include philips_rc_decoder
+philips_rc_decoder_init()
+
+-- Constants.
+const X_COORDINATE = 60
+
+var word repeat_counter = 0 
+var byte last_address = 255
+var byte last_command = 255
+var bit  last_toggle = FALSE
+var bit  rc5_received = FALSE
+var bit  rc6_received = FALSE
+
+-- ------- Procedures ------------------------
+
+-- Print the received remote control data. When data is requested
+-- the remote control message received flag is cleared. 
+procedure print_remote_control_data() is
+
+   var byte command, address
+   var bit toggle 
+
+   philips_rc_get_data(toggle, address, command)
+   -- If new data is received, the repeat counter is reset.
+   if (last_toggle != toggle) | (last_address != address) | 
+      (last_command != command) then
+      repeat_counter = 0
+      last_toggle = toggle
+      last_address = address
+      last_command = command
+   else  
+      repeat_counter = repeat_counter + 1
+   end if 
+
+   -- Print the contents of the RC5 or RC6 message.
+   ssd1306_goto(X_COORDINATE,4)
+   if toggle then
+      glcd = "1"
+   else
+      glcd = "0"
+   end if 
+
+   ssd1306_goto(X_COORDINATE,5)
+   print_byte_dec(glcd, address)
+   print_string(glcd, "   ")
+
+   ssd1306_goto(X_COORDINATE,6)
+   print_byte_dec(glcd, command)
+   print_string(glcd, "   ")
+
+   ssd1306_goto(X_COORDINATE,7)
+   print_word_dec(glcd, repeat_counter)
+   print_string(glcd, "      ")
+
+end procedure
+
+-- -------- Main program starts here -------------
+
+-- First clear the screen and prepare it.
+ssd1306_clear_screen()
+glcd_font_use(FONT_6X8)
+ssd1306_goto(40,0)
+print_string(glcd,"PHILIPS")
+ssd1306_goto(10,1)
+print_string(glcd,"RC5 & RC6 DECODER")
+ssd1306_goto(0,3)
+print_string(glcd, "Received:")
+ssd1306_goto(0,4)
+print_string(glcd, "Toggle:")
+ssd1306_goto(0,5)
+print_string(glcd, "Address:")
+ssd1306_goto(0,6)
+print_string(glcd, "Command:")
+ssd1306_goto(0,7)
+print_string(glcd, "Repeat:")
+
+forever  loop 
+
+   if philips_rc5_message_received()then
+      ssd1306_goto(X_COORDINATE,3)
+      print_string(glcd, "RC5")
+      rc5_received = TRUE
+      if rc6_received then
+         rc6_received = FALSE
+         repeat_counter = 0
+      end if 
+      -- Print the data. This will also clear the message received.
+      print_remote_control_data() 
+   elsif philips_rc6_message_received then
+      ssd1306_goto(X_COORDINATE,3)
+      print_string(glcd, "RC6")
+      rc6_received = TRUE
+      if rc5_received then
+         rc5_received = FALSE
+         repeat_counter = 0
+      end if 
+      -- Print the data. This will also clear the message received.
+      print_remote_control_data() 
+   end if 
+   
+
+
+end loop

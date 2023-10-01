@@ -1,5 +1,5 @@
 -- -----------------------------------------------------------------------------
--- Title: Sample program for the NEC Remote Control Decoder
+-- Title: Sample program for the NEC Remote Control Decoder using USART
 -- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.5r8
@@ -7,9 +7,8 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Sample program that shows NEC Remote Control commands on an 
---              SSD1306, controlled via an IIC interface using the external 
---              interrupt of the PIC.
+-- Description: Sample program that shows NEC Remote Control commands commands via 
+--              the serial interface using the external interrupt of the PIC.
 --              An example is also included when using a local constant
 --              IOC_VERSION to use the IOC instead of the external interrupt.
 -- 
@@ -41,25 +40,15 @@ OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
 enable_digital_io()      -- All pins digital IO
 _usec_delay(250_000)     -- Give the hardware some time to stabilize.
 
--- Define the pinsfor the SSD1306. In this case we define only the IIC.
-alias ssd1306_sck is pin_C0 -- Pin 10 for 14 pin DIP
-alias ssd1306_sck_direction is pin_C0_direction
-alias ssd1306_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
-alias ssd1306_sdo_direction is pin_C1_direction 
--- Since this PIC does not have more than 1024 bytes of data memory we use
--- will write the text only mode.
-const SSD1306_TEXT_ONLY = TRUE
+-- Set up the serial interface.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP
+const serial_hw_baudrate = 115_200
+include serial_hardware                        
+serial_hw_init
+alias serial is serial_hw_data
+
 include print
-
--- Font library.
-include glcd_6x8_font
-include glcd_font
-glcd_font_use(FONT_6X8)
-
--- Include and initialize the GLCD lib. This will also initialize the
--- IIC interface.
-include glcd_ssd1306
-ssd1306_init()
 
 -- Settings for the NEC Remote Control Decoder. The decoder uses timer 1
 -- which must run at 1 MHz. We use Fosc/4 and a prescaler of 1:8 to 
@@ -70,7 +59,7 @@ T1CON_T1CKPS = 0b11 -- Prescaler 1:8, gives 1 MHz.
 -- The following local constant is normally not required but is used here to 
 -- demonstrate the use of the IOC version. If you comment this constant
 -- out the Remote Control decoder will use the external interrupt (default).
-const IOC_VERSION = TRUE
+-- const IOC_VERSION = TRUE
 if defined(IOC_VERSION) then
    -- Set the IOC interrupt on both edges and define the and aliases 
    -- for the decoder routine. We use pin A5 in this example.
@@ -95,66 +84,50 @@ if defined(USE_NEC_EXTENDED_PROTOCOL) then
    nec_rc_set_protocol_extended()
 end if
 
--- Constants.
-const X_COORDINATE = 60
-
 -- Variables.
 var word repeat_counter = 0 
 if defined(USE_NEC_EXTENDED_PROTOCOL) then
-   var word address -- The extended protocol uses a 16 bit address.
+   var word address
 else
-   var byte address -- The standard protocol uses an 8 bit address.
+   var byte address
 end if 
 var byte command
 
--- First clear the screen and prepare it.
-ssd1306_clear_screen()
-glcd_font_use(FONT_6X8)
-ssd1306_goto(10,0)
-print_string(glcd,"NEC REMOTE CONTROL")
-   ssd1306_goto(15,1)
+-- Main program starts here.
+print_crlf(serial)
+print_string(serial,"NEC REMOTE CONTROL ")
 if defined(USE_NEC_EXTENDED_PROTOCOL) then
-   print_string(glcd,"EXTENDED DECODER")
+   print_string(serial,"EXTENDED DECODER")
 else
-   print_string(glcd,"STANDARD DECODER")
+   print_string(serial,"STANDARD DECODER")
 end if
-ssd1306_goto(0,3)
-print_string(glcd, "Address:")
-ssd1306_goto(0,4)
-print_string(glcd, "Command:")
-ssd1306_goto(0,5)
-print_string(glcd, "Repeat:")
+print_crlf(serial)
 
 forever  loop 
 
    if nec_rc_message_received() then
-      -- Reset repeat counter since this is a new message.
+      -- Reset repeat counter since new message.
       repeat_counter = 0
-      ssd1306_goto(X_COORDINATE,5)
-      print_word_dec(glcd, repeat_counter)
-      print_string(glcd, "      ")
       -- Print the (extended) address
-      ssd1306_goto(X_COORDINATE,3)
-      -- Reading the data will clear the received message flag.
+      print_string(serial, "ADDRESS: ")
       if defined(USE_NEC_EXTENDED_PROTOCOL) then
          nec_rc_get_data_extended(address, command)
-         print_word_dec(glcd, address)
+         print_word_dec(serial, address)
       else 
          nec_rc_get_data_standard(address, command)
-         print_byte_dec(glcd, address)
+         print_byte_dec(serial, address)
       end if 
+      print_crlf(serial)
       -- Print the command.
-      print_string(glcd, "   ")
-      ssd1306_goto(X_COORDINATE,4)
-      print_byte_dec(glcd, command)
-      print_string(glcd, "   ")
+      print_string(serial, "COMMAND: ")
+      print_byte_dec(serial, command)
+      print_crlf(serial)
    elsif nec_rc_repeat_received then
-      -- Repeat message, increment repeat counter. Calling the function
-      -- nec_rc_repeat_received will clear the repeat flag.
+      -- Only a repeat message, increment repeat counter.
       repeat_counter = repeat_counter + 1
-      ssd1306_goto(X_COORDINATE,5)
-      print_word_dec(glcd, repeat_counter)
-      print_string(glcd, "      ")
+      print_string(serial, "REPEAT: ")
+      print_word_dec(serial, repeat_counter)
+      print_crlf(serial)
    end if 
    
 end loop
