@@ -1,0 +1,137 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the HC-SR04 Ultrasonic Ranging Module
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program that shows the operation of the HC-SR04
+--              Ultra Sonic Ranging Module.
+--              The LED bar is used to show the distance measured. The closed
+--              to the module the more LEDs will be turned on.
+--              The HC-SR04 library uses timer 1 to measure the distance.
+-- 
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(250_000)     -- Give the hardware some time to stabilize.
+
+-- Settings for the HCSR04 Ultrasonic Ranging Motule. The library uses timer 1
+-- which must run at 1 MHz. We use Fosc/4 and a prescaler of 1:8 to 
+-- get the 1 MHz timer 1 clock since the target clock is at 32 MHz.
+-- Note: When a 1 MHz clock cannot be obtained the user must use HCSR04_SCALING.
+--       For more information see the hcsr04 library.
+T1CON_TMR1CS = 0b00 -- Clock source Fosc/4, gives 8 MHz.
+T1CON_T1CKPS = 0b11 -- Prescaler 1:8, gives 1 MHz.
+
+-- The following local constant is normally not required but is used here to 
+-- demonstrate the use of the IOC version. If you comment this constant
+-- out the HCSR04 library will use the external interrupt (default), otherwise
+-- it wil use the IOC interrupt.
+-- const IOC_VERSION = TRUE -- When commented out using the IOC interrupt.
+if defined(IOC_VERSION) then
+   -- Set the IOC interrupt on both edges and define the and aliases 
+   -- for the decoder routine. We use pin A5 in this example.
+   IOCAP_IOCAP5 = TRUE -- Set ioc interrupt on positive edge
+   IOCAN_IOCAN5 = TRUE -- Set ioc interrupt on negative edge.
+   alias hcsr04_ioc_flag is IOCAF_IOCAF5
+   -- Interrupt using IOC.
+   alias hcsr04_echo_pin_direction is pin_a5_direction -- Pin 2 for 14 pin DIP
+else
+   -- Interrupt using INT.
+   alias hcsr04_echo_pin_direction is pin_a2_direction -- Pin 11 for 14 pin DIP
+end if 
+-- Control pin for the module to start an echo.
+alias hcsr04_trigger_pin is pin_a4 -- Pin 3 for 14 pin DIP
+alias hcsr04_trigger_pin_direction is pin_a4_direction
+
+-- Now we can include the library.
+include hcsr04
+hcsr04_init
+
+-- Define the LED bar, we use port C (C0 .. C5).
+alias led_bar is portc
+portc_direction = OUTPUT
+
+-- Some distance constants in mm
+const dword MIN_DISTANCE = 20    -- 2 cm
+const dword MAX_DISTANCE = 4_000 -- 400 cm
+-- We have 6 LEDs and we only indicate a distance up to 30 cm
+-- so 5 cm of 50 mm per LED.
+const word MM_PER_LED = 50
+
+-- Variables.
+var word distance
+var bit measurement_busy
+
+measurement_busy = FALSE
+led_bar = 0b0011_1111
+_usec_delay(1_000_000)
+led_bar = 0x00
+
+forever  loop 
+
+   -- Start a measurement and wait for the result.
+   if !measurement_busy then
+      hcsr04_start_measurement()
+      measurement_busy= TRUE
+   end if 
+
+   if hcsr04_measurement_done() then
+      --Get distance in in mm.
+      distance = word(hcsr04_get_distance_mm() - MIN_DISTANCE)
+
+      -- Create a LED bar based on the distance. The shorter the
+      -- distance the more LEDs will be turned on.
+      if (distance > (6 * MM_PER_LED)) then
+         led_bar = 0b0011_1111
+      elsif (distance > (5 * MM_PER_LED)) then
+         led_bar = 0b0001_1111
+      elsif (distance > (4 * MM_PER_LED)) then
+         led_bar = 0b0000_1111
+      elsif (distance > (3 * MM_PER_LED)) then
+         led_bar = 0b0000_0111
+      elsif (distance > (2 * MM_PER_LED)) then
+         led_bar = 0b0000_0011
+      elsif (distance > MM_PER_LED) then
+         led_bar = 0b0000_0001
+      else 
+         led_bar = 0b0000_0000      
+      end if
+      measurement_busy = FALSE     
+   elsif hcsr04_measurement_error() then
+      -- Blink the whole LED bar.
+      for 5 loop
+         led_bar = 0b0011_1111
+         _usec_delay(500_000)
+         led_bar = OFF
+         _usec_delay(500_000)
+      end loop
+      measurement_busy = FALSE
+   end if 
+   
+   _usec_delay(100_000)
+   
+end loop

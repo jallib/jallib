@@ -1,0 +1,430 @@
+--===============================================================================
+-- Title: HC-SR04 Ultrasonic Ranging Module Library.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library for the HC-SR04 Ultrasonic Ranging Module. 
+--              The library can be configured to use either the external
+--              interrupt or an IOC interrupt to measure the echo signal 
+--              from the module using Timer 1.
+--              The default is using an external interrupt. In order to switch 
+--              to using an IOC interrupt the user must initialize the IOC
+--              to be active on both the rising and falling edge and must
+--              define the following alias (example for IOC on pin A2):
+--              -) alias hcsr04_ioc_flag is IOCAF_IOCAF2 
+--
+--              The library uses Timer 1 to measure echo signal.
+--              The user must initialize Timer 1. Bit times are based on 1 us.
+--              If Timer 1 does not run at 1 MHz then the user has to define 
+--              the dword constant HCSR04_SCALING, where a value of 100 equals
+--              Timer 1 running at 1 MHz (default so not required to define). 
+--              When Timer 1 runs at 1.25 MHz the dword constant HCSR04_SCALING 
+--              must equal 125. When Timer 1 runs at 0.75 MHz then 
+--              HCSR04_SCALING must equal 75. Timer 1 must not run a frequency
+--              higher than 2 MHz to prevent overflow. It is better to stay 
+--              as close as possiblt to a Timer 1 clock of 1 MHz.
+--
+-- Notes:       The echo signal ranges from about 150 us to 25 ms. In case
+--              there is no object, the echo signal is about 38 ms. If
+--              no echo signal is received, the library will timeout after
+--              65 ms when Timer 1 runs at 1 MHz.
+--        
+-- Sources:     Datasheet Ultrasonic ranging module : HC-SR04.
+--
+
+-- ----------------------------------------------------------------------------
+-- -------------------------- Public API --------------------------------------
+-- ----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------
+-- Initialize the HCSR04 library. This will will enable the required interrupts. 
+-- ----------------------------------------------------------------------------
+procedure hcsr04_init()
+
+-- ----------------------------------------------------------------------------
+-- Start an ultrasonic distance measurement.
+-- ----------------------------------------------------------------------------
+procedure hcsr04_start_measurement()
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a distance measurement was done.
+-- ----------------------------------------------------------------------------
+function hcsr04_measurement_done() return bit 
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a distance measurement error was encountered. This error
+-- occurs when the measured time is too long. This can occur when the object.
+-- is out of reach or the module is not connected. 
+-- ----------------------------------------------------------------------------
+function hcsr04_measurement_error() return bit
+
+-- ----------------------------------------------------------------------------
+-- Returns the last measured distance in milimeter.
+-- ----------------------------------------------------------------------------
+function hcsr04_get_distance_mm() return word
+
+-- ----------------------------------------------------------------------------
+-- Returns the last measured distance in mil.
+-- ----------------------------------------------------------------------------
+function hcsr04_get_distance_mil() return dword 
+
+-- ----------------------------------------------------------------------------
+-- ---------------------------- Implementation --------------------------------
+-- ----------------------------------------------------------------------------
+
+-- This library needs a 16-bit Timer 1.
+if !defined(TMR1H) then
+   _error "hcsr04: This library requires a PIC with a 16-bit Timer 1."
+end if 
+
+-- =========================== Some aliases ===================================
+
+-- Timer 1 aliases.
+alias HCSR04_TMR1    is TMR1            
+alias HCSR04_TMR1_ON is T1CON_TMR1ON     
+
+-- Timer 1 Interrupt registers.
+if defined(PIE4_TMR1IE) then
+   alias HCSR04_TMR1_IE  is PIE4_TMR1IE
+   alias HCSR04_TMR1_IF  is PIR4_TMR1IF 
+elsif defined(PIE1_TMR1IE) then
+   alias HCSR04_TMR1_IE  is PIE1_TMR1IE
+   alias HCSR04_TMR1_IF  is PIR1_TMR1IF
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- External and IOC interrupt.
+if defined(PIE0_INTE) then
+   if defined(hcsr04_ioc_flag) then
+      -- IOC version.
+      alias HCSR04_IOC_IE  is PIE0_IOCIE
+   else
+      -- External interrupt version.
+      alias HCSR04_INTE    is PIE0_INTE
+      alias HCSR04_INTF    is PIR0_INTF
+      alias HCSR04_INT_EDG is INTCON_INTEDG
+   end if 
+elsif defined(INTCON_INT0IE) then
+   -- Note: Only external interrupt 0 supported.
+   if defined(hcsr04_ioc_flag) then
+      -- IOC version. This alias is not tested.
+      alias HCSR04_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias HCSR04_INTE    is INTCON_INT0IE
+      alias HCSR04_INTF    is INTCON_INT0IF
+      alias HCSR04_INT_EDG is INTCON2_INTEDG0
+   end if 
+elsif defined(INTCON_INTE) then
+   if defined(hcsr04_ioc_flag) then
+      -- IOC version.
+      alias HCSR04_IOC_IE  is INTCON_IOCIE
+   else
+      -- External interrupt version.
+      alias HCSR04_INTE    is INTCON_INTE
+      alias HCSR04_INTF    is INTCON_INTF
+      alias HCSR04_INT_EDG is OPTION_REG_INTEDG
+   end if 
+else
+   _error "This library does not support the used PIC, please report."
+end if 
+
+-- Global and peripheral interupt
+alias HCSR04_PEIE is INTCON_PEIE
+alias HCSR04_GIE  is INTCON_GIE 
+
+-- ========= Private constants, variables and function prototypes =============
+
+-- The following constants are based on timer 1 running at 1 MHz or 1 us.
+
+-- If timer 1 does not run at 1 MHz, the bittimes can be changed by scaling.
+-- Default setting is 1 MHz (scaling factor 100).
+if !defined(HCSR04_SCALING) then
+   const dword HCSR04_SCALING = 100
+end if 
+
+-- Bit-time for normal operation is between 150 us and 25 ms. Time is in us.
+-- We take some margin here. 
+const dword _HCSR04_MIN  = (100 * HCSR04_SCALING) / 100 
+const dword _HCSR04_MAX  = (30_000 * HCSR04_SCALING) / 100 
+
+-- We need to capture the pulse on edges (external interrupt only).
+const _HCSR04_EDGE_RISING  = TRUE
+const _HCSR04_EDGE_FALLING = FALSE
+
+-- Max value of timer 1 before overflow.
+const word _HCSR04_OVERFLOW = 65535  
+
+-- Measurement states.
+const byte _HCSR04_IDLE       = 0
+const byte _HCSR04_ECHO_START = 1
+const byte _HCSR04_ECHO_END   = 2
+
+-- Internal variables.
+var word _hcsr04_echo_time   
+var byte _hcsr04_state
+var bit  _hcsr04_measurement_done, _hcsr04_measurement_error
+var bit  _hcsr04_timer1_expired
+
+-- ====================== Internal function prototypes ========================
+
+-- ----------------------------------------------------------------------------
+-- Reset Timer 1 and start the timer.
+-- ----------------------------------------------------------------------------
+procedure _hcsr04_timer1_reset()
+
+-- ============== Implementation of the functions and procedures ==============
+
+-- ----------------------------------------------------------------------------
+-- Initialize the HCSR04 library. This will enable the required interrupts. 
+-- ----------------------------------------------------------------------------
+procedure hcsr04_init() is
+
+   -- Pin and variable presets.
+   hcsr04_trigger_pin = LOW
+   hcsr04_trigger_pin_direction = OUTPUT
+   hcsr04_echo_pin_direction = INPUT
+   _hcsr04_measurement_done = FALSE
+   _hcsr04_measurement_error = FALSE
+   _hcsr04_timer1_expired = FALSE
+   _hcsr04_state = _HCSR04_IDLE
+
+   -- Enable all used interrupts.
+   HCSR04_TMR1_IE = TRUE
+   HCSR04_PEIE = TRUE 
+if defined(hcsr04_ioc_flag) then 
+   -- IOC version
+   HCSR04_IOC_IE = TRUE
+else
+   -- External interrupt version
+   HCSR04_INTE = TRUE     
+end if 
+   HCSR04_PEIE = TRUE 
+   HCSR04_GIE = TRUE     
+ 
+end procedure  
+
+
+-- ----------------------------------------------------------------------------
+-- Start an ultrasonic distance measurement.
+-- ----------------------------------------------------------------------------
+procedure hcsr04_start_measurement() is
+
+   _hcsr04_measurement_done = FALSE
+   _hcsr04_measurement_error = FALSE
+   -- For the external interrupt we start with the rising echo pulse.
+   if !defined(hcsr04_ioc_flag) then 
+      HCSR04_INT_EDG = _HCSR04_EDGE_RISING
+   end if 
+   -- Trigger the transmission. This must be a pulse of at least 10 us.
+   hcsr04_trigger_pin = HIGH
+   _usec_delay(10)
+   hcsr04_trigger_pin = LOW
+   -- We reset and start the timer so that in case of no signal received
+   -- we can stop after a timer overflow.
+   _hcsr04_timer1_reset()
+   _hcsr04_state = _HCSR04_ECHO_START
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a distance measurement was done.
+-- ----------------------------------------------------------------------------
+function hcsr04_measurement_done() return bit is
+
+   return _hcsr04_measurement_done
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Returns TRUE when a distance measurement error was encountered. This error
+-- occurs when the measured time is too long. This can occur when the object.
+-- is out of reach or the module is not connected. 
+-- ----------------------------------------------------------------------------
+function hcsr04_measurement_error() return bit is
+
+   return _hcsr04_measurement_error
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Returns the last measured distance in milimeter.
+-- ----------------------------------------------------------------------------
+function hcsr04_get_distance_mm() return word is
+
+   var dword value
+
+   -- We need to correct the measured time due to scaling. Normally it is the 
+   -- measured time in us divided by 58. Due to scaling and mm we need to 
+   -- multiply this with 1.000.
+   value = ((dword(_hcsr04_echo_time) * 1_000) / HCSR04_SCALING) / 58
+
+   return word(value)
+
+end function
+
+-- ----------------------------------------------------------------------------
+-- Returns the last measured distance in mil.
+-- ----------------------------------------------------------------------------
+function hcsr04_get_distance_mil() return dword is
+
+   var dword value
+
+   -- We need to correct the measure time due to scaling. Normally it is the 
+   -- measured time in us divided by 148. Due to scaling and mm we need to 
+   -- multiply with 100.000 but this is done in two steps to prevent a 
+   -- dword overflow.
+   value = ((dword(_hcsr04_echo_time) * 10_000) / HCSR04_SCALING) / 148
+
+   return (value * 10) -- Second step to get to mil and preventing overflow.
+
+end function
+
+
+--- ----------------------------------------------------------------------------
+-- Stop Timer 1 and return the value of Timer 1. We return the Timer value if 
+-- it has not overflown otherwise this function returns the overflow value.
+-- ----------------------------------------------------------------------------
+function _hcsr04_get_timer1_value() return word is
+
+   HCSR04_TMR1_ON = FALSE
+   if _hcsr04_timer1_expired then
+      return _HCSR04_OVERFLOW
+   else
+      return HCSR04_TMR1
+   end if 
+
+end function 
+
+
+-- ----------------------------------------------------------------------------
+-- Reset Timer 1 and start the timer.
+-- ----------------------------------------------------------------------------
+procedure _hcsr04_timer1_reset() is
+
+   HCSR04_TMR1_ON = FALSE
+   HCSR04_TMR1 = 0
+   _hcsr04_timer1_expired = FALSE 
+   HCSR04_TMR1_IF = FALSE 
+   HCSR04_TMR1_ON = TRUE
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Timer1 interrupt. Occurs when the timer overflows after 65 ms (1 MHz clock)
+-- which means that no measurement could be done. We need to trigger the 
+-- interrupt to activate the state machine and handle the overflow.
+-- ----------------------------------------------------------------------------
+procedure _hcsr04_timer1_interrupt() is pragma interrupt
+
+   if HCSR04_TMR1_IF then
+      HCSR04_TMR1_ON = FALSE
+      HCSR04_TMR1_IF = FALSE
+      _hcsr04_timer1_expired = TRUE 
+      if defined(hcsr04_ioc_flag) then
+         -- IOC version
+         -- Trigger the ioc interrupt.
+         hcsr04_ioc_flag = TRUE 
+      else
+         -- External interrupt version
+         -- Trigger the external interrupt.
+         HCSR04_INTF = TRUE 
+      end if 
+   end if
+
+end procedure 
+
+
+-- ----------------------------------------------------------------------------
+-- This procedure handles the interupt flag. Reason for this procedure is to be
+-- able to use two differnt interrupt types, IOC and external.
+-- ----------------------------------------------------------------------------
+function _hcsr04_handle_interrupt_flag() return bit is
+
+   var bit interrupt_was_active = FALSE
+
+   if defined(hcsr04_ioc_flag) then
+      -- IOC version.
+      if hcsr04_ioc_flag then
+         hcsr04_ioc_flag = FALSE 
+         interrupt_was_active = TRUE
+      end if 
+   else 
+      -- External interupt version.
+      if HCSR04_INTF then
+         -- Clear interrupt flag and toggle interrupt edge.
+         HCSR04_INTF = FALSE
+         HCSR04_INT_EDG = !HCSR04_INT_EDG
+         interrupt_was_active = TRUE 
+      end if 
+   end if 
+
+   return interrupt_was_active
+
+end function
+
+
+-- ----------------------------------------------------------------------------
+-- Interrupt routine, triggerd by INT or IOC.
+-- ----------------------------------------------------------------------------
+procedure _hcsr04_interrupt() is pragma interrupt
+
+   if _hcsr04_handle_interrupt_flag() then
+
+      -- Check where we are in measuring the echo signal.
+      case _hcsr04_state of
+
+         _HCSR04_IDLE:
+         block
+            -- Aparently an interrupt occured but we where not expecting any
+            -- so we ignore it.
+         end block 
+
+         _HCSR04_ECHO_START:
+         block
+            -- This should be the start of the echo pulse (rising edge) but
+            -- it can also occur that we did not get a response and then we
+            -- got a timer overflow.
+            if _hcsr04_timer1_expired then
+               -- No echo pulse received (timer overflow).
+               _hcsr04_measurement_error = TRUE
+               _hcsr04_state = _HCSR04_IDLE
+            else 
+               -- Start of the echo pulse received. 
+               _hcsr04_timer1_reset()
+               _hcsr04_state = _HCSR04_ECHO_END
+            end if 
+         end block 
+
+         _HCSR04_ECHO_END:
+         block
+            -- End of echo received or we got a timer overflow. Get the echo time 
+            -- and check if it is in range of what the module can handle.
+            _hcsr04_echo_time = _hcsr04_get_timer1_value()
+            if (_hcsr04_echo_time >= _HCSR04_MIN) & 
+               (_hcsr04_echo_time <= _HCSR04_MAX) then
+               _hcsr04_measurement_done = TRUE
+               _hcsr04_measurement_error = FALSE
+            else 
+               _hcsr04_measurement_error = TRUE
+            end if
+            -- We are done.
+            _hcsr04_state = _HCSR04_IDLE
+         end block 
+ 
+      end case
+
+   end if 
+
+end procedure 
+
+

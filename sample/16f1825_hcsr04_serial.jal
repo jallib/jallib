@@ -1,0 +1,127 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for the HC-SR04 Ultrasonic Ranging Module.
+-- Author: Rob Jansen, Copyright (c) 2023..2023, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program that shows the operation of the HC-SR04
+--              Ultra Sonic Ranging Module.
+--              The serial interface is used to display the measured distance.
+--              The HC-SR04 library uses timer 1 to measure the distance.
+--              Since a clock of 20 MHz is used we need scaling for the library
+--              to measure the distance correctly.
+-- 
+include 16f1825                 
+
+-- This program uses a crystal of 20 MHz.
+pragma target clock    20_000_000      -- Oscillator frequency
+pragma target OSC      HS              -- Crystal or resonator
+pragma target PLLEN    DISABLED        -- No PLL 
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- Int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+OSCCON_SCS = 0b00                      -- Select primary oscillator
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- All pins digital IO
+_usec_delay(250_000)     -- Give the hardware some time to stabilize.
+
+-- Set up the serial interface.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP
+const serial_hw_baudrate = 115_200
+include serial_hardware                        
+serial_hw_init
+alias serial is serial_hw_data
+
+include print
+
+-- Settings for the HCSR04 Ultrasonic Ranging Motule. The library uses timer 1
+-- which is assumed to run at 1 MHz. We use Fosc/4 and a prescaler of 1:4.
+T1CON_TMR1CS = 0b00 -- Clock source Fosc/4, gives 5 MHz.
+T1CON_T1CKPS = 0b10 -- Prescaler 1:4, gives 1.25 MHz.
+-- We then get a timer 1 running at 1.25 MHz so we need scaling.
+const dword HCSR04_SCALING = 125 
+
+-- The following local constant is normally not required but is used here to 
+-- demonstrate the use of the IOC version. If you comment this constant
+-- out the HCSR04 library will use the external interrupt (default), otherwise
+-- it wil use the IOC interrupt.
+-- const IOC_VERSION = TRUE -- When commented out using the IOC interrupt.
+if defined(IOC_VERSION) then
+   -- Set the IOC interrupt on both edges and define the and aliases 
+   -- for the decoder routine. We use pin A0 in this example.
+   IOCAP_IOCAP5 = TRUE -- Set ioc interrupt on positive edge
+   IOCAN_IOCAN5 = TRUE -- Set ioc interrupt on negative edge.
+   alias hcsr04_ioc_flag is IOCAF_IOCAF0
+   -- Interrupt using IOC.
+   alias hcsr04_echo_pin_direction is pin_a0_direction -- Pin 13 for 14 pin DIP
+else
+   -- Interrupt using INT.
+   alias hcsr04_echo_pin_direction is pin_a2_direction -- Pin 11 for 14 pin DIP
+end if 
+-- Control pin for the module to start an echo.
+alias hcsr04_trigger_pin is pin_c2 -- Pin 8 for 14 pin DIP
+alias hcsr04_trigger_pin_direction is pin_c2_direction
+
+-- Now we can include the library.
+include hcsr04
+hcsr04_init()
+
+-- Variables.
+var dword distance
+var bit measurement_busy
+
+print_string(serial, "Sample program for the HC-SR04.\r\n\r\n")
+measurement_busy = FALSE
+
+forever  loop 
+
+   -- Start a measurement and wait for the result.
+   if !measurement_busy then
+      hcsr04_start_measurement()
+      measurement_busy= TRUE
+   end if 
+
+   if hcsr04_measurement_done() then
+      -- Print distance in mm and mil.
+      print_string(serial, "Distance measured is: ")
+      print_word_dec(serial, hcsr04_get_distance_mm())
+      print_string(serial, " mm or ")
+      print_dword_dec(serial, hcsr04_get_distance_mil())
+      print_string(serial, " mil.\r\n")
+ 
+      -- Print distance in cm and inch.
+      print_string(serial, "Distance measured is: ")
+      print_word_dec(serial, hcsr04_get_distance_mm() / 10)
+      serial = "."
+      serial = byte(hcsr04_get_distance_mm() % 10) + "0"
+      print_string(serial, " cm or ")
+      -- We need to do more to get the decimal.
+      distance = hcsr04_get_distance_mil() / 1_000
+      print_word_dec(serial, word(distance))
+      serial = "."
+      distance = hcsr04_get_distance_mil() - (distance * 1_000)
+      print_byte_dec(serial, byte(distance / 100))
+      print_string(serial, " inch.\r\n\r\n")
+
+      measurement_busy = FALSE     
+   elsif hcsr04_measurement_error() then
+      print_string(serial, "Error measuring the distance.\r\n\r\n")
+      measurement_busy = FALSE
+   end if 
+   
+   _usec_delay(500_000)
+   
+end loop
