@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This document was created with Syntext Serna Free. -->
+<!DOCTYPE topic PUBLIC "-//OASIS//DTD DITA Topic//EN"
+"topic.dtd">
+<topic id="topic-1">
+  <title>Making a Library</title>
+
+  <prolog>
+    <author>Rob Jansen</author>
+
+    <publisher>Jallib Group</publisher>
+  </prolog>
+
+  <body>
+    <section><title>Introduction</title><p>In addition to the <xref
+    href="tutorial_style_guide.xml">Jallib style guide</xref> this tutorial
+    gives some additional information on how to create a JAL library. The
+    purpose of a JAL library is to make it easy for the user to use JAL or to
+    use a specific hardware device in an easy way. A library normally converts
+    all kind of - sometimes complex - hardware register settings into easy to
+    use procedures or functions. There are also pure software libraries that,
+    for example a library that generates a random number.</p></section>
+
+    <section><title>Mandatory library requirements</title><p>The most
+    important requirement of a JAL library is that it complies with the <xref
+    href="tutorial_style_guide.xml">Jallib style guide</xref> and that it
+    compiles without any warnings and errors. As mentioned in the style guide
+    this can verified by running the validate function of jallib3.py.There may
+    be no warnings or errors when running this validation.</p><p>As mentioned
+    in the style guide, the user has to define the pins - and the pin
+    direction - used by the library using aliases. If a library uses an
+    interface, e.g. the SPI interface, the initialization of this interface
+    has to be done by the user and not by the library. The library has to
+    described the settings it needs for this interface.</p></section>
+
+    <section><p>It is important that a library is easy to use, easy to
+    maintain and can be used by a variety of PICs. The following sections
+    describe some ways how you can obtain that.</p><title>Support as many PICs
+    as possible</title><p>Various PICs have different registers for the same
+    on-board hardware like a Timer. In order to support as many PICs as
+    possible check if certain registers are present and use aliases to cover
+    the variants, for example:</p><codeblock scale="80">
+-- Support for newer PICs (based on 16f15325). 
+if defined(T1CLK) then 
+   alias stopwatch_cs is T1CLK_CS -- timer clock source bit 
+   alias stopwatch_ie is PIE4_TMR1IE -- interrupt enable 
+   alias stopwatch_if is PIR4_TMR1IF -- interrupt overflow bit 
+else 
+   alias stopwatch_cs is T1CON_TMR1CS -- timer clock source bit 
+   alias stopwatch_ie is PIE1_TMR1IE -- interrupt enable 
+   alias stopwatch_if is PIR1_TMR1IF -- interrupt overflow bit 
+end if</codeblock></section>
+
+    <section><title>Write clean code</title><p>This in not only valid for
+    libraries but for all code that you write. Writing clean code makes it
+    easier to read and maintain the library. My favorite book on how to write
+    clean code is the clean code book written by Robert C. Martin. Some clean
+    code practices are:</p><ul>
+        <li>Use logical names for constants, variables, procedures and
+        functions that explain what the constant or variable means or what the
+        procedure or function does.</li>
+
+        <li>A procedure or function does only one thing. Do not pass for
+        example a boolean variable to control the functionality of the
+        procedure or function.</li>
+
+        <li>Limit the size of a procedure or function. There is no strict rule
+        on this but use common sense. If a procedure or function becomes too
+        big, split-it up in several smaller procedures or functions.</li>
+
+        <li>Only use comments when needed. Code should be simple, self
+        explanatory and easy to understand without the need for additional
+        comments.</li>
+      </ul></section>
+
+    <section><title>Separate the definition of the API from the
+    implementation</title><p>When using a library, it can be quite problematic
+    to get a complete overview of all provided functionality. In order to
+    improve this you can define all public procedures and functions at the
+    start of the library. This can be obtained by using <codeph>function
+    prototypes</codeph> (which is the definition of a procedure or function
+    without the <codeph>is</codeph>). Always include in the definition what
+    the procedure or function does, for example:</p><p><codeblock scale="80">-- ---------------------------------------------------------------------------- 
+-- Intialize the RDA5807M. The device is initialized for Europe as follows: 
+-- -) Set the band to RDA5807M_BAND_US_EUROPE 
+-- -) Set the spacing to RDA5807M_SPACING_100_KHZ 
+-- -) Set the de-emphasis to RDA5807M_DEEMPHASIS_50_US 
+-- The device is reset and powered up. 
+-- ---------------------------------------------------------------------------- 
+procedure rda5807_init() 
+
+-- ---------------------------------------------------------------------------- 
+-- Enable the RDA5807M. 
+-- ---------------------------------------------------------------------------- 
+procedure rda5807m_enable_power() 
+
+-- ---------------------------------------------------------------------------- 
+-- Set the volme of the RDA5870M. Volume must be in range RDA5807M_VOLUME_MIN 
+-- to RDA5807M_VOLUME_MAX. 
+-- ---------------------------------------------------------------------------- 
+procedure rda5807_set_volume(byte in volume) </codeblock></p><p>When using
+    global variables in your library of which the value is also needed by the
+    main program, use a procedure to change that variable and where possible a
+    function to return its value. So in fact you are hiding the implementation
+    of your library from the user of the library. This can also help to keep
+    the library backwards compatible in case you want to change the
+    implementation. For example:</p><codeblock scale="80">-- ---------------------------------------------------------------------------- 
+-- Set the library to support the extended protocol. 
+-- ---------------------------------------------------------------------------- 
+procedure nec_rc_set_protocol_extended() is  
+   _nec_rc_protocol_standard = FALSE 
+end procedure 
+
+-- ---------------------------------------------------------------------------- 
+-- Returns TRUE when a valid Remote Control message was received. 
+-- ---------------------------------------------------------------------------- 
+function nec_rc_message_received() return bit is 
+  return _nec_rc_available 
+end function </codeblock></section>
+
+    <section><title>Create a sample program</title><p>Each library must at
+    least have one sample program. In this sample program try to use as much
+    as possible the functionality of the library you created. When you are
+    done you can add your sample files and library to <xref
+    href="tutorial_changing_the_contents_of_a_release.xml">Jallib</xref>.</p></section>
+  </body>
+</topic>
