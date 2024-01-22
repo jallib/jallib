@@ -1,9 +1,9 @@
 # Title: Makefile to handle common task
-# Author: Sebastien Lelong, Copyright (c) 2008, all rights reserved.
-# Adapted by:
+# Author: Sebastien Lelong, Copyright (c) 2008..2023, all rights reserved.
+# Adapted by: Rob Jansen
 # 
 # This file is part of jallib (https://github.com/jallib/jallib)
-# Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+# Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 #
 #
 
@@ -93,12 +93,7 @@ export:
 	echo ${VERSION} > distrib/jallib-${VERSION}/VERSION
 	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
-	# (svn export gets the sources, but without any .svn dir (no svn metadata)
-	svn export https://github.com/jallib/Jallib.git/trunk distrib/jallib-export
-	# license is common for both svn and release
-	svn export -N https://github.com/jallib/Jallib.git/trunk distrib/jallib-extra
-	# get readme for the release (force because target dir already exists)
-	svn export --force https://github.com/jallib/Jallib.git/trunk/tools distrib/jallib-extra
+	git clone --depth 1 https://github.com/jallib/Jallib.git distrib/jallib-export
 
 prepare:
 	# flatten library files
@@ -169,16 +164,16 @@ prepare:
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
 	# license, readme, install, ...
 	# 	jallib
-	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-${VERSION}/
-	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-${VERSION}/
-	cp distrib/jallib-extra/README.release distrib/jallib-${VERSION}/README
-	cp distrib/jallib-extra/README.device distrib/jallib-${VERSION}/README.device
-	cp distrib/jallib-extra/README.blink distrib/jallib-${VERSION}/README.blink
+	cp distrib/jallib-export/LICENSE.bsd distrib/jallib-${VERSION}/
+	cp distrib/jallib-export/LICENSE.zlib distrib/jallib-${VERSION}/
+	cp distrib/jallib-export/tools/README.release distrib/jallib-${VERSION}/README
+	cp distrib/jallib-export/tools/README.device distrib/jallib-${VERSION}/README.device
+	cp distrib/jallib-export/tools/README.blink distrib/jallib-${VERSION}/README.blink
 	# 	jallib-all_devices
-	cp distrib/jallib-extra/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
-	cp distrib/jallib-extra/LICENSE.zlib distrib/jallib-all_devices-${VERSION}/
-	cp distrib/jallib-extra/README.device distrib/jallib-all_devices-${VERSION}/README
-	cp distrib/jallib-extra/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
+	cp distrib/jallib-export/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
+	cp distrib/jallib-export/LICENSE.zlib distrib/jallib-all_devices-${VERSION}/
+	cp distrib/jallib-export/tools/README.device distrib/jallib-all_devices-${VERSION}/README
+	cp distrib/jallib-export/tools/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
 	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
 	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
 	# include CHANGELOG
@@ -208,9 +203,6 @@ jallib-pack: pdfbooks
 	echo DONE: jallib pack ready
 
 archive:
-	##cd distrib && tar czfv jallib-${VERSION}.tar.gz jallib-${VERSION}
-	##cd distrib && tar czfv jallib-all_devices-${VERSION}.tar.gz jallib-all_devices-${VERSION}
-	##cd distrib && tar czfv jallib-pack-${JALV2_VERSION}-${VERSION}.tar.gz jallib-pack-${JALV2_VERSION}-${VERSION}
 	# ZIPs don't contain a base directory
 	cd distrib/jallib-${VERSION} && zip -r jallib-${VERSION}.zip . && mv jallib-${VERSION}.zip ..
 	cd distrib/jallib-all_devices-${VERSION} && zip -r jallib-all_devices-${VERSION}.zip . && mv jallib-all_devices-${VERSION}.zip ..
@@ -223,7 +215,6 @@ check:
 
 bee-archive:
 	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
-	# Oh, Seb, how long will you use this crappy Makefile ??
 	-mv distrib/jallib-pack-${JALV2_VERSION}-${VERSION} distrib/jallib-pack-${VERSION}
 	# We need to enrich version with date, so user can report what exact version is used (else there'll just a "bee"
 	echo ${VERSION}-${JALV2_VERSION}-`date +%Y%m%d` > distrib/jallib-pack-${VERSION}/VERSION
@@ -238,7 +229,7 @@ bee-upload:
 bee-check:
 	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
 
-release: export prepare jallib-pack archive check
+release: clean export prepare jallib-pack archive check
 
 bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
 
