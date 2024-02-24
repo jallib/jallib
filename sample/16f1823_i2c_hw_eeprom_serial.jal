@@ -1,0 +1,130 @@
+-- ----------------------------------------------------------------------------
+-- Title: Test program for i2c_hardware.jal using an I2C EEPROM.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r8
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: Level 0 i2c test program using an i2c EEPROM with timeout.
+--              When you disconnect one of the I2C pins, reading and writing will fail
+--              but because of the use of the timeout, the I2C interface will not hang. 
+--              The timeout can be set by defining the timeout constant as follows:
+--              -) const word I2C_HARDWARE_TIMEOUT = 10_000 ; Timeout is al least 10 ms.
+--
+-- Sources: Datasheet Atmel AT24C32 2-wire serial EEPROM.
+-- 
+
+include 16f1823                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0011_1111       -- Weak pull-up on all pins.
+WPUC = 0b0011_1111       -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()      -- Don't forget this otherwise I2C will not work.
+
+_usec_delay(100_000)     -- allow hardware to stabilize
+
+-- I2C setup. IIC pins are already defined in the device file for this PIC.
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms.
+const word _i2c_bus_speed = 1 -- 100kHz
+const bit _i2c_level = TRUE   -- i2c levels (not SMB)
+include i2c_hardware
+i2c_initialize()
+
+-- USART setup.
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate = 115200
+include serial_hardware
+include print
+include delay
+serial_hw_init()
+
+-- Constants.
+const byte EEPROM_SLAVE_ADDRESS = 0xAE -- Change when needed.
+const byte BYTES_TO_TRANSMIT = 10
+
+-- Variables.
+var byte counter, data
+var bit all_ok
+
+-- Welcome.
+print_string(serial_hw_data, "I2C write/read test using an I2C EEPROM and timeout.\r\n")
+
+forever loop
+
+   -- Write the bytes to the first EEPROM address.
+   i2c_start()
+   all_ok = i2c_transmit_byte(EEPROM_SLAVE_ADDRESS)
+   -- Start writing at address 0. Note that the start address is a word.
+   all_ok = all_ok & i2c_transmit_byte(0x00) -- memory address high byte
+   all_ok = all_ok & i2c_transmit_byte(0x00) -- memory address low  byte
+  
+   -- Now write the data.
+   counter = 0
+   while (counter != BYTES_TO_TRANSMIT) & all_ok loop
+      counter = counter + 1
+      all_ok = all_ok & i2c_transmit_byte(counter)
+   end loop
+   i2c_stop()
+
+   if all_ok then
+      print_string(serial_hw_data, "All data written to EEPROM.\r\n")
+   else
+      print_string(serial_hw_data, "Could not write data to EEPROM.\r\n")
+   end if 
+   
+   -- Now we should the data we had just written.
+   i2c_start()
+   all_ok = i2c_transmit_byte(EEPROM_SLAVE_ADDRESS)
+   -- Start writing at address 0. Note that the start address is a word.
+   all_ok = all_ok & i2c_transmit_byte(0x00) -- memory address high byte
+   all_ok = all_ok & i2c_transmit_byte(0x00) -- memory address low  byte
+   -- Switch to read.
+   i2c_restart()
+   all_ok = all_ok & i2c_transmit_byte(EEPROM_SLAVE_ADDRESS | 0b0000_0001)
+
+   -- Now read the data and print it.
+   if all_ok then 
+      print_string(serial_hw_data, "Data read from EEPROM: ")
+      counter = 0
+      while (counter != BYTES_TO_TRANSMIT) loop
+         counter = counter + 1
+         if (counter == BYTES_TO_TRANSMIT) then
+            -- Last byte, send NACK.
+            data = i2c_receive_byte(FALSE)
+            i2c_stop()  
+          else
+           -- Not last byte, send ACK.
+            data = i2c_receive_byte(TRUE)
+         end if 
+         print_byte_hex(serial_hw_data, data)
+         serial_hw_data = " "
+      end loop
+     print_crlf(serial_hw_data)
+   else
+      print_string(serial_hw_data, "Could not read data from EEPROM.\r\n")
+   end if 
+   print_crlf(serial_hw_data)
+  
+   delay_1s(1)
+
+end loop

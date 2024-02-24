@@ -1,7 +1,7 @@
 -- Title: i2c_hardware
--- Author: Stef Mientki, Copyright (C) 2005..2019, all rights reserved.
+-- Author: Stef Mientki, Copyright (C) 2005..2024, all rights reserved.
 -- Adapted-by: Joep Suijs, Albert Faber, Rob Jansen
--- Compiler: >=2.5r2
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -17,8 +17,13 @@
 -- const word _i2c_bus_speed = 1                   -- 100kHz
 -- const bit  _i2c_level     = true                -- i2c levels (not SMB)
 --
--- TODO:
+-- The use can define a timeout as to prevent a hangup in case something goes wrong. The
+-- timing is not exact but a reference of 1 us is used but since the loop time increases
+-- it this time should be seen as the minimum wait time before it expires. This is an
+-- optional setting: 
+-- const word I2C_HARDWARE_TIMEOUT = 10_000  -- Timeout is al least 10 ms.
 --
+
 -- Aliases to support other PICs.
 if (defined(PIE3_SSP1IE) == TRUE) then             -- PIE3/PIR3
    alias PIR1_SSPIF is PIR3_SSP1IF
@@ -69,86 +74,163 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
--- i2c_start - Sends Start bit and waits untill finished
+-- i2c_start - Sends Start bit and waits until finished or timeout (if defined)
 -- -----------------------------------------------------------------------------
 procedure i2c_start() is
+
    SSPCON2_SEN = high
-   while SSPCON2_SEN == high loop end loop
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      var word timeout_counter = 0
+      while (SSPCON2_SEN == high) & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+   else
+      -- Without timeout.
+      while SSPCON2_SEN == high loop end loop
+   end if 
+
 end procedure
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
--- i2c_restart - Sends Restart bit and waits untill finished
+-- i2c_restart - Sends Restart bit and waits until finished or timeout (if defined)
 -- -----------------------------------------------------------------------------
 procedure i2c_restart() is
+
    SSPCON2_RSEN = high
-   while SSPCON2_RSEN == high loop end loop
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      var word timeout_counter = 0
+      while (SSPCON2_RSEN == high) & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+   else
+      -- Without timeout.
+      while SSPCON2_RSEN == high loop end loop
+   end if 
+
 end procedure
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
--- i2c_stop - Sends Stop bit and waits until finished
+-- i2c_stop - Sends Stop bit and waits until finished or timeout (if defined)
 -- -----------------------------------------------------------------------------
 procedure i2c_stop() is
+
    SSPCON2_PEN = high
-   while SSPCON2_PEN == high loop end loop
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      var word timeout_counter = 0
+      while (SSPCON2_PEN == high) & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+   else
+      -- Without timeout.
+      while SSPCON2_PEN == high loop end loop
+   end if 
+
 end procedure
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
--- i2c_transmit_byte -
+-- i2c_transmit_byte. Returns TRUE when OK and FALSE in case of an error or  
+-- when a timeout occurs (if defined)
 -- -----------------------------------------------------------------------------
 -- -----------------------------------------------------------------------------
 function i2c_transmit_byte(byte in data) return bit is
+
+   var bit succes = TRUE
 
    PIR1_SSPIF = false  ; clear pending flag
    sspbuf = data       ; write data
 
    -- wait untill write is finished
-   while ! PIR1_SSPIF loop end loop
-
-   -- get Acknowledge Status Bit _ACKSTAT
-   -- wich indicates that the slave has responded (or not)
-   -- if i2c device send an Aknowledge, then ready and OK
-   if SSPCON2_ACKSTAT == low  then
-      return true -- okay
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      var word timeout_counter = 0
+      while !PIR1_SSPIF & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+      if (timeout_counter == I2C_HARDWARE_TIMEOUT) then
+         succes = false
+      else
+         -- get Acknowledge Status Bit _ACKSTAT
+         -- wich indicates that the slave has responded (or not)
+         -- if i2c device send an Aknowledge, then ready and OK
+         if SSPCON2_ACKSTAT == low  then
+            succes = true -- okay
+         else
+            sspcon1_sspen = false;
+            sspcon1_sspen = true;
+            succes = false -- no response
+         end if
+      end if 
    else
-      sspcon1_sspen = false;
-      sspcon1_sspen = true;
+      -- Without timeout.
+      while !PIR1_SSPIF loop end loop
 
-      return false -- no response
-   end if
+      -- get Acknowledge Status Bit _ACKSTAT
+      -- wich indicates that the slave has responded (or not)
+      -- if i2c device send an Aknowledge, then ready and OK
+      if SSPCON2_ACKSTAT == low  then
+         succes = true -- okay
+      else
+         sspcon1_sspen = false;
+         sspcon1_sspen = true;
+         succes = false -- no response
+      end if
+   end if 
+
+   return succes
+
 end function
 -- -----------------------------------------------------------------------------
 
 -- -----------------------------------------------------------------------------
 -- i2c_receive_byte -
 -- -----------------------------------------------------------------------------
--- start receiving of a byte and waits till finished
+-- start receiving of a byte and waits till finished or timeout (if defined)
 -- if param ACK is true, the byte is acknowledged and next bytes can be received.
 -- if param ACK is false, the byte is nacked and a stop *should be* sent.
 -- note: this behavior is inverted from the line level and orignal library, but
 --       consistent with the i2c_software library.
 -- -----------------------------------------------------------------------------
 function i2c_receive_byte(bit in ACK ) return byte is
+
    var byte data
    -- start receive cyclus and wait till full byte received
    SSPCON2_RCEN = high
-   ; delay_10us(10)
-   while SSPSTAT_BF == low loop  end loop
+   
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      var word timeout_counter = 0
+      while (SSPSTAT_BF == low) & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+   else
+      -- Without timeout.
+      while SSPSTAT_BF == low loop  end loop
+   end if
 
    -- send Acknowledge (=low) if STOP=true=high
    -- and wait till finishd
    SSPCON2_ACKDT = ! ACK
    SSPCON2_ACKEN = high
-   while SSPCON2_ACKEN == high loop end loop
+   if defined(I2C_HARDWARE_TIMEOUT) then
+      while (SSPCON2_ACKEN == high) & (timeout_counter != I2C_HARDWARE_TIMEOUT) loop 
+         timeout_counter = timeout_counter + 1
+         _usec_delay(1)
+      end loop
+   else
+      -- Without timeout.
+      while SSPCON2_ACKEN == high loop end loop
+   end if 
 
    -- get read data
    data = sspbuf
-   ;serial_hw_write(data)
-
-   ;  if ACK == i2c_NACK then _i2c_stopbit end if
    return data
+   
 end function
 -- -----------------------------------------------------------------------------
 
