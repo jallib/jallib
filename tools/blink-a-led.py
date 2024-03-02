@@ -58,7 +58,7 @@ platform_name = platform.system()
 # --- general constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5r6"
+CompilerVersion = "2.5r8"
 
 
 # specification of system dependent compiler executable
@@ -513,7 +513,12 @@ def build_sample(pic, pin, osctype, oscword):
       if ("osccon_scs" in var):
          fp.write("OSCCON_SCS = 0                      -- select primary oscillator\n")
       if ("oscfrq_frq3" in var):
-         fp.write("OSCFRQ_HFFRQ = 0b0010               -- Fosc 64 -> 4 MHz\n")
+         # MPLABX 6.20. Some newer PICx (e.g. 18FxxQ20) do not have an OSCFRQ_HFFRQ register
+         # but a OSCFRQ register.
+         if ("oscfrq_hffrq" in var):
+            fp.write("OSCFRQ_HFFRQ = 0b0010               -- Fosc 64 -> 4 MHz\n")
+         else:
+            fp.write("OSCFRQ = 0b0010                     -- Fosc 64 -> 4 MHz\n")
       elif ("oscfrq_hffrq3" in var):
          # 4-bit HFFRQ register. For these PICs, check for OSCCON1_NOSC register is required
          # to the the correct frequency. But first check if we can use OSSCON1_NDIV instead.

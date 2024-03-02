@@ -3,11 +3,9 @@
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2023, all rights reserved.
+        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
 
 Adapted-by:
-
-Revision: $Revision$
 
 Compiler: N/A
 
@@ -62,7 +60,7 @@ from xml.dom.minidom import parse, Node
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.4"     # script version
+scriptversion = "1.5.5"     # script version
 compilerversion = "2.5r8"   # latest JalV2 compiler version
 jallib_contribution = True  # True: for jallib, False: for private use
 
@@ -195,6 +193,7 @@ fusedef_kwd = {"ABW": "ABW",
                "HFOFST": "HFOFST",
                "HPOL": "HPOL",
                "ICPRT": "ICPRT",
+               "ICSPDIS": "ICSPDIS",             # PIC18FxxQ24
                "IESO": "IESO",
                "INTOSCSEL": "INTOSCSEL",
                "IOL1WAY": "IOL1WAY",
@@ -248,6 +247,7 @@ fusedef_kwd = {"ABW": "ABW",
                "RTCOSC": "RTCOSC",
                "RTCSOSC": "RTCOSC",
                "SAFEN": "SAFEN",
+               "SAFLOCK": "SAFLOCK",             # PIC18FxxQ20
                "SAFSCEN": "SAFSCEN",             # PIC18F27/47/57Q84
                "SAFSZ": "SAFSZ",                 # PIC18F26/46/56Q71
                "SCANE": "SCANE",
@@ -268,6 +268,8 @@ fusedef_kwd = {"ABW": "ABW",
                "VBTBOR": "VBTBOR",
                "VCAPEN": "VCAPEN",
                "VDDAR" : "VDDAR",                # PIC16F15213/14/23/24/43/44
+               "VDDIO2MD": "VDDIO2MD",           # PIC18FxxQ20
+               "VDDIO3MD": "VDDI3OMD",           # PIC18FxxQ20
                "VREGEN": "VREGEN",
                "WAIT": "WAIT",
                "WDPS": "WDTPS",
@@ -305,6 +307,8 @@ fusedef_kwd = {"ABW": "ABW",
                "WURE": "WURE",
                "XINST": "XINST",
                "ZCD": "ZCD",
+               "ZCD1": "ZCD1",                   # PIC18xxQ24
+               "ZCD2": "ZCD2",                   # PIC18xxQ24
                "ZCDDIS": "ZCD"}
 
 # Translation/normalisation of fusedef OSC keywords.
@@ -373,6 +377,10 @@ fusedef_osc = {"EC": "EC_CLKOUT",
                "HSPLL": "HS_PLL",
                "HSPLL_HS": "HS_PLL",
                "HSSWPLL": "HS_PLL_SW",
+               "HS_8MHZ": "HS_8MHZ",                       # PIC18FxxQ20
+               "HS_16MHZ": "HS_16MHZ",                     # PIC18FxxQ20
+               "HS_24MHZ": "HS_24MHZ",                     # PIC18FxxQ20
+               "HS_32MHZ": "HS_32MHZ",                     # PIC18FxxQ20
                "HS_OSC": "HS",
                "INT": "INTOSC_NOCLKOUT",
                "INTIO1": "INTOSC_CLKOUT",
@@ -1221,7 +1229,7 @@ def list_muxed_sfr(fp, selectsfr):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                 else:
                     print("Unexpected multiplexed SFR", sfr, "for core", core)
-             # RJ 2022-10-05: MPLABX 6.05. New PICS with core 14H now have multiplexed registers too.
+             # MPLABX 6.05. New PICS with core 14H now have multiplexed registers too.
             elif (core == "14H") | (core == "16"):
                 if sfrname.startswith("PMDOUT"):
                     list_variable(fp, sfrname, 1, sfraddr)  # master/slave: automatic
@@ -1229,12 +1237,12 @@ def list_muxed_sfr(fp, selectsfr):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                     if (sfrname == "SSP1MSK"):
                         list_alias(fp, "SSPMSK", sfrname)
-                # RJ 2020-10-31: Note for 18F04Q40 CRCDATA is missing from MPLABX V5.45, expect it will be fixed later by Microchip.
-                elif ((sfrname in ("CVRCON", "MEMCON", "PADCFG1", "REFOCON", "CRCOUTL", "CRCOUTH",
-                                   "CRCOUTU", "CRCOUTT","CRCSHFTL","CRCSHFTH", "CRCSHFTU",
-                                   "CRCSHFTU", "CRCSHFTT", "CRCXORL", "CRCXORH", "CRCXORU",
-                                   "CRCXORT", "TU16ATMRL", "TU16ATMRH", "TU16ACRL", "TU16ACRH",
-                                   "TU16BTMRL", "TU16BTMRH", "TU16BCRL", "TU16BCRH")) |
+                # MPLABX 6.20. Added: TU16ATMRT, TU16ACRT, TU16BTMRT, TU16BCRT for PIC18FxxQ20.
+                elif ((sfrname in ("CVRCON", "MEMCON", "PADCFG1", "REFOCON", "CRCOUTL", "CRCOUTH", "CRCOUTU",
+                                   "CRCOUTT","CRCSHFTL","CRCSHFTH", "CRCSHFTU", "CRCSHFTU", "CRCSHFTT",
+                                   "CRCXORL", "CRCXORH", "CRCXORU", "CRCXORT", "TU16ACRT", "TU16ATMRL",
+                                   "TU16ATMRH", "TU16ATMRT", "TU16ACRL", "TU16ACRH", "TU16BTMRL", "TU16BTMRH",
+                                   "TU16BCRL", "TU16BCRH", "TU16BCRT", "TU16BTMRT")) |
                       sfrname.startswith(("ODCON", "ANCON"))):
                     list_muxed_pseudo_sfr(fp, sfrname, sfraddr, cond)
                     list_muxed_sfr_subfields(fp, sfr)  # controlled by WDTCON_ADSHR
@@ -3520,9 +3528,18 @@ def collect_config_info(root, picname):
         cfgvar["devid"] = eval(devidsectors[0].getAttribute("edc:value"))
     configfusesectors = pgmspace[0].getElementsByTagName("edc:ConfigFuseSector")
     if (len(configfusesectors) > 0):
-        cfgvar["fuseaddr"] = eval(configfusesectors[0].getAttribute("edc:beginaddr"))
-        cfgvar["fusesize"] = eval(configfusesectors[0].getAttribute("edc:endaddr")) - \
-                             eval(configfusesectors[0].getAttribute("edc:beginaddr"))
+        # From MPLABX 6.20 the XML may contain more than one configfusesector. So we need to look for more than
+        # one and determine the actual fusesize taking all configfusesectors into account.
+        if (len(configfusesectors) > 0):
+            fuseaddr_low = 0xFFFFFF
+            fuseaddr_high = 0x0
+            for cfgsec in configfusesectors:
+                if (new_low := eval(cfgsec.getAttribute("edc:beginaddr"))) < fuseaddr_low:
+                    fuseaddr_low = new_low
+                if (new_high := eval(cfgsec.getAttribute("edc:endaddr"))) > fuseaddr_high:
+                    fuseaddr_high = new_high
+            cfgvar["fuseaddr"] = fuseaddr_low
+            cfgvar["fusesize"] = fuseaddr_high - fuseaddr_low
         picdata = dict(list(devspec[picname.upper()].items()))
 
         if "FUSESDEFAULT" in picdata:

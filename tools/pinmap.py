@@ -75,8 +75,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+", "C1IN0-", "NCO1", "CLC2IN0"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM1", "CLC1", "CWG1A", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G"], 
-          "RA4" : ["RA4", "AN3", "C1IN1-", "CWG1B", "CLC1", "PWM3", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "CWG1A", "NCO1", "NCO1CLK", "CLC1IN1", "CLC2", "PWM4"]
+          "RA4" : ["RA4", "AN3", "C1IN1-", "CWG1B", "CLC1", "PWM3", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "CWG1A", "NCO1", "NCO1CLK", "CLC1IN1", "CLC2", "PWM4"]
           },
    "12F1571": 
           {
@@ -264,8 +264,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+", "C1IN0-", "NCO1", "CLC2IN0"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM1", "CLC1", "CWG1A", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G"], 
-          "RA4" : ["RA4", "AN3", "C1IN1-", "CWG1B", "CLC1", "PWM3", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "CWG1A", "NCO1", "NCO1CLK", "CLC1IN1", "CLC2", "PWM4"]
+          "RA4" : ["RA4", "AN3", "C1IN1-", "CWG1B", "CLC1", "PWM3", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "CWG1A", "NCO1", "NCO1CLK", "CLC1IN1", "CLC2", "PWM4"]
           },
    "12LF1552": 
           {
@@ -339,6 +339,141 @@ pinmap = {
           "RA4" : ["RA4", "AN3", "CPS3", "OSC2", "CLKOUT", "T1OSO", "C1IN1-", "CLKR", "SDO", "CK", "TX", "P1B", "T1G", "MDCIN2"], 
           "RA5" : ["RA5", "CLKIN", "OSC1", "T1OSI", "T1CKI", "SRNQ", "P1A", "CCP1", "DT", "RX"]
           },
+   "16F13113": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-", "SMB_I2C"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2", "SMB_I2C"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4", "C1IN1-"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"]
+          },
+   "16F13114": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-", "SMB_I2C"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2", "SMB_I2C"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4", "C1IN1-"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"]
+          },
+   "16F13115": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-", "SMB_I2C"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2", "SMB_I2C"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4", "C1IN1-"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"]
+          },
+   "16F13123": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+", "SMB_I2C"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F13124": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+", "SMB_I2C"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F13125": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+", "SMB_I2C"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F13143": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RB4" : ["RB4", "ANB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "ANB6", "SMB_I2C"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "16F13144": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RB4" : ["RB4", "ANB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "ANB6", "SMB_I2C"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
+   "16F13145": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "C2IN0-"], 
+          "RA2" : ["RA2", "DAC1OUT2", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "OSC2", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "CLKIN", "OSC1", "ANA5"], 
+          "RB4" : ["RB4", "ANB4", "SMB_I2C"], 
+          "RB5" : ["RB5", "ANB5"], 
+          "RB6" : ["RB6", "ANB6", "SMB_I2C"], 
+          "RB7" : ["RB7", "ANB7"], 
+          "RC0" : ["RC0", "ANC0", "C2IN0+"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "C2IN1-"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-", "C2IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-", "C2IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"], 
+          "RC6" : ["RC6", "ANC6"], 
+          "RC7" : ["RC7", "ANC7"]
+          },
    "16F1454": 
           {
           "RA0" : ["RA0"], 
@@ -393,8 +528,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "NCO1", "SDO", "T1G", "CLKOUT"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "CLC1IN1"], 
+          "RA4" : ["RA4", "AN3", "NCO1", "SDO", "T1G", "CLKOUT", "OSC2"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "CLC1IN1"], 
           "RC0" : ["RC0", "AN4", "C2IN+", "CLC2", "SCL", "SCK"], 
           "RC1" : ["RC1", "AN5", "C1IN1-", "C2IN1-", "NCO1", "SDA", "SDI", "PWM4"], 
           "RC2" : ["RC2", "AN6", "C1IN2-", "C2IN2-", "SDO"], 
@@ -408,8 +543,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+"], 
           "RA2" : ["RA2", "AN2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0"], 
-          "RA4" : ["RA4", "AN3", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK"], 
+          "RA4" : ["RA4", "AN3", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK"], 
           "RB4" : ["RB4", "AN10"], 
           "RB5" : ["RB5", "AN11"], 
           "RB6" : ["RB6"], 
@@ -429,8 +564,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "CLC4IN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "SOSCI"], 
+          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "SOSCI"], 
           "RB4" : ["RB4", "AN10", "CLC3IN0", "SDA", "SDI"], 
           "RB5" : ["RB5", "AN11", "CLC4IN0", "RX", "DT"], 
           "RB6" : ["RB6", "SCL", "SCK"], 
@@ -450,8 +585,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "CLC4IN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "SOSCI"], 
+          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "SOSCI"], 
           "RB4" : ["RB4", "AN10", "CLC3IN0", "SDA", "SDI"], 
           "RB5" : ["RB5", "AN11", "CLC4IN0", "RX", "DT"], 
           "RB6" : ["RB6", "SCL", "SCK"], 
@@ -2667,6 +2802,24 @@ pinmap = {
           "RE2" : ["RE2", "AN7", "PSMC3A"], 
           "RE3" : ["RE3"]
           },
+   "16F18013": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "SMB_I2C"], 
+          "RA2" : ["RA2", "ZCD1", "DAC1REF0-", "ANA2", "SMB_I2C"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "SOSCO", "ANA4", "C1IN1-"], 
+          "RA5" : ["RA5", "ECIN", "SOSCI", "ANA5"]
+          },
+   "16F18014": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-", "SMB_I2C"], 
+          "RA2" : ["RA2", "ZCD1", "DAC1REF0-", "ANA2", "SMB_I2C"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "SOSCO", "ANA4", "C1IN1-"], 
+          "RA5" : ["RA5", "ECIN", "SOSCI", "ANA5"]
+          },
    "16F18015": 
           {
           "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
@@ -2675,6 +2828,36 @@ pinmap = {
           "RA3" : ["RA3"], 
           "RA4" : ["RA4", "CLKOUT", "SOSCO", "ANA4", "C1IN1-"], 
           "RA5" : ["RA5", "ECIN", "CLKIN", "SOSCI", "ANA5"]
+          },
+   "16F18023": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-"], 
+          "RA2" : ["RA2", "ZCD1", "DAC1REF0-", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "ANC0", "SMB_I2C"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
+          },
+   "16F18024": 
+          {
+          "RA0" : ["RA0", "DAC1OUT1", "ANA0", "C1IN0+"], 
+          "RA1" : ["RA1", "DAC1REF0+", "VREF+", "ANA1", "C1IN0-"], 
+          "RA2" : ["RA2", "ZCD1", "DAC1REF0-", "ANA2"], 
+          "RA3" : ["RA3"], 
+          "RA4" : ["RA4", "CLKOUT", "SOSCO", "ANA4"], 
+          "RA5" : ["RA5", "ECIN", "SOSCI", "ANA5"], 
+          "RC0" : ["RC0", "ANC0", "SMB_I2C"], 
+          "RC1" : ["RC1", "ANC1", "C1IN1-", "SMB_I2C"], 
+          "RC2" : ["RC2", "ANC2", "C1IN2-"], 
+          "RC3" : ["RC3", "ANC3", "C1IN3-"], 
+          "RC4" : ["RC4", "ANC4"], 
+          "RC5" : ["RC5", "ANC5"]
           },
    "16F18025": 
           {
@@ -6734,8 +6917,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "NCO1", "SDO", "T1G", "CLKOUT"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "CLC1IN1"], 
+          "RA4" : ["RA4", "AN3", "NCO1", "SDO", "T1G", "CLKOUT", "OSC2"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "CLC1IN1"], 
           "RC0" : ["RC0", "AN4", "C2IN+", "CLC2", "SCL", "SCK"], 
           "RC1" : ["RC1", "AN5", "C1IN1-", "C2IN1-", "NCO1", "SDA", "SDI", "PWM4"], 
           "RC2" : ["RC2", "AN6", "C1IN2-", "C2IN2-", "SDO"], 
@@ -6749,8 +6932,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "VREF+"], 
           "RA2" : ["RA2", "AN2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0"], 
-          "RA4" : ["RA4", "AN3", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK"], 
+          "RA4" : ["RA4", "AN3", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK"], 
           "RB4" : ["RB4", "AN10"], 
           "RB5" : ["RB5", "AN11"], 
           "RB6" : ["RB6"], 
@@ -6770,8 +6953,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "CLC4IN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "SOSCI"], 
+          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "SOSCI"], 
           "RB4" : ["RB4", "AN10", "CLC3IN0", "SDA", "SDI"], 
           "RB5" : ["RB5", "AN11", "CLC4IN0", "RX", "DT"], 
           "RB6" : ["RB6", "SCL", "SCK"], 
@@ -6791,8 +6974,8 @@ pinmap = {
           "RA1" : ["RA1", "AN1", "CLC4IN1", "VREF+", "C1IN0-", "C2IN0-"], 
           "RA2" : ["RA2", "AN2", "C1OUT", "DACOUT2", "T0CKI", "PWM3", "CLC1", "CWG1FLT"], 
           "RA3" : ["RA3", "CLC1IN0", "T1G", "SS"], 
-          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "T1G"], 
-          "RA5" : ["RA5", "CLKIN", "T1CKI", "NCO1CLK", "SOSCI"], 
+          "RA4" : ["RA4", "AN3", "SOSCO", "CLKOUT", "OSC2", "T1G"], 
+          "RA5" : ["RA5", "CLKIN", "OSC1", "T1CKI", "NCO1CLK", "SOSCI"], 
           "RB4" : ["RB4", "AN10", "CLC3IN0", "SDA", "SDI"], 
           "RB5" : ["RB5", "AN11", "CLC4IN0", "RX", "DT"], 
           "RB6" : ["RB6", "SCL", "SCK"], 
@@ -12287,8 +12470,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RE3" : ["RE3"]
           },
    "18F24Q71": 
@@ -12965,8 +13148,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RE3" : ["RE3"]
           },
    "18F25Q43": 
@@ -13485,8 +13668,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RE3" : ["RE3"]
           },
    "18F26Q43": 
@@ -15595,8 +15778,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RD0" : ["RD0", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD1" : ["RD1", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD2" : ["RD2", "MVIO_VDDIO2"], 
@@ -16285,8 +16468,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RD0" : ["RD0", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD1" : ["RD1", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD2" : ["RD2", "MVIO_VDDIO2"], 
@@ -16880,8 +17063,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "ANC3", "ANPC3", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "ANC4", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RD0" : ["RD0", "AND0", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD1" : ["RD1", "AND1", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD2" : ["RD2", "AND2", "MVIO_VDDIO2"], 
@@ -17067,8 +17250,8 @@ pinmap = {
           "RC2" : ["RC2", "ZCD2", "ANC2"], 
           "RC3" : ["RC3", "SMB_I2C", "MVIO_VDDIO2"], 
           "RC4" : ["RC4", "SMB_I2C", "MVIO_VDDIO2"], 
-          "RC5" : ["RC5", "ANC5"], 
-          "RC6" : ["RC6", "ANC6"], 
+          "RC5" : ["RC5", "ANC5", "MVIO_VDDIO2"], 
+          "RC6" : ["RC6", "ANC6", "MVIO_VDDIO2"], 
           "RD0" : ["RD0", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD1" : ["RD1", "SMB_I2C", "MVIO_VDDIO2"], 
           "RD2" : ["RD2", "MVIO_VDDIO2"], 
