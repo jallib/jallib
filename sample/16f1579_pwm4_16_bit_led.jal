@@ -1,0 +1,71 @@
+-- -------------------------------------------------------------------------------------
+-- Title: Sample program using 16-bit PWM channel 4 of a PIC16F1579, using a LED. 
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This sample show how to use the 16-bit PWM channel 4.
+--              It progressively light up and down a LED connected to pin C3.
+-- 
+-- Notes: This file is a partial copy of pwm_led.jal created by Sebastien Lelong and
+--        adapted manually. 
+-- 
+--
+include 16f1579                         -- target PICmicro
+--
+-- This program uses the internal oscillator at 4 MHz.
+pragma target clock    4_000_000        -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+pragma target PLLEN    DISABLED         -- PLL off
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCCON_SCS = 0                          -- select primary oscillator
+OSCCON_IRCF = 0b1101                    -- 4 MHz
+OSCCON_SPLLEN = FALSE                   -- software PLL off
+
+enable_digital_io()                     -- make all pins digital I/O
+
+include pps
+pps_control_lock(FALSE)                
+RC3PPS = PPS_PWM4OUT                    -- pin_C3 is PWM4
+pps_control_lock(TRUE)                 
+pin_C3_direction = output               
+
+-- Configure PWM.
+include pwm_hardware
+-- 16-bit PWMs have their own PWM timer.
+pwm4_max_resolution(1)                  -- Highest possible freq for PWM 4
+pwm4_on
+
+var byte i
+
+forever loop
+ 
+   i = 0
+   -- loop up and down, to produce different duty cycle
+   while i < 100 loop
+      pwm4_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i + 1
+   end loop
+
+   while i > 0 loop
+      pwm4_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i - 1
+   end loop
+
+   -- turning off, the LED
+   _usec_delay(500_000)
+   pwm4_off()
+   _usec_delay(500_000)
+   pwm4_on()
+   
+end loop

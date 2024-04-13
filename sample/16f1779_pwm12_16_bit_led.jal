@@ -1,0 +1,72 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program using 16-bit PWM channel 12 of PIC16F1779, using a LED. 
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: This sample show how to use the 16-bit PWM channel 12.
+--              It progressively light up and down a LED connected to port C0.
+-- 
+-- Notes: This file is a partial copy of pwm_led.jal created by Sebastien Lelong and
+--        adapted manually. 
+-- 
+include 16f1779                         -- target PICmicro
+--
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000       -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT  -- internal oscillator
+pragma target PLLEN    ENABLED          -- PLL on (4 x)
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target IESO     DISABLED         -- no int/ext osc switching
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCCON_SCS = 0                          -- select primary oscillator
+OSCCON_IRCF = 0b1110                    -- 8 MHz with PLL gives 32 MHz
+OSCCON_SPLLEN = TRUE                    -- PLL always enabled.
+--
+enable_digital_io()                     -- set all IO as digital
+
+-- PWM setup. 
+include pps
+pps_control_lock(FALSE)                 -- unlock PPS module
+RC0PPS = PPS_PWM12OUT                   -- pin_C0 is PWM12
+pps_control_lock(TRUE)                  -- lock PPS module
+pin_C0_direction = output               -- don't forget to set this to output
+
+include pwm_hardware                    -- fetch PWM library
+-- 16-bit PWMs have their own PWM timer.
+pwm12_max_resolution(1)                 -- max res. with highest possible freq.
+pwm12_on
+
+var byte i
+
+forever loop
+ 
+   i = 0
+   -- loop up and down, to produce different duty cycle
+   while i < 100 loop
+      pwm12_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i + 1
+   end loop
+
+   while i > 0 loop
+      pwm12_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i - 1
+   end loop
+
+   -- turning off, the LED
+   _usec_delay(500_000)
+   pwm12_off()
+   _usec_delay(500_000)
+   pwm12_on()
+   
+end loop

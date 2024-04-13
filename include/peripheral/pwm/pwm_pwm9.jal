@@ -1,38 +1,37 @@
 -- -------------------------------------------------------------------------------------
--- Title: Hardware PWM control, supports 10-bit PWM and 16-bit PWM for module PWM2.
--- Author: Stef Mientki, Copyright (C) 2002..2024, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Title: Hardware PWM control, support 10-bit PWM and 16-bit PWM for module PWM9.
+-- Author: Rob Jansen, Copyright (C) 2024..2024, all rights reserved.
+-- Adapted-by: 
 -- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Performs PWM operations on the PWM3 module. This file is automatically 
---              included by pwm_hardware.jal when the target PIC and supports
---              10-bit and 16-bit PWM.
---
--- Notes: Modelled after the libraries for CCP modules. 
+-- Description: Performs PWM operations on the PWM9 module. This file is automatically 
+--              included by pwm_hardware.jal when the target PIC has a PWM9 module.
+--              The library supports 10-bit and 16-bit PWM.
 --
 -- -------------------------------------------------------------------------------------
+--
 
-if defined(PWM3TMR) then
+if defined(PWM9TMR) then
 
    -- ======================== This code is for the 16-bit variant =======================
-   var word  _pwm3dc_shadow = 0 -- 16 bit duty cycle
+   var word  _pwm9dc_shadow = 0 -- 16 bit duty cycle
 
 
   -- -------------------------------------------------------------------------------------
    -- Purpose:   Set PWM on
    -- Arguments: none
    -- Notes:     - duty cycle is restored from shadow registers
-   --            - pin_PWM3_direction should be set to output
+   --            - pin_PWM9_direction should be set to output
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_on() is
+   procedure pwm9_on() is
 
-      PWM3DC = _pwm3dc_shadow  
-      PWM3PH = 0
-      PWMLD_MPWM3LD = TRUE
-      PWM3CON_PWM3EN  = TRUE    
+      PWM9DC = _pwm9dc_shadow  
+      PWM9PH = 0
+      PWMLD_MPWM9LD = TRUE
+      PWM9CON_PWM9EN  = TRUE    
 
    end procedure
 
@@ -41,41 +40,72 @@ if defined(PWM3TMR) then
    -- Purpose:   PWM mode off
    -- Arguments: none
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_off() is
+   procedure pwm9_off() is
 
-      PWM3CON_PWM3EN = FALSE   
+      PWM9CON_PWM9EN = FALSE   
 
    end procedure
 
 
    -- ---------------------------------------------------------------------------
-   -- Set the prescaler value for Timer 3 for the 16-bit PWM3.
+   -- Set the prescaler value for Timer 9 for the 16-bit PWM (if present).
    -- The timer will be running. 
    -- ---------------------------------------------------------------------------
-   procedure pwm3_max_resolution(byte in prescaler) is
+   procedure pwm9_max_resolution(byte in prescaler) is
 
       -- For PIC with 16-bit PWM. They have a separate timer register.
-      PWM3CLKCON_CS = 0b00                            -- Clock source Fosc
-      _pr3_shadow = 65535                             -- select lowest frequency
-      PWM3PR = _pr3_shadow  
-      _pwm_get_prescaler_value(prescaler, PWM3CLKCON_PS)   
+      PWM9CLKCON_CS = 0b00                            -- Clock source Fosc
+      _pr9_shadow = 65535                             -- select lowest frequency
+      PWM9PR = _pr9_shadow  
+      _pwm_get_prescaler_value(prescaler, PWM9CLKCON_PS)   
  
     end procedure
 
 
    -- ---------------------------------------------------------------------------
-   -- Purpose:   Set the frequency for the 16-bit module PWM3.
+   -- Purpose:   Set the frequency for the 16-bit module PWM9 (if present).
    -- Arguments: Input:  dword - PWM frequency
    --            Output: none
    -- The minimum and maximum allowed PWM frequencies depend on the clock speed.
-   -- Use procedures pwm3_set_dutycycle_percent() or pwm3_set_dutycycle_ratio()
+   -- Use procedures pwm9_set_dutycycle_percent() or pwm9_set_dutycycle_ratio()
    -- to set the desired duty cycle.
    -- ---------------------------------------------------------------------------
-   procedure pwm3_set_frequency(dword in freq) is
+   -- 16-bit PWM have independent clocks so can be set independently.
+   procedure pwm9_set_frequency(dword in freq) is
 
-      PWM3CLKCON_CS = 0b00                            -- Clock source Fosc 
-      _pwm_determine_timer_and_prescale(freq, _pr3_shadow, PWM3CLKCON_PS)
-      PWM3PR = _pr3_shadow     
+      PWM9CLKCON_CS = 0b00                            -- Clock source Fosc 
+      _pwm_determine_timer_and_prescale(freq, _pr9_shadow, PWM9CLKCON_PS)
+      PWM9PR = _pr9_shadow     
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+   -- The 'steps' argument is the 8-bits absolute value for the duty cycle.
+   -- Arguments: byte - duty cycle (allowed range 0..255)
+   -- Calling this procedure will also activate PWM.
+   -- Notes: This procedure is particularly suitable with higher frequencies
+   --        whereby the PWM resolution is limited to 256 steps or less!
+   --        pin_PWM5_direction should be set to output.
+   -- -------------------------------------------------------------------------------------
+   procedure pwm9_set_dutycycle_lowres(byte in steps) is
+
+      _pwm9dc_shadow = (word(steps) << 8) -- Use 8 MSB's of 16-bit register.
+      pwm9_on()  
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Set dutycycle for 16-bits high resolution, allowing 65535 steps.
+   -- Calling this procedure will also activate PWM.
+   -- Note: pin_PWM9_direction should be set to output.
+   -- -------------------------------------------------------------------------------------
+   procedure pwm9_set_dutycycle(word in steps) is
+
+      _pwm9dc_shadow = steps
+      pwm9_on()    
 
    end procedure
 
@@ -90,9 +120,9 @@ if defined(PWM3TMR) then
    --              (very) high PWM frequencies and low Fosc.
    --            - The steps may not all be equal. The lower the actual resolution
    --              the bigger the differences between steps may be.
-   --            - pin_PWM3_direction should be set to output.
+   --            - pin_PWM9_direction should be set to output.
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_set_dutycycle_percent(byte in percent) is
+   procedure pwm9_set_dutycycle_percent(byte in percent) is
 
       var dword calculation
       var word steps                                
@@ -100,13 +130,12 @@ if defined(PWM3TMR) then
       if (percent == 0) then      -- effectively PWM off (output low)
          steps = 0
       elsif (percent >= 100) then -- effectively PWM off (output high)
-         steps = _pr3_shadow
+         steps = _pr9_shadow
       else      
-         calculation = (dword(percent) * (dword(_pr3_shadow) + 1)) / 100
+         calculation = (dword(percent) * (dword(_pr9_shadow) + 1)) / 100
          steps = word(calculation) 
       end if
-      _pwm3dc_shadow = steps
-      pwm3_on()    
+      pwm9_set_dutycycle(steps)
 
    end procedure
 
@@ -116,10 +145,12 @@ if defined(PWM3TMR) then
    -- Arguments: word - dutycycle ration in range 0..65535
    -- Notes:     - The duty cycle will be set to the specified ratio of the maximum
    --              value for the current PWM frequency and Fosc.
-   --            - The resolution is about 1 pro mille.
-   --            - pin_PWM3_direction should be set to output.
+   --            - The resolution is about 1 pro mille
+   --            - The number of available PWM steps can be lower than 1023 with
+   --              high PWM frequencies or low Fosc values.
+   --            - pin_PWM9_direction should be set to output!
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_set_dutycycle_ratio(word in ratio) is
+   procedure pwm9_set_dutycycle_ratio(word in ratio) is
 
       var dword calculation
       var word steps                            
@@ -129,50 +160,47 @@ if defined(PWM3TMR) then
       elsif (ratio == 65535) then -- effectively PWM off (output high)
          steps = ratio
       else                 
-         calculation = (dword(ratio) * (dword(_pr3_shadow) + 1)) / 65536
+         calculation = (dword(ratio) * (dword(_pr9_shadow) + 1)) / 65536
          steps = word(calculation)
       end if
-      _pwm3dc_shadow = steps
-      pwm3_on()    
+      pwm9_set_dutycycle(steps)
 
    end procedure
 
 
    -- ----------------------------------------------------------------------------
-   -- Purpose:   Obtain actual number of 16-bit PWM3 steps.
+   -- Purpose:   Obtain actual number of 16-bit PWM9 steps (if present)
    -- Arguments: (none)
-   -- Returns:   word = actual number of 16-bit PWM3 steps.
+   -- Returns:   word = actual number of 16-bit PWM9 steps
    -- ---------------------------------------------------------------------------
-   function pwm3_get_resolution() return word  is
+   function pwm9_get_resolution() return word  is
 
-      return _pr3_shadow
+      return _pr9_shadow
 
    end function
 
 
 else
 
+
    -- ======================== This code is for the 10-bit variant =======================
 
-   var byte  _pwm3dch_shadow = 0                      -- 8 MSbits of duty cycle
-   var byte  _pwm3dcl_shadow = 0                      -- 2 LSbits (left aligned)
+
+   var byte  _pwm9dch_shadow = 0                      -- 8 MSbits of duty cycle
+   var byte  _pwm9dcl_shadow = 0                      -- 2 LSbits (left aligned)
 
 
    -- -------------------------------------------------------------------------------------
    -- Purpose:   Set PWM on
    -- Arguments: none
    -- Notes:     - duty cycle is restored from shadow registers
-   --            - pin_PWM3_direction should be set to output
+   --            - pin_PWM9_direction should be set to output
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_on() is
+   procedure pwm9_on() is
 
-      PWM3DCH         = _pwm3dch_shadow               -- restore duty cycle
-      PWM3DCL         = _pwm3dcl_shadow               -- restore duty cycle
-      -- Not all newer PICs have an output enable setting.
-      if defined(PWM3CON_PWM3OE) then
-         PWM3CON_PWM3OE  = TRUE                       -- activate PWM3 pin
-      end if 
-      PWM3CON_PWM3EN  = TRUE                          -- activate PWM module
+      PWM9DCH         = _pwm9dch_shadow               -- restore duty cycle
+      PWM9DCL         = _pwm9dcl_shadow               -- restore duty cycle
+      PWM9CON_PWM9EN  = TRUE                          -- activate PWM module
 
    end procedure
 
@@ -181,11 +209,11 @@ else
    -- Purpose:   PWM mode off
    -- Arguments: none
    -- -------------------------------------------------------------------------------------
-      procedure pwm3_off() is
+   procedure pwm9_off() is
 
-      PWM3CON_PWM3EN = FALSE                          -- disable PWM module
+      PWM9CON_PWM9EN = FALSE                          -- disable PWM module
 
-      end procedure
+   end procedure
 
 
    -- -------------------------------------------------------------------------------------
@@ -200,14 +228,50 @@ else
    --              The caller is responsible to specify an acceptable value
    --              w.r.t. to the chosen PWM frequency.
    -- -------------------------------------------------------------------------------------
-   procedure _pwm3_set_dutycycle(word in steps) is
+   procedure _pwm9_set_dutycycle_highres(word in steps) is
 
       if (steps > 1023) then                          -- exceeding upper limit
          steps = 1023                                 -- set to maximum
       end if
-      _pwm3dch_shadow = byte(steps >> 2)              -- 8 MSbits
-      _pwm3dcl_shadow = byte(steps) << 6              -- 2 LSbits left aligned
-      pwm3_on()                                       -- activate PWM
+      _pwm9dch_shadow = byte(steps >> 2)              -- 8 MSbits
+      _pwm9dcl_shadow = byte(steps) << 6              -- 2 LSbits left aligned
+      pwm9_on()                                       -- activate PWM
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+   -- The 'steps' argument is the 8-bits absolute value for the duty cycle:
+   --  * duty<1:0> are the 2 LSbits
+   --  * duty<7:2> are the 6 MSbits
+   -- Arguments: byte - duty cycle (allowed range 0..255)
+   -- Notes:     This procedure is particularly suitable with higher frequencies
+   --            whereby the PWM resolution is limited to 256 steps or less!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm9_set_dutycycle_lowres(byte in steps) is
+
+      _pwm9dch_shadow = byte(steps >> 2)              -- 8 MSbits
+      _pwm9dcl_shadow = byte(steps) << 6              -- 2 LSbits
+      pwm9_on()                                       -- activate PWM
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+   -- This procedure is equivalent to pwm1_set_dutycycle_highres(), but
+   -- the low order 2 bits of the 10-bits duty cycle are set to 0.
+   -- This means that only every 4th of the available 1023 steps can be selected
+   -- and consequently max 255 PWM steps are available.
+   -- This procedure is for user convenience, allowing to specify an 8 bits
+   -- value for the duty cycle is for many applications satisfactory.
+   -- Calling this procedure will also activate PWM.
+   -- Note: pin_PWM9_direction should be set to output!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm9_set_dutycycle(byte in steps) is
+
+      _pwm9_set_dutycycle_highres(word(steps) << 2)
 
    end procedure
 
@@ -221,20 +285,20 @@ else
    --              (very) high PWM frequencies and low Fosc.
    --            - The steps may not all be equal. The lower the actual resolution
    --              the bigger the differences between steps may be.
-   --            - pin_PWM3_direction should be set to output!
+   --            - pin_PWM9_direction should be set to output!
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_set_dutycycle_percent(byte in percent) is
+   procedure pwm9_set_dutycycle_percent(byte in percent) is
 
-      var word steps     
-                              
+      var word steps                                   --
+ 
       if (percent == 0) then                          -- effectively PWM off (output low)
          steps = 0
       elsif (percent >= 100) then                     -- effectively PWM off (output high)
          steps = _pr2_shadow_plus1 - 1
-      else 
-         steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25 -- (factor PR2/100)
+      else                                            --
+         steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
       end if
-      _pwm3_set_dutycycle(steps << 2)
+      _pwm9_set_dutycycle_highres(steps << 2)
 
    end procedure
 
@@ -247,23 +311,21 @@ else
    --            - The resolution is about 1 pro mille
    --            - The number of available PWM steps can be lower than 1023 with
    --              high PWM frequencies or low Fosc values.
-   --            - pin_PWM3_direction should be set to output!
+   --            - pin_PWM9_direction should be set to output!
    -- -------------------------------------------------------------------------------------
-   procedure pwm3_set_dutycycle_ratio(word in ratio) is
+   procedure pwm9_set_dutycycle_ratio(word in ratio) is
 
-      var  word  steps                                -- intermediate value of PR2+1
+      var  word  steps                                  -- intermediate value of PR2+1
 
       if (ratio == 0) then                            -- effectively PWM off (output low)
          steps = 0
       elsif (ratio > 1023) then                       -- effectively PWM off (output high)
          steps = _pr2_shadow_plus1 - 1
       else                                            -- between min and max
-         steps = word(dword(ratio) * _pr2_shadow_plus1 / 256) -- (factor PR2/1024)
+         steps = word(dword(ratio) * _pr2_shadow_plus1 / 256)    -- (factor PR2/1024)
       end if
-      _pwm3_set_dutycycle(steps)
+      _pwm9_set_dutycycle_highres(steps)
 
    end procedure
-   
-end if
 
-
+end if 

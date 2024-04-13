@@ -1,0 +1,73 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program using 10-bit PWM channel 6 of PIC18F26K42, using a LED. 
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: This sample show how to use the 10-bit PWM channel 6.
+--              It progressively light up and down a LED connected to pin C3.
+-- 
+-- Notes: This file is a partial copy of pwm_led.jal created by Sebastien Lelong and
+--        adapted manually. 
+-- 
+include 18f26k42                       -- target PICmicro
+--
+-- This program uses the internal oscillator at 4 MHz.
+pragma target clock    4_000_000       -- oscillator frequency
+--
+pragma target OSC      OFF             -- internal oscillator
+pragma target RSTOSC   HFINTOSC_64MHZ  -- select 64 MHz
+pragma target CLKOUTEN DISABLED        -- no clock output
+pragma target WDT      DISABLED        -- watchdog
+pragma target XINST    DISABLED        -- do not use extended instructionset
+pragma target DEBUG    DISABLED        -- no debugging
+pragma target BROWNOUT DISABLED        -- no brownout reset
+pragma target FCMEN    DISABLED        -- no clock monitoring
+pragma target CSWEN    ENABLED         -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED         -- low voltage programming
+pragma target MCLR     EXTERNAL        -- external reset
+pragma target MVECEN   DISABLED        -- Do not use multi vectored interrupts
+OSCFRQ_HFFRQ = 0b0010                  -- Fosc 64 -> 4 MHz
+
+enable_digital_io()                    -- set all IO as digital
+
+-- PWM setup. 
+include pps
+pps_control_lock(FALSE)                -- unlock PPS module
+RC3PPS = PPS_PWM6                      -- pin_C3 is PWM6
+pps_control_lock(TRUE)                 -- lock PPS module
+pin_C3_direction = output              -- don't forget to set this to output
+
+include pwm_hardware                   -- fetch PWM library
+-- 10-bit PWMs use Timer2 so use the common pwm_max_resolution. 
+pwm_max_resolution(1)                  -- max res. with highest possible freq.
+pwm6_on
+
+var byte i
+
+forever loop
+ 
+   i = 0
+   -- loop up and down, to produce different duty cycle
+   while i < 100 loop
+      pwm6_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i + 1
+   end loop
+
+   while i > 0 loop
+      pwm6_set_dutycycle_percent(i)
+      _usec_delay(10000)
+      i = i - 1
+   end loop
+
+   -- turning off, the LED
+   _usec_delay(500_000)
+   pwm6_off()
+   _usec_delay(500_000)
+   pwm6_on()
+   
+end loop

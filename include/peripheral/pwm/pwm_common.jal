@@ -1,8 +1,8 @@
 -- ----------------------------------------------------------------------------
 -- Title: Hardware PWM control, common procedures
--- Author: Stef Mientki, Copyright (C) 2002..2022, all rights reserved.
+-- Author: Stef Mientki, Copyright (C) 2002..2024, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
--- Compiler: 2.5r6
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -12,126 +12,166 @@
 -- It is used in combination with one or more pwm_ccp<number> libraries
 -- (eg. pwm_ccp1.jal, pwm_ccp2.jal, etc.). These libraries are included
 -- automatically dependent of the configuration of the target PIC.
--- .
+--
+-- Supports 10-bit PWM and 16-bit PWM for PWM1..PWM12. At the moment of creation of
+-- this library there were no PICs with 16-bit PWM for PWM7, PWM8, PWM9 and PWM10.
+--
 -- Oscillator refequency, PWM frequency and PWM resolution are a tighly coupled
 -- set of parameters. Refer to the PWM section in the datasheets how these are related.
 --
 -- Notes:
 -- This is a heavy refactoring of the original pwm_hardware.jal (Stef's lib).
--- .
--- Changes dd October 2012:
--- - Added function pwm_get_resolution() returning the actual resolution in PWM steps.
+-- For 10-bit PWM Timer2 is always used, also when different timers can be assigned.
+--
 -- ----------------------------------------------------------------------------
 --
 
+-- Global variable for all 10-bit PWM using Timer2.
+if defined(T2CON_T2CKPS2) | defined(T2CON_T2CKPS) then
+   -- 10-bit PWM for all modules.
+   -- Shadow of PR2 (value incremented by 1, i.e. value in range 1..256)
+   -- Set to maximum value by default for maximum resolution.
+   var word _pr2_shadow_plus1 = 256 -- value(PR2) + 1
+end if 
 
--- Shadow of PR2 (value incremented by 1, i.e. value in range 1..256)
--- Set to maximum value by default for maximum resolution.
-var volatile word _pr2_shadow_plus1 = 256          -- value(PR2) + 1
+-- Global variables for all 16-bit PWM using individual timers.
+-- We use PWMxTMR to detect them. 
+if defined(PWM1TMR) then
+   var word _pr1_shadow = 65535
+end if 
 
+if defined(PWM2TMR) then
+   var word _pr2_shadow = 65535
+end if 
 
--- ----------------------------------------------------------------------------
--- Purpose:   Obtain actuial number of PWM steps
--- Arguments: (none)
--- Returns:   word = actual number of PWM steps
--- ---------------------------------------------------------------------------
-function pwm_get_resolution() return word  is
+if defined(PWM3TMR) then
+   var word _pr3_shadow = 65535
+end if 
 
-   return (_pr2_shadow_plus1 << 2) - 1             -- PWM steps
+if defined(PWM4TMR) then
+   var word _pr4_shadow = 65535
+end if 
 
-end function
+if defined(PWM5TMR) then
+   var word _pr5_shadow = 65535
+end if 
 
+if defined(PWM6TMR) then
+   var word _pr6_shadow = 65535
+end if 
 
+if defined(PWM7TMR) then
+   var word _pr7_shadow = 65535
+end if 
 
--- ----------------------------------------------------------------------------
--- Purpose:   Set all(!) CCP modules for max (10-bits) PWM resolution.
--- Arguments: byte - prescaler value for Timer2 (allowed value 1, 4 or 16)
---                   (other values will result in disabled PWM)
--- Notes:     - Allowed values of input parameter: 1, 4 and 16.
---            - User may check bit TIMER2_TMR2ON to see if call was successful
---              TRUE:  Timer2 ON, PWM resolution set
---              FALSE: Timer2 OFF, no PWM signal
--- .
--- While setting maximum resolution, the Timer2 prescaler can be used to adjust
--- frequency to some extent with the Timer2 parameter value which can be either:
---   * 1 : highest frequency
---   * 4 : medium frequency
---   * 16: lowest frequency
---
--- Below a table showing the PWM frequencies for common clock speeds and
--- different Timer2 prescaler values.
--- ------------------------------------------------------------------------
--- ||*Timer2 prescaler* ||  *4MHz*  ||  *8MHz*  || *10MHz*  ||  *20MHz*  ||
--- ||    1              || 3.90 kHz || 7.81 kHz || 9.77 kHz || 19.43 kHz ||
--- ||    4              ||  976  Hz || 1.95 kHz || 2.44 kHz ||  4.88 kHz ||
--- ||    16             ||  244  Hz ||  488  Hz ||  610 Hz  ||  1.22 kHz ||
--- ------------------------------------------------------------------------
---
--- For PICs with more than one CCP module you should realize that all CCP
--- modules use Timer2 and PR2 for PWM operations. This means that the PWM
--- period (frequency) of all PWM output pins is the same. Only the duty
--- cycle can vary between one and another PWM pin.
--- .
--- This implies 1 out of 3 specific PWM frequencies, depending on the Timer2
--- prescaler value passed with the call. See examples in the table above,
--- or use the formula in the datasheet to calculate the resulting frequency.
--- ---------------------------------------------------------------------------
+if defined(PWM8TMR) then
+   var word _pr8_shadow = 65535
+end if 
+
+if defined(PWM9TMR) then
+   var word _pr9_shadow = 65535
+end if 
+
+if defined(PWM10TMR) then
+   var word _pr10_shadow = 65535
+end if 
+
+if defined(PWM11TMR) then
+   var word _pr11_shadow = 65535
+end if 
+
+if defined(PWM12TMR) then
+   var word _pr12_shadow = 65535
+end if 
 
 -- Alias for compatibility with other PICs.
 if defined(T2PR) then
   alias PR2 is T2PR
 end if 
 
--- ---------------------------------------------------------------------------
--- Set the prescaler value for Timer 2. If succesfull then Timer 2 will be 
--- running. 
+-- Function prototypes of internal procedure, do not use.
+if defined(PWM1TMR) | defined(PWM2TMR)  | defined(PWM3TMR)  | defined(PWM4TMR)  | 
+   defined(PWM5TMR) | defined(PWM6TMR)  | defined(PWM7TMR)  | defined(PWM8TMR)  |
+   defined(PWM9TMR) | defined(PWM10TMR) | defined(PWM11TMR) | defined(PWM12TMR) |
+   defined(T2CON_T2CKPS2) then
+      procedure _pwm_get_prescaler_value(byte in selection, bit*3 out prescaler)
+end if
+-- Function prototypes of internal procedure, do not use.
+if defined(PWM1TMR) | defined(PWM2TMR)  | defined(PWM3TMR)  | defined(PWM4TMR)  | 
+   defined(PWM5TMR) | defined(PWM6TMR)  | defined(PWM7TMR)  | defined(PWM8TMR)  |
+   defined(PWM9TMR) | defined(PWM10TMR) | defined(PWM11TMR) | defined(PWM12TMR) then
+   procedure _pwm_determine_timer_and_prescale(dword in freq,
+             word out timer_value, bit*3 out prescale_value)
+end if 
+
+-- ----------------------------------------------------------------------------
+-- Purpose:   Set all(!) CCP modules for max (10-bits) PWM resolution.
+-- Arguments: byte - prescaler value for Timer2 
+--      
+-- Notes:     - Allowed values of input parameter: 
+--              For PICs with 2 prescaler bits: 1, 4, 16 or 64
+--              For PICs with 3 prescaler bits: 1, 2, 4, 8, 16, 32, 64 or 128
+--              In case of an incorrect argument the highest prescaler value
+--              will be used. Timer 2 will be running. 
+-- .
+-- While setting maximum resolution, the Timer2 prescaler can be used to adjust
+-- frequency to some extent with the Timer2 parameter.
+--
+-- Below a table showing the PWM frequencies for common clock speeds and different
+-- Timer2 prescaler values for PIC with 2 prescaler bits (1..64) using Fosc/4.
+-- Note that 10-bit PWM use Fosc/4 and 16-bit PWM use Fosc. Some 10-bit PWM and all
+-- 16-bit PWM have 3 prescaler bits (1..128), see the datasheet of your PIC.
+-- -----------------------------------------------------------------------------------------
+-- ||*Prescale*||  *4MHz*  ||  *8MHz*  || *10MHz*  ||  *20MHz*  ||  *32MHz*  ||  *48MHz*  ||
+-- ||     1    || 3.90 kHz || 7.81 kHz || 9.77 kHz || 19.53 kHz || 31.25 kHz || 46.88 kHz ||
+-- ||     4    ||  976  Hz || 1.95 kHz || 2.44 kHz ||  4.88 kHz ||  7.81 kHz || 11.72 kHz ||
+-- ||    16    ||  244  Hz ||  488  Hz ||  610 Hz  ||  1.22 kHz ||  1.95 kHz ||  2.93 kHz ||
+-- ||    64    ||   61  Hz ||  122  Hz ||  152 Hz  ||   305 Hz  ||   488 Hz  ||   732 Hz  ||
+-- -----------------------------------------------------------------------------------------
+--
+-- For 10-bit PWM PICs with more than one CCP module you should realize that all CCP
+-- modules use Timer2 and PR2 for PWM operations. This means that the PWM
+-- period (frequency) of all PWM output pins is the same. 
+-- Only the duty cycle can vary between one and another PWM pin.
+--
+-- PICs with 16-bits PWM have indepent PWM timers so the PWM frequency can be set
+-- differently for each individual PWM channel.
 -- ---------------------------------------------------------------------------
 procedure pwm_max_resolution(byte in prescaler) is
 
-   _pr2_shadow_plus1 = 256                         -- select lowest frequency
-   PR2 = byte(_pr2_shadow_plus1 - 1)               -- set PR2
-
-   -- Some PICs have a separate clock register. If present set it to Fosc/4.
-   if defined(T2CLKCON) then
-      T2CLKCON_CS = 0b0001 
+   if defined(CCPTMRS1) then
+      -- For some PICs (like the 18F26k42) you can assign different timers to
+      -- the 10-bit PWM. This is not yet implemented, only Timer 2 is assigned.
+      CCPTMRS1 = 0b0101_0101 -- Assign Timer2 for al four PWMs.
    end if 
 
-   -- Set Timer2 prescaler and enable Timer2 (when prescaler value accepted)
+   T2CON = 0b0000_0000  -- zero pre/postscaler, disable Timer2
    if defined(T2CON_T2CKPS2) then
-      -- For PICs with 3 prescaler bits.
-      if (prescaler == 1) then                        -- highest frequency
-         T2CON_T2CKPS = 0b000                         -- 1:1
-         T2CON_TMR2ON = TRUE
-      elsif (prescaler == 4) then                     -- medium frequency
-         T2CON_T2CKPS = 0b010                         -- 1:4
-         T2CON_TMR2ON = TRUE
-      elsif (prescaler == 16) then                    -- lowest frequency
-         T2CON_T2CKPS = 0b100                         -- 1:16
-         T2CON_TMR2ON = TRUE
-     else
-         T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
-      end if
+      -- For PICs 10-bit PWM with 3 prescaler bits. This overrules PICs
+      -- with 2 prescaler bits. Set to Fosc/4 (note Fosc does not work!).
+      T2CLKCON_CS = 0b0001                           -- Set to Fosc/4.
+      _pwm_get_prescaler_value(prescaler, T2CON_T2CKPS)
    else
-      -- For PICs with 2 prescaler bits.
-      if (prescaler == 1)  then                       -- highest frequency
+      -- For PICs 10-bit PWM with 2 prescaler bits using Fosc/4.
+      if (prescaler == 1)  then                       
          T2CON_T2CKPS = 0b00                          -- 1:1
-         T2CON_TMR2ON = TRUE
-      elsif (prescaler == 4)  then                    -- medium frequency
+      elsif (prescaler == 4)  then                    
          T2CON_T2CKPS = 0b01                          -- 1:4
-         T2CON_TMR2ON = TRUE
-      elsif (prescaler == 16) then                    -- lowest frequency
+      elsif (prescaler == 16) then                    
          T2CON_T2CKPS = 0b10                          -- 1:16
-         T2CON_TMR2ON = TRUE
-      else
-         T2CON_TMR2ON = FALSE                         -- disable Timer2 (= PWM off!)
+      else                                            
+         T2CON_T2CKPS = 0b11                          -- 1:64. Default.
       end if
    end if 
+   _pr2_shadow_plus1 = 256                            -- select lowest frequency
+   PR2 = byte(_pr2_shadow_plus1 - 1)                  -- set PR2
+   T2CON_TMR2ON = TRUE
 
 end procedure
 
 
 -- ---------------------------------------------------------------------------
--- Purpose:   Set all(!) CCP modules for a specific PWM frequency.
+-- Purpose:   Set all(!) CCP 10-bit modules for a specific PWM frequency.
 -- Arguments: Input:  dword - PWM frequency
 --            Output: none
 -- Notes:     - User may check bit TIMER2_TMR2ON to see if call successful
@@ -150,37 +190,164 @@ end procedure
 -- ---------------------------------------------------------------------------
 procedure pwm_set_frequency(dword in freq) is
 
-   var word pr2_provisional = word(target_clock / freq) / 4   -- derived value for PR2 + 1
+   var word pr2_provisional = word(target_clock / freq) / 4 -- derived value for PR2 + 1
 
-   T2CON = 0b0000_0000                             -- zero pre/postscaler, disable Timer2
+   if defined(CCPTMRS1) then
+      -- For some PICs (like the 18F26k42) you can assign different timers to
+      -- the 10-bit PWM. This is not yet implemented, only Timer 2 is assigned.
+      CCPTMRS1 = 0b0101_0101 -- Assign Timer2 for al four PWMs.
+   end if 
 
-   if ( (pr2_provisional > 0)  &                   -- requested PWM freq not too high and
-        (pr2_provisional <= 4096) ) then           -- not too low for current clock speed
-      if (pr2_provisional <= 256) then
-         _pr2_shadow_plus1 = pr2_provisional
-         if defined(T2CON_T2CKPS2) then            -- set Timer2 prescaler 1:1
-            T2CON_T2CKPS = 0b000  
-         else
-            T2CON_T2CKPS = 0b00                       
-         end if 
-      elsif (pr2_provisional <= 1024) then         -- set Timer2 prescaler 1:4
-         _pr2_shadow_plus1 = pr2_provisional / 4
-         if defined(T2CON_T2CKPS2) then
-            T2CON_T2CKPS = 0b010
-         else
-            T2CON_T2CKPS = 0b01  
-         end if                      
-      else                                         -- set Timer2 prescaler 1:16
-         _pr2_shadow_plus1 = pr2_provisional / 16
-         if defined(T2CON_T2CKPS2) then
-            T2CON_T2CKPS = 0b100
-         else
-            T2CON_T2CKPS = 0b10  
-         end if                  
+   T2CON = 0b0000_0000  -- zero pre/postscaler, disable Timer2
+   if defined(T2CON_T2CKPS2) then
+      -- For PICs 10-bit PWM with 3 prescaler bits. This overrules PICs
+      -- with 2 prescaler bits. Set to Fosc/4 (note Fosc does not work!).
+      T2CLKCON_CS = 0b0001                           -- Set to Fosc/4.
+      -- requested PWM freq not too high and not too low for current clock speed
+      if ((pr2_provisional > 0) & (pr2_provisional <= 32_768)) then         
+         if (pr2_provisional <= 256) then
+            _pr2_shadow_plus1 = pr2_provisional
+            T2CON_T2CKPS = 0b000                     -- Timer2 prescaler 1:1
+         elsif (pr2_provisional <= 512) then         
+            _pr2_shadow_plus1 = pr2_provisional / 2
+            T2CON_T2CKPS = 0b001                     -- Timer2 prescaler 1:2 
+         elsif (pr2_provisional <= 1024) then         
+            _pr2_shadow_plus1 = pr2_provisional / 4
+            T2CON_T2CKPS = 0b010                     -- Timer2 prescaler 1:4 
+         elsif (pr2_provisional <= 2048) then         
+            _pr2_shadow_plus1 = pr2_provisional / 8
+            T2CON_T2CKPS = 0b011                     -- Timer2 prescaler 1:8 
+         elsif (pr2_provisional <= 4096) then          
+            _pr2_shadow_plus1 = pr2_provisional / 16
+            T2CON_T2CKPS = 0b100                     -- Timer2 prescaler 1:16 
+         elsif (pr2_provisional <= 8192) then          
+            _pr2_shadow_plus1 = pr2_provisional / 32
+            T2CON_T2CKPS = 0b101                     -- Timer2 prescaler 1:32 
+         elsif (pr2_provisional <= 16384) then          
+            _pr2_shadow_plus1 = pr2_provisional / 64
+            T2CON_T2CKPS = 0b110                     -- Timer2 prescaler 1:64
+         else                                        
+            _pr2_shadow_plus1 = pr2_provisional / 128
+            T2CON_T2CKPS = 0b111                     -- Timer2 prescaler 1:128 
+         end if
       end if
-      PR2 = byte(_pr2_shadow_plus1 - 1)            -- set PR2
-      T2CON_TMR2ON = TRUE                          -- enable Timer2
+   else
+      -- PICs with 2 prescaler bits use Fosc/4
+      -- requested PWM freq not too high and not too low for current clock speed
+      if ((pr2_provisional > 0) & (pr2_provisional <= 16_384)) then         
+         if (pr2_provisional <= 256) then
+            _pr2_shadow_plus1 = pr2_provisional
+            T2CON_T2CKPS = 0b00                       -- Timer2 prescaler 1:1
+         elsif (pr2_provisional <= 1024) then         
+            _pr2_shadow_plus1 = pr2_provisional / 4
+            T2CON_T2CKPS = 0b01                       -- Timer2 prescaler 1:4
+         elsif (pr2_provisional <= 4096) then          
+            _pr2_shadow_plus1 = pr2_provisional / 16
+            T2CON_T2CKPS = 0b10                       -- Timer2 prescaler 1:16
+         else                                        
+            _pr2_shadow_plus1 = pr2_provisional / 64
+            T2CON_T2CKPS = 0b11                       -- Timer2 prescaler 1:64
+         end if
+      end if
    end if
+   PR2 = byte(_pr2_shadow_plus1 - 1)            -- set PR2
+   T2CON_TMR2ON = TRUE                          -- enable Timer2
 
 end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Purpose:   Obtain actual number of 10-bit PWM steps
+-- Arguments: (none)
+-- Returns:   word = actual number of 10-bit PWM steps
+-- ---------------------------------------------------------------------------
+function pwm_get_resolution() return word  is
+
+   return (_pr2_shadow_plus1 << 2) - 1  -- PWM steps
+
+end function
+
+-- Internal procedures.
+
+-- ---------------------------------------------------------------------------
+-- Return the PWM prescaler value for PWM modules with 3 prescaler bits for 
+-- 10-bit and 16-bit PWM based on the given selection (1, 2, 4 .. 128).
+-- When the selection is out of range, the prescaler value of 128 is used.
+-- ---------------------------------------------------------------------------
+if defined(PWM1TMR) | defined(PWM2TMR)  | defined(PWM3TMR)  | defined(PWM4TMR)  | 
+   defined(PWM5TMR) | defined(PWM6TMR)  | defined(PWM7TMR)  | defined(PWM8TMR)  |
+   defined(PWM9TMR) | defined(PWM10TMR) | defined(PWM11TMR) | defined(PWM12TMR) |
+   defined(T2CON_T2CKPS2) then
+   procedure _pwm_get_prescaler_value(byte in selection, bit*3 out prescaler) is
+      if (selection == 1) then                       
+         prescaler = 0b000   -- 1:1   
+      elsif (selection == 2) then                        
+         prescaler = 0b001   -- 1:2                   
+      elsif (selection == 4) then                   
+         prescaler = 0b010   -- 1:4                   
+      elsif (selection == 8) then                    
+         prescaler = 0b011   -- 1:8                    
+      elsif (selection == 16) then                  
+         prescaler = 0b100   -- 1:16                   
+      elsif (selection == 32) then                 
+         prescaler = 0b101   -- 1:32                    
+      elsif (selection == 64) then                    
+         prescaler = 0b110   -- 1:64                   
+      else 
+         prescaler = 0b111   -- 1:128 
+      end if   
+   end procedure   
+end if 
+
+
+
+-- ---------------------------------------------------------------------------
+-- Purpose:   Define the timer value and the prescale PWM value for the given
+--            frequency for 16-bit PWM devices with 3 prescaler bits. 
+-- Arguments: Input:  dword - PWM frequency
+--            Output: timer_value, prescale_value
+-- ---------------------------------------------------------------------------
+if defined(PWM1TMR) | defined(PWM2TMR)  | defined(PWM3TMR)  | defined(PWM4TMR)  | 
+   defined(PWM5TMR) | defined(PWM6TMR)  | defined(PWM7TMR)  | defined(PWM8TMR)  |
+   defined(PWM9TMR) | defined(PWM10TMR) | defined(PWM11TMR) | defined(PWM12TMR) then
+   procedure _pwm_determine_timer_and_prescale(dword in freq,
+             word out timer_value, bit*3 out prescale_value) is
+
+      var dword pr_provisional = target_clock / freq -- 16-bit PWM use Fosc.
+
+      -- Requested PWM freq not too high and not too low for current clock speed.
+      if ((pr_provisional > 0) & (pr_provisional <= 8_388_480)) then
+         if (pr_provisional <= 65535) then
+            timer_value = word(pr_provisional)
+            prescale_value = 0b000                     -- set prescaler 1:1
+         elsif (pr_provisional <= 131_070) then         
+            timer_value = word(pr_provisional / 2)
+            prescale_value = 0b001                     -- set prescaler 1:2
+         elsif (pr_provisional <= 262_140) then          
+            timer_value = word(pr_provisional / 4)
+            prescale_value = 0b010                     -- set prescaler 1:4
+         elsif (pr_provisional <= 524_280) then          
+            timer_value = word(pr_provisional / 8)
+            prescale_value = 0b011                     -- set prescaler 1:8
+         elsif (pr_provisional <= 1_048_560) then          
+            timer_value = word(pr_provisional / 16)
+            prescale_value = 0b100                     -- set prescaler 1:16
+         elsif (pr_provisional <= 2_097_120) then          
+            timer_value = word(pr_provisional / 32)
+            prescale_value = 0b101                     -- set prescaler 1:32
+         elsif (pr_provisional <= 4_194_240) then          
+            timer_value = word(pr_provisional / 64)
+            prescale_value = 0b110                     -- set prescaler 1:64
+         else                                         
+            timer_value = word(pr_provisional / 128)
+            prescale_value = 0b111                     -- set prescaler 1:128
+         end if
+      else
+         -- Out of range, set to prescale 1:128
+         timer_value = word(pr_provisional / 128)
+         prescale_value = 0b111                        -- set prescaler 1:128
+      end if
+   end procedure
+end if 
+
 

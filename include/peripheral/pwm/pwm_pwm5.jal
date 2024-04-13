@@ -1,157 +1,326 @@
 -- -------------------------------------------------------------------------------------
--- Title: hardware PWM control, dedicated to module PWM5.
--- Author: Rob Jansen, Copyright (C) 2022..2022, all rights reserved.
+-- Title: hardware PWM control, supports 10-bit PTM and 16-bit PWM for module PWM5.
+-- Author: Rob Jansen, Copyright (C) 2022..2024, all rights reserved.
 -- Adapted-by: 
--- Compiler: 2.5r6
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Performs PWM operations on the PWM5 module. This file is automatically 
---              included by pwm_hardware.jal when the target PIC has a PW5 module.
+--              included by pwm_hardware.jal when the target PIC has a PWM5 module.
+--              The library supports 10-bit and 16-bit PWM.
 --
--- Notes: This library is a copy of pwm_pwm4.jal and modified manally for PWM5.
---
 -- -------------------------------------------------------------------------------------
 --
 
-var byte  _pwm5dch_shadow = 0                      -- 8 MSbits of duty cycle
-var byte  _pwm5dcl_shadow = 0                      -- 2 LSbits (left aligned)
+if defined(PWM5TMR) then
+
+   -- ======================== This code is for the 16-bit variant =======================
+   var word  _pwm5dc_shadow = 0 -- 16 bit duty cycle
 
 
--- -------------------------------------------------------------------------------------
--- Purpose:   Set PWM on
--- Arguments: none
--- Notes:     - duty cycle is restored from shadow registers
---            - pin_PWM5_direction should be set to output
--- -------------------------------------------------------------------------------------
-procedure pwm5_on() is
+  -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set PWM on
+   -- Arguments: none
+   -- Notes:     - duty cycle is restored from shadow registers
+   --            - pin_PWM5_direction should be set to output
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_on() is
 
-   PWM5DCH         = _pwm5dch_shadow               -- restore duty cycle
-   PWM5DCL         = _pwm5dcl_shadow               -- restore duty cycle
-   PWM5CON_PWM5EN  = TRUE                          -- activate PWM module
+      PWM5DC = _pwm5dc_shadow  
+      PWM5PH = 0
+      PWMLD_MPWM5LD = TRUE
+      PWM5CON_PWM5EN  = TRUE    
 
-end procedure
-
-
--- -------------------------------------------------------------------------------------
--- Purpose:   PWM mode off
--- Arguments: none
--- -------------------------------------------------------------------------------------
-procedure pwm5_off() is
-
-   PWM5CON_PWM5EN = FALSE                          -- disable PWM module
-
-end procedure
+   end procedure
 
 
--- -------------------------------------------------------------------------------------
--- Purpose:   Specify the duty cycle by number of PWM steps.
---            The duty cycle is setting is determined by a 10-bits parameter,
---            allowing a resolution of 1023 steps.
---            The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
---            * steps<1:0> are the 2 LSbits
---            * steps<9:2> are the 8 MSbits
--- Arguments: word - steps cycle (allowed range 0..1023)
--- Notes:     - This is a private procedure, not intended for general use.
---              The caller is responsible to specify an acceptable value
---              w.r.t. to the chosen PWM frequency.
--- -------------------------------------------------------------------------------------
-procedure _pwm5_set_dutycycle_highres(word in steps) is
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   PWM mode off
+   -- Arguments: none
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_off() is
 
-   if (steps > 1023) then                          -- exceeding upper limit
-      steps = 1023                                 -- set to maximum
-   end if
-   _pwm5dch_shadow = byte(steps >> 2)              -- 8 MSbits
-   _pwm5dcl_shadow = byte(steps) << 6              -- 2 LSbits left aligned
-   pwm5_on()                                       -- activate PWM
+      PWM5CON_PWM5EN = FALSE   
 
-end procedure
-
--- -------------------------------------------------------------------------------------
--- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
--- The 'steps' argument is the 8-bits absolute value for the duty cycle:
---  * duty<1:0> are the 2 LSbits
---  * duty<7:2> are the 6 MSbits
--- Arguments: byte - duty cycle (allowed range 0..255)
--- Notes:     This procedure is particularly suitable with higher frequencies
---            whereby the PWM resolution is limited to 256 steps or less!
--- -------------------------------------------------------------------------------------
-procedure pwm5_set_dutycycle_lowres(byte in steps) is
-
-   _pwm5dch_shadow = byte(steps >> 2)              -- 8 MSbits
-   _pwm5dcl_shadow = byte(steps) << 6              -- 2 LSbits
-   pwm5_on()                                       -- activate PWM
-
-end procedure
+   end procedure
 
 
--- -------------------------------------------------------------------------------------
--- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
--- This procedure is equivalent to pwm1_set_dutycycle_highres(), but
--- the low order 2 bits of the 10-bits duty cycle are set to 0.
--- This means that only every 4th of the available 1023 steps can be selected
--- and consequently max 255 PWM steps are available.
--- This procedure is for user convenience, allowing to specify an 8 bits
--- value for the duty cycle is for many applications satisfactory.
--- Calling this procedure will also activate PWM.
--- Note: pin_PWM5_direction should be set to output!
--- -------------------------------------------------------------------------------------
-procedure pwm5_set_dutycycle(byte in steps) is
+   -- ---------------------------------------------------------------------------
+   -- Set the prescaler value for Timer 5 for the 16-bit PWM5.
+   -- The timer will be running. 
+   -- ---------------------------------------------------------------------------
+   procedure pwm5_max_resolution(byte in prescaler) is
 
-   _pwm5_set_dutycycle_highres(word(steps) << 2)
-
-end procedure
+      -- For PIC with 16-bit PWM. They have a separate timer register.
+      PWM5CLKCON_CS = 0b00                            -- Clock source Fosc
+      _pr5_shadow = 65535                             -- select lowest frequency
+      PWM5PR = _pr5_shadow  
+      _pwm_get_prescaler_value(prescaler, PWM5CLKCON_PS)   
+ 
+    end procedure
 
 
--- -------------------------------------------------------------------------------------
--- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
---            The duty cycle will be set to the specified percentage of the maximum
---            for the current PWM frequency and Fosc.
--- Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
--- Notes:     - The number of available PWM steps can be lower than 100 with
---              (very) high PWM frequencies and low Fosc.
---            - The steps may not all be equal. The lower the actual resolution
---              the bigger the differences between steps may be.
---            - pin_PWM5_direction should be set to output!
--- -------------------------------------------------------------------------------------
-procedure pwm5_set_dutycycle_percent(byte in percent) is
+   -- ---------------------------------------------------------------------------
+   -- Purpose:   Set the frequency for the 16-bit module PWM5 (if present).
+   -- Arguments: Input:  dword - PWM frequency
+   --            Output: none
+   -- The minimum and maximum allowed PWM frequencies depend on the clock speed.
+   -- Use procedures pwm5_set_dutycycle_percent() or pwm5_set_dutycycle_ratio()
+   -- to set the desired duty cycle.
+   -- ---------------------------------------------------------------------------
+   procedure pwm5_set_frequency(dword in freq) is
 
-   var word steps                                   --
-   if (percent == 0) then                          -- effectively PWM off (output low)
-     steps = 0
-   elsif (percent >= 100) then                     -- effectively PWM off (output high)
-     steps = _pr2_shadow_plus1 - 1
-   else                                            --
-     steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
-   end if
-   _pwm5_set_dutycycle_highres(steps << 2)
+      PWM5CLKCON_CS = 0b00                            -- Clock source Fosc 
+      _pwm_determine_timer_and_prescale(freq, _pr5_shadow, PWM5CLKCON_PS)
+      PWM5PR = _pr5_shadow     
 
-end procedure
+   end procedure
 
 
--- -------------------------------------------------------------------------------------
--- Purpose:   Set duty cycle in the range 0..1023 PWM steps.
--- Arguments: word - dutycycle ration in range 0..1023
--- Notes:     - The duty cycle will be set to the specified ratio of the maximum
---              value for the current PWM frequency and Fosc.
---            - The resolution is about 1 pro mille
---            - The number of available PWM steps can be lower than 1023 with
---              high PWM frequencies or low Fosc values.
---            - pin_PWM5_direction should be set to output!
--- -------------------------------------------------------------------------------------
-procedure pwm5_set_dutycycle_ratio(word in ratio) is
+   -- -------------------------------------------------------------------------------------
+   -- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+   -- The 'steps' argument is the 8-bits absolute value for the duty cycle.
+   -- Arguments: byte - duty cycle (allowed range 0..255)
+   -- Calling this procedure will also activate PWM.
+   -- Notes: This procedure is particularly suitable with higher frequencies
+   --        whereby the PWM resolution is limited to 256 steps or less!
+   --        pin_PWM5_direction should be set to output.
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_lowres(byte in steps) is
 
-   var  word  steps                                  -- intermediate value of PR2+1
-   if (ratio == 0) then                            -- effectively PWM off (output low)
-     steps = 0
-   elsif (ratio > 1023) then                       -- effectively PWM off (output high)
-     steps = _pr2_shadow_plus1 - 1
-   else                                            -- between min and max
-     steps = word(dword(ratio) * _pr2_shadow_plus1 / 256)    -- (factor PR2/1024)
-   end if
-   _pwm5_set_dutycycle_highres(steps)
+      _pwm5dc_shadow = (word(steps) << 8) -- Use 8 MSB's of 16-bit register.
+      pwm5_on()  
 
-end procedure
+   end procedure
 
+
+   -- -------------------------------------------------------------------------------------
+   -- Set dutycycle for 16-bits high resolution, allowing 65535 steps.
+   -- Calling this procedure will also activate PWM.
+   -- Note: pin_PWM5_direction should be set to output.
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle(word in steps) is
+
+      _pwm5dc_shadow = steps
+      pwm5_on()    
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+   --            The duty cycle will be set to the specified percentage of the maximum
+   --            for the current PWM frequency and Fosc.
+   -- Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+   -- Calling this procedure will also activate PWM.
+   -- Notes:     - The number of available PWM steps can be lower than 100 with
+   --              (very) high PWM frequencies and low Fosc.
+   --            - The steps may not all be equal. The lower the actual resolution
+   --              the bigger the differences between steps may be.
+   --            - pin_PWM5_direction should be set to output.
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_percent(byte in percent) is
+
+      var dword calculation
+      var word steps                                
+
+      if (percent == 0) then      -- effectively PWM off (output low)
+         steps = 0
+      elsif (percent >= 100) then -- effectively PWM off (output high)
+         steps = _pr5_shadow
+      else      
+         calculation = (dword(percent) * (dword(_pr5_shadow) + 1)) / 100
+         steps = word(calculation) 
+      end if
+      pwm5_set_dutycycle(steps)
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set duty cycle in the range 0..65535 PWM steps.
+   -- Arguments: word - dutycycle ration in range 0..65535
+   -- Notes:     - The duty cycle will be set to the specified ratio of the maximum
+   --              value for the current PWM frequency and Fosc.
+   --            - The resolution is about 1 pro mille
+   --            - The number of available PWM steps can be lower than 1023 with
+   --              high PWM frequencies or low Fosc values.
+   --            - pin_PWM5_direction should be set to output!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_ratio(word in ratio) is
+
+      var dword calculation
+      var word steps                            
+
+      if (ratio == 0) then        -- effectively PWM off (output low)
+         steps = 0
+      elsif (ratio == 65535) then -- effectively PWM off (output high)
+         steps = ratio
+      else                 
+         calculation = (dword(ratio) * (dword(_pr5_shadow) + 1)) / 65536
+         steps = word(calculation)
+      end if
+      pwm5_set_dutycycle(steps)
+
+   end procedure
+
+
+   -- ----------------------------------------------------------------------------
+   -- Purpose:   Obtain actual number of 16-bit PWM5 steps.
+   -- Arguments: (none)
+   -- Returns:   word = actual number of 16-bit PWM5 steps.
+   -- ---------------------------------------------------------------------------
+   function pwm5_get_resolution() return word  is
+
+      return _pr5_shadow
+
+   end function
+
+else
+
+   -- ======================== This code is for the 10-bit variant =======================
+
+   var byte  _pwm5dch_shadow = 0    -- 8 MSbits of duty cycle
+   var byte  _pwm5dcl_shadow = 0    -- 2 LSbits (left aligned)
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set PWM on
+   -- Arguments: none
+   -- Notes:     - duty cycle is restored from shadow registers
+   --            - pin_PWM5_direction should be set to output
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_on() is
+
+      PWM5DCH         = _pwm5dch_shadow  -- restore duty cycle
+      PWM5DCL         = _pwm5dcl_shadow  -- restore duty cycle
+      PWM5CON_PWM5EN  = TRUE            
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   PWM mode off
+   -- Arguments: none
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_off() is
+
+      PWM5CON_PWM5EN = FALSE   
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Specify the duty cycle by number of PWM steps.
+   --            The duty cycle is setting is determined by a 10-bits parameter,
+   --            allowing a resolution of 1023 steps.
+   --            The 'steps' argument is a (max) 10-bits absolute value for the duty cycle:
+   --            * steps<1:0> are the 2 LSbits
+   --            * steps<9:2> are the 8 MSbits
+   -- Arguments: word - steps cycle (allowed range 0..1023)
+   -- Notes:     - This is a private procedure, not intended for general use.
+   --              The caller is responsible to specify an acceptable value
+   --              w.r.t. to the chosen PWM frequency.
+   -- -------------------------------------------------------------------------------------
+   procedure _pwm5_set_dutycycle_highres(word in steps) is
+
+      if (steps > 1023) then               -- exceeding upper limit
+         steps = 1023                      -- set to maximum
+      end if
+      _pwm5dch_shadow = byte(steps >> 2)   -- 8 MSbits
+      _pwm5dcl_shadow = byte(steps) << 6   -- 2 LSbits left aligned
+      pwm5_on()                            
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose: Set dutycycle with 8-bits resolution allowing 255 PWM steps.
+   -- The 'steps' argument is the 8-bits absolute value for the duty cycle:
+   --  * duty<1:0> are the 2 LSbits
+   --  * duty<7:2> are the 6 MSbits
+   -- Arguments: byte - duty cycle (allowed range 0..255)
+   -- Notes:     This procedure is particularly suitable with higher frequencies
+   --            whereby the PWM resolution is limited to 256 steps or less!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_lowres(byte in steps) is
+
+      _pwm5dch_shadow = byte(steps >> 2)  -- 8 MSbits
+      _pwm5dcl_shadow = byte(steps) << 6  -- 2 LSbits
+      pwm5_on()
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Set dutycycle for 10-bits resolution but allowing only 255 PWM steps.
+   -- This procedure is equivalent to pwm1_set_dutycycle_highres(), but
+   -- the low order 2 bits of the 10-bits duty cycle are set to 0.
+   -- This means that only every 4th of the available 1023 steps can be selected
+   -- and consequently max 255 PWM steps are available.
+   -- This procedure is for user convenience, allowing to specify an 8 bits
+   -- value for the duty cycle is for many applications satisfactory.
+   -- Calling this procedure will also activate PWM.
+   -- Note: pin_PWM5_direction should be set to output!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle(byte in steps) is
+
+      _pwm5_set_dutycycle_highres(word(steps) << 2)
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set duty cycle as a percentage, allowing max 100 PWM steps.
+   --            The duty cycle will be set to the specified percentage of the maximum
+   --            for the current PWM frequency and Fosc.
+   -- Arguments: byte - dutycycle as a percentage (allowed range: 0..100)
+   -- Notes:     - The number of available PWM steps can be lower than 100 with
+   --              (very) high PWM frequencies and low Fosc.
+   --            - The steps may not all be equal. The lower the actual resolution
+   --              the bigger the differences between steps may be.
+   --            - pin_PWM5_direction should be set to output!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_percent(byte in percent) is
+
+      var word steps                                   --
+      if (percent == 0) then                          -- effectively PWM off (output low)
+         steps = 0
+      elsif (percent >= 100) then                     -- effectively PWM off (output high)
+         steps = _pr2_shadow_plus1 - 1
+      else                                            --
+         steps = word(percent) * (_pr2_shadow_plus1 / 4) / 25      -- (factor PR2/100)
+      end if
+      _pwm5_set_dutycycle_highres(steps << 2)
+
+   end procedure
+
+
+   -- -------------------------------------------------------------------------------------
+   -- Purpose:   Set duty cycle in the range 0..1023 PWM steps.
+   -- Arguments: word - dutycycle ration in range 0..1023
+   -- Notes:     - The duty cycle will be set to the specified ratio of the maximum
+   --              value for the current PWM frequency and Fosc.
+   --            - The resolution is about 1 pro mille
+   --            - The number of available PWM steps can be lower than 1023 with
+   --              high PWM frequencies or low Fosc values.
+   --            - pin_PWM5_direction should be set to output!
+   -- -------------------------------------------------------------------------------------
+   procedure pwm5_set_dutycycle_ratio(word in ratio) is
+
+      var  word  steps                                  -- intermediate value of PR2+1
+      if (ratio == 0) then                            -- effectively PWM off (output low)
+         steps = 0
+      elsif (ratio > 1023) then                       -- effectively PWM off (output high)
+         steps = _pr2_shadow_plus1 - 1
+      else                                            -- between min and max
+         steps = word(dword(ratio) * _pr2_shadow_plus1 / 256)    -- (factor PR2/1024)
+      end if
+      _pwm5_set_dutycycle_highres(steps)
+
+   end procedure
+
+end if   
 
