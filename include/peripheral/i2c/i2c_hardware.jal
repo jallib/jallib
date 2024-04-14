@@ -7,21 +7,24 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Hardware implementation of I2C (single) master.
--- .
+-- 
 -- Define i2c pins like:
 -- alias i2c_scl            is pin_c3              -- optional
 -- alias i2c_scl_direction  is pin_c3_direction
 -- alias i2c_sda            is pin_c4              -- optional
 -- alias i2c_sda_direction  is pin_c4_direction
--- - --
--- const word _i2c_bus_speed = 1                   -- 100kHz
+-- 
 -- const bit  _i2c_level     = true                -- i2c levels (not SMB)
+-- const word _i2c_bus_speed = 1                   -- 100kHz
 --
--- The use can define a timeout as to prevent a hangup in case something goes wrong. The
--- timing is not exact but a reference of 1 us is used but since the loop time increases
--- it this time should be seen as the minimum wait time before it expires. This is an
--- optional setting: 
--- const word I2C_HARDWARE_TIMEOUT = 10_000  -- Timeout is al least 10 ms.
+-- Note that _i2c_bus_speed can be overruled by a user defined bus speed. 
+-- The range is depending on the target_clock. This is an optional setting:
+--   const I2C_USER_BUS_SPEED = 50_000 -- Bus speed is in Hz.
+-- 
+-- The use can define a timeout as to prevent a hangup in case something goes wrong.
+-- The timing is not exact but uses a reference of around 1 us as miniumum.
+-- This is an optional setting: 
+--    const word I2C_HARDWARE_TIMEOUT = 10_000  -- Timeout is al least 10 ms.
 --
 
 -- Aliases to support other PICs.
@@ -31,10 +34,11 @@ if (defined(PIE3_SSP1IE) == TRUE) then             -- PIE3/PIR3
 end if
 
 -- --------------------------------------------------------------------
--- some constants needed for the baudrate generator
+-- Some constants needed for the baudrate generator. 
+-- Can be overruled by I2C_USER_BUS_SPEED.
 -- --------------------------------------------------------------------
-const _i2c_slowest = 127                  -- (40 kHz @ 20 MHz Fosc)
-const _i2c_100khz  = target_clock /   100_000 / 4 - 1
+const _i2c_slowest = 127  -- (40 kHz @ 20 MHz Fosc)
+const _i2c_100khz  = target_clock /   100_000 / 4 - 1 -- (default)
 const _i2c_400khz  = target_clock /   400_000 / 4 - 1
 const _i2c_1mhz    = target_clock / 1_000_000 / 4 - 1
 -- --------------------------------------------------------------------
@@ -61,12 +65,16 @@ procedure i2c_initialize() is
    -- -----------------------------------------------------------------
 
    -- set correct speed
-   if    _i2c_bus_speed == 10 then sspadd = _i2c_1mhz
-   elsif _i2c_bus_speed ==  4 then sspadd = _i2c_400khz
-   elsif _i2c_bus_speed ==  1 then sspadd = _i2c_100khz
-   elsif _i2c_bus_speed ==  0 then sspadd = _i2c_slowest
-   else                            sspadd = _i2c_100khz      -- default
-   end if
+   if defined(I2C_USER_BUS_SPEED) then
+      sspadd =  byte(target_clock / I2C_USER_BUS_SPEED / 4) - 1
+   else
+      if    _i2c_bus_speed == 10 then sspadd = _i2c_1mhz
+      elsif _i2c_bus_speed ==  4 then sspadd = _i2c_400khz
+      elsif _i2c_bus_speed ==  1 then sspadd = _i2c_100khz
+      elsif _i2c_bus_speed ==  0 then sspadd = _i2c_slowest
+      else                            sspadd = _i2c_100khz      -- default
+      end if
+   end if 
 
    -- set correct level
    -- SMP-bit7 = 0, slew rate enabled, better for EMC

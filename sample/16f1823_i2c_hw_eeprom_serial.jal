@@ -1,5 +1,5 @@
 -- ----------------------------------------------------------------------------
--- Title: Test program for i2c_hardware.jal using an I2C EEPROM.
+-- Title: Sample program for i2c_hardware.jal using an I2C EEPROM.
 -- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
 -- Adapted-by: 
 -- Compiler: 2.5r8
@@ -7,15 +7,11 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 -- 
--- Description: Level 0 i2c test program using an i2c EEPROM with timeout.
---              When you disconnect one of the I2C pins, reading and writing will fail
---              but because of the use of the timeout, the I2C interface will not hang. 
---              The timeout can be set by defining the timeout constant as follows:
---              -) const word I2C_HARDWARE_TIMEOUT = 10_000 ; Timeout is al least 10 ms.
+-- Description: I2C sample program using an I2C EEPROM using various i2c library options.
+--              Library options used are: I2C_HARDWARE_TIMEOUT and I2C_USER_BUS_SPEED.
 --
 -- Sources: Datasheet Atmel AT24C32 2-wire serial EEPROM.
 -- 
-
 include 16f1823                 
 
 -- This program uses the internal oscillator at 32 MHz.
@@ -34,20 +30,23 @@ OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
 OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
 
 -- Enable weak pull up for all unused ports since some inputs are not connected
-WPUA = 0b0011_1111       -- Weak pull-up on all pins.
-WPUC = 0b0011_1111       -- Weak pull-up on all pins.
-OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+WPUA = 0b0011_1111                     -- Weak pull-up on all pins.
+WPUC = 0b0011_1111                     -- Weak pull-up on all pins.
+OPTION_REG_WPUEN = FALSE               -- Enable Weak Pull-Up
 
-enable_digital_io()      -- Don't forget this otherwise I2C will not work.
-
-_usec_delay(100_000)     -- allow hardware to stabilize
+enable_digital_io()                    -- Don't forget this otherwise I2C will not work.
+_usec_delay(100_000)                   -- allow hardware to stabilize
 
 -- I2C setup. IIC pins are already defined in the device file for this PIC.
-const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms.
-const word _i2c_bus_speed = 1 -- 100kHz
-const bit _i2c_level = TRUE   -- i2c levels (not SMB)
+-- See the library if you want define your own i2c pins (e.g when using PPS).
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
+const bit _i2c_level = TRUE              -- i2c levels (not SMB)
+-- Note that I2C_USER_BUS_SPEED is defined here as a variable here since we
+-- want to change the bus speed later. It is an optional setting and can 
+-- be a const if the user defned i2c bus speed is fixed, see i2c_harware.jal.
+var dword I2C_USER_BUS_SPEED = 100_000 -- Initial value at 100 kHz.
 include i2c_hardware
-i2c_initialize()
+-- We will initialize the i2c interface later with the new i2c bus speed.
 
 -- USART setup.
 alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
@@ -61,15 +60,36 @@ serial_hw_init()
 -- Constants.
 const byte EEPROM_SLAVE_ADDRESS = 0xAE -- Change when needed.
 const byte BYTES_TO_TRANSMIT = 10
+-- To demonstrate a variable I2C bus speed. Bus speeds are defined in Hz.
+-- During a test, data could not be written with a speed of 1 MHz but
+-- the I2C bus did not hang because of the use of the timeout. Without
+-- the use of the timeout the I2C bus would hang at 1 MHz i2c bus speed. 
+const dword IIC_BUS_SPEED[] = 
+      {50_000, 100_000, 400_000, 500_000, 750_000, 1_000_000}
 
 -- Variables.
-var byte counter, data
+var byte counter, data, speed_selection
 var bit all_ok
 
 -- Welcome.
 print_string(serial_hw_data, "I2C write/read test using an I2C EEPROM and timeout.\r\n")
 
+speed_selection = 0 -- First entry in the array, lowest bus speed.
+
 forever loop
+
+   -- Select a new bus IIC speed. This means re-initializing the IIC interface.
+   I2C_USER_BUS_SPEED = IIC_BUS_SPEED[speed_selection]
+   print_string(serial_hw_data, "Using an I2C bus speed of: ")
+   print_dword_dec(serial_hw_data, I2C_USER_BUS_SPEED)
+   print_crlf(serial_hw_data)
+   -- Reset to first speed if all done.
+   speed_selection = speed_selection + 1
+   if speed_selection == count(IIC_BUS_SPEED) then
+      speed_selection = 0
+   end if
+   -- Re-initialize the I2C interface with the selected bus speed.
+   i2c_initialize()
 
    -- Write the bytes to the first EEPROM address.
    i2c_start()
@@ -125,6 +145,6 @@ forever loop
    end if 
    print_crlf(serial_hw_data)
   
-   delay_1s(1)
+   delay_1s(2)
 
 end loop
