@@ -1,0 +1,432 @@
+-- Title: Sample and test program for the MCP23S08 8-bit I/O Expander.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample and test program showing how to use MCP23S08 8-Bit I/O Expander.
+--              This device is controlled via an SPI interface.
+--              For testing LEDs must be connected to each pin. The interrupt pin of the 
+--              MCP23S08 has to be connected to the INT pin of the PIC. Next to that the
+--              serial interface is used to show status and wait for a keypress.
+--              Four test can be enabled/disabled. The following tests can be run:
+--              -) Test the the port as output.
+--              -) Test the port as input, with and without pull-up resistors
+--              -) Test the the SPI hardware address, including disabling it
+--              -) Test the interrupt functionality
+--
+-- Sources: Microchip MCP23008/MCP23S08 8-bit I/O Expander with serial interface.
+--          Datasheet DS20001919F.
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+-- Enable weak pull up for all pins.
+WPUA = 0b0011_1111     
+WPUC = 0b0011_1111     
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+_usec_delay(100_000)
+
+; Setup uart for communication. 
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate  = 115200 
+include serial_hardware
+serial_hw_init()
+alias serial_data is serial_hw_data
+
+include print
+include delay
+
+-- Define the SPI pins and initiaize the pin direction.
+pin_C0_direction = output     -- SCK pin 10 to pin 1 of IC (SCK).
+pin_C1_direction = input      -- SDI pin  9 to pin 3 of IC (SO)
+pin_C2_direction = output     -- SDO pin  8 to pin 2 of IC (SI).
+alias mcp23s08_csn is pin_C3  -- Needed for library to control the CS pin.
+mcp23s08_csn = high
+pin_C3_direction = output     -- CS pin 7 to pin 7 of IC (CS). 
+
+-- Now include the used SPI interface.
+include spi_host_hw
+-- Set SPI mode 00 that is data is clocked on the rising edge. 
+-- When target_clock > 40 MHz use SPI_RATE_FOSC_16.
+spi_init(SPI_MODE_00, SPI_RATE_FOSC_4) 
+-- Define the interface alias for the MCP23S08.
+alias mcp23s08_spi_host is spi_host_hw
+-- Now include the library.
+include mcp23s08
+
+
+-- Variables.
+var byte data
+var bit external_interrupt, dummy
+
+-- Interrupt procedure. Interrupt is connected to external interrupt (INT). 
+-- We cannot read from the register in the interrupt routine so we set a flag.
+procedure mcp23s08_interrupt() is
+   pragma interrupt
+
+   if INTCON_INTF then
+      INTCON_INTF = FALSE
+      external_interrupt = TRUE
+   end if 
+
+end procedure
+
+-- Wait for a key pressed.
+function key_is_pressed() return bit is
+
+   var byte dummy
+   var bit pressed = FALSE
+
+   if serial_hw_data_available() then
+      -- Swallow all data while available.
+      while serial_hw_data_available() loop 
+         dummy = serial_data
+         delay_1ms(200) -- Time to receive more data.
+      end loop
+      pressed = TRUE
+   end if
+
+   return pressed
+
+end function
+
+procedure wait() is
+
+   delay_1ms(500)
+
+end procedure
+
+; Print the status of all individual input pins.
+procedure print_pin_status() is
+
+   if mcp23s08_pin0 then
+      print_string(serial_data, "Pin 0 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 0 is LOW.\r\n")
+   end if 
+    if mcp23s08_pin1 then
+      print_string(serial_data, "Pin 1 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 1 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin2 then
+      print_string(serial_data, "Pin 2 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 2 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin3 then
+      print_string(serial_data, "Pin 3 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 3 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin4 then
+      print_string(serial_data, "Pin 4 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 4 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin5 then
+      print_string(serial_data, "Pin 5 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 5 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin6 then
+      print_string(serial_data, "Pin 6 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 6 is LOW.\r\n")
+   end if 
+   if mcp23s08_pin7 then
+      print_string(serial_data, "Pin 7 is HIGH.\r\n")
+   else
+      print_string(serial_data, "Pin 7 is LOW.\r\n")
+   end if 
+   print_crlf(serial_data)
+end procedure
+
+-- Main program starts here. 
+
+-- Test definitions which can be enabled or disabled by commenting out the line.
+const TEST_1 = TRUE -- Testing pins as output with LEDs.
+const TEST_2 = TRUE -- Testing pins as input. 
+const TEST_3 = TRUE -- Testing the SPI hardware address.
+const TEST_4 = TRUE -- Testing the Interrupt.
+
+-- Enable external interrupt for testing.
+INTCON_INTE = TRUE
+INTCON_INTF = FALSE
+OPTION_REG_INTEDG = FALSE -- Falling edge.
+INTCON_GIE = TRUE
+
+print_crlf(serial_data)
+print_string(serial_data, "Test program for the MCP23S08.\r\n")
+
+forever  loop 
+ 
+   -- Initialize port.
+   mcp23s08_port_direction = ALL_OUTPUT
+   mcp23s08_port_polarity = ALL_DISABLED
+   mcp23s08_pull_up = ALL_DISABLED
+
+if defined(TEST_1) then
+   print_string(serial_data, "All LEDs set to output and put the LEDs on and off twice.\r\n")
+   -- Set the port value.
+   mcp23s08_port = 0x00
+   wait()
+   mcp23s08_port = 0xFF
+   wait()
+   mcp23s08_port = 0x00 
+   wait()
+
+   -- Set the latch value, same behavior as port.
+   mcp23s08_latch = 0x00
+   wait()
+   mcp23s08_latch = 0xFF
+   wait()
+   mcp23s08_latch = 0x00 
+   wait()
+
+   -- Set individual port pins.
+   print_string(serial_data, "Individual pins on.\r\n")
+   mcp23s08_pin0 = HIGH
+   wait()
+   mcp23s08_pin1 = HIGH
+   wait()
+   mcp23s08_pin2 = HIGH
+   wait()
+   mcp23s08_pin3 = HIGH
+   wait()
+   mcp23s08_pin4 = HIGH
+   wait()
+   mcp23s08_pin5 = HIGH
+   wait()
+   mcp23s08_pin6 = HIGH
+   wait()
+   mcp23s08_pin7 = HIGH
+   wait()
+
+   -- Reset individual latch pins, same behavior as port.
+   print_string(serial_data, "Individual pins off.\r\n")
+   mcp23s08_latch0 = LOW
+   wait()
+   mcp23s08_latch1 = LOW
+   wait()
+   mcp23s08_latch2 = LOW
+   wait()
+   mcp23s08_latch3 = LOW
+   wait()
+   mcp23s08_latch4 = LOW
+   wait()
+   mcp23s08_latch5 = LOW
+   wait()
+   mcp23s08_latch6 = LOW
+   wait()
+   mcp23s08_latch7 = LOW
+   wait()
+   print_crlf(serial_data)
+   print_crlf(serial_data)
+end if 
+
+if defined(TEST_2) then 
+   mcp23s08_port = 0xFF -- All LEDs will be on.
+   -- Set individual pins to input and read 8 times. LEDs will turn off.
+   mcp23s08_pin0_direction = INPUT
+   mcp23s08_pin1_direction = INPUT
+   mcp23s08_pin2_direction = INPUT
+   mcp23s08_pin3_direction = INPUT
+   mcp23s08_pin4_direction = INPUT
+   mcp23s08_pin5_direction = INPUT
+   mcp23s08_pin6_direction = INPUT
+   mcp23s08_pin7_direction = INPUT
+   -- Note that since inputs are floating, values also float.
+   while !key_is_pressed() loop
+      print_string(serial_data, "Individual pins set to input.\r\n")
+      print_string(serial_data, "Connect input to VCC or GND. Press any key to skip.\r\n")
+      print_string(serial_data, "Port value is: ")
+      print_byte_bin(serial_data, mcp23s08_port)
+      print_crlf(serial_data)
+      print_pin_status()
+      delay_1s(1)
+   end loop
+   print_crlf(serial_data)
+  
+   -- Set individual pins to pull-up. LEDs light up a little bit.
+   mcp23s08_pull_up0 = ENABLED
+   mcp23s08_pull_up1 = ENABLED
+   mcp23s08_pull_up2 = ENABLED
+   mcp23s08_pull_up3 = ENABLED
+   mcp23s08_pull_up4 = ENABLED
+   mcp23s08_pull_up5 = ENABLED
+   mcp23s08_pull_up6 = ENABLED
+   mcp23s08_pull_up7 = ENABLED
+   -- Now inputs should all be HIGH but if LEDs are connected this can differ.
+   while !key_is_pressed() loop
+      print_string(serial_data, "Enabling pull-up resistors. LEDs may light up a bit.\r\n")
+      print_string(serial_data, "Port pins can be random, depending on the LEDs connnected.\r\n")
+      print_string(serial_data, "Connect input to VCC or GND. Press any key to skip.\r\n")
+      print_string(serial_data, "Port value is: ")
+      print_byte_bin(serial_data, mcp23s08_port)
+      print_crlf(serial_data)
+      print_pin_status()
+      delay_1s(1)
+   end loop
+   print_crlf(serial_data)
+
+  -- Change input polarity of individual pins. A HIGH on the input will be shown as LOW.
+   mcp23s08_pull_up = ALL_DISABLED
+   mcp23s08_pin0_polarity = ENABLED
+   mcp23s08_pin1_polarity = ENABLED
+   mcp23s08_pin2_polarity = ENABLED
+   mcp23s08_pin3_polarity = ENABLED
+   mcp23s08_pin4_polarity = ENABLED
+   mcp23s08_pin5_polarity = ENABLED
+   mcp23s08_pin6_polarity = ENABLED
+   mcp23s08_pin7_polarity = ENABLED
+   while !key_is_pressed() loop
+      print_string(serial_data, "Changing input polarity to inverted (pull-up is disabled).\r\n")
+      print_string(serial_data, "Connect input to VCC or GND. Press any key to continue.\r\n")
+      print_string(serial_data, "Port value is: ")
+      print_byte_bin(serial_data, mcp23s08_port)
+      print_crlf(serial_data)
+      print_pin_status()
+      delay_1s(1)
+   end loop
+   -- Restore to non-inverted input.
+   mcp23s08_port_polarity = ALL_DISABLED
+   print_crlf(serial_data)
+end if 
+
+if defined(TEST_3) then
+  -- SPI hardware address tests. Initially (after power up) the hardware address is ignored.
+   mcp23s08_port_direction = ALL_OUTPUT
+   mcp23s08_port = 0x00 -- All LEDs off.
+   mcp23s08_disable_hardware_address() -- This is the default at power up.
+   print_string(serial_data, "At power up the SPI hardware address is disabled.\r\n")
+   print_string(serial_data, "Change one hardware address line on the chip and press any key.\r\n")
+   print_string(serial_data, "Pin 0 but be HIGH.\r\n")
+   while !key_is_pressed() loop end loop
+   mcp23s08_pin0 = HIGH
+   print_crlf(serial_data)
+
+   print_string(serial_data, "Restore the hardware address line on the chip.\r\n")
+   print_string(serial_data, "Now the SPI hardware address will enabled.\r\n")
+   print_string(serial_data, "Press an key and pin 1 must be HIGH.\r\n")
+   while !key_is_pressed() loop end loop
+   mcp23s08_enable_hardware_address() -- This only works if the hardware address is set to the SPI address.
+   mcp23s08_pin1 = HIGH
+   print_crlf(serial_data)
+
+   print_string(serial_data, "Change the hardware address line of the chip and press key pressed.\r\n")
+   print_string(serial_data, "Pin 2 must not be HIGH.\r\n")
+   while !key_is_pressed() loop end loop
+   mcp23s08_pin2 = HIGH -- This should not work since the hardware address differs from the SPI address.
+   print_crlf(serial_data)
+
+   print_string(serial_data, "Restore hardware address and press any key.\r\n")
+   print_string(serial_data, "Pin 3 will go HIGH.\r\n")
+   while !key_is_pressed() loop end loop
+   mcp23s08_disable_hardware_address() -- Can only be disabled when address is correct again!
+   mcp23s08_pin3 = HIGH
+   print_crlf(serial_data)
+end if
+
+if defined(TEST_4) then
+   -- Testing the interrupts.
+   print_string(serial_data, "First disconnect the LED on pin 0 and press any key.\r\n")
+   while !key_is_pressed() loop end loop
+   print_crlf(serial_data)
+   print_string(serial_data, "Setting Interrupt on change op pin 0.\r\n")
+   print_string(serial_data, "If pin 0 changes state (to LOW) pin 7 must go HIGH, pin 6 HIGH is error.\r\n")
+   print_string(serial_data, "When done press any key for next step.\r\n")
+   mcp23s08_port_direction = ALL_OUTPUT
+   mcp23s08_port = 0x00 -- All LEDs off.
+   mcp23s08_pin0_direction = INPUT 
+   mcp23s08_pull_up0 = ENABLED -- This will make the input pin high.
+   mcp23s08_set_interrupt_output_driving() -- Not open drain.
+   mcp23s08_set_interrupt_active_low()     -- Triggered on falling edge.
+   dummy = mcp23s08_pin0  -- Clear any pending interrupt on this pin.
+   external_interrupt = FALSE
+   mcp23s08_set_interrupt_control(0x00)          -- Interrupt on change compared to previous value.
+   mcp23s08_set_interrupt_on_change(0b0000_0001) -- Interrupt on change enabled for pin 0.
+   -- Wait for it.
+   while !external_interrupt loop end loop
+   -- It must be the interrupt generated by pin 0, if not we make pin 6 HIGH instead of pin 7.
+   if (mcp23s08_get_interrupt_flags() & 0b0000_0001) != 0 then
+      mcp23s08_pin7 = HIGH
+   else
+      mcp23s08_pin6 = HIGH
+   end if 
+   print_crlf(serial_data)
+
+   mcp23s08_set_interrupt_on_change(ALL_DISABLED) -- Disable the interrupt.
+   dummy = mcp23s08_pin0 -- Clear any pending interrupt.
+   while !key_is_pressed() loop end loop
+   print_string(serial_data, "First disconnect the LED on pin 1 and press any key.\r\n")
+   while !key_is_pressed() loop end loop
+   print_crlf(serial_data)
+   print_string(serial_data, "Setting interrupt compare on change op pin 1.\r\n")
+   print_string(serial_data, "If pin 1 is LOW (HIGH should not do anything) pin 6 must go HIGH, pin 5 HIGH is error.\r\n")
+   print_string(serial_data, "When done press any key for next step.\r\n")
+   mcp23s08_port = 0x00 -- All LEDs off.
+   mcp23s08_pin1_direction = INPUT 
+   mcp23s08_pull_up1 = ENABLED -- This will make the input high. 
+   dummy = mcp23s08_pin1 -- Clear any pending interrupt on pin 1.
+   external_interrupt = FALSE
+   mcp23s08_set_interrupt_compare_value(0b0000_0010) -- Compare pin with value 1. If it differs it will trigger the interrupt.
+   mcp23s08_set_interrupt_control(0b0000_0010)       -- Interrupt on compare for pin 1.
+   mcp23s08_set_interrupt_on_change(0b0000_0010)     -- Interrupt on change enabled for pin 1.
+   -- Wait for it.
+   while !external_interrupt loop end loop
+   -- It must be the interrupt generated by pin 1, if not we make pin 5 HIGH, instead of pin 6..
+   if (mcp23s08_get_interrupt_flags & 0b0000_0010) != 0 then
+      mcp23s08_pin6 = HIGH
+   else
+      mcp23s08_pin5 = HIGH
+   end if 
+   print_crlf(serial_data)
+
+   mcp23s08_set_interrupt_on_change(ALL_DISABLED) -- Disable the interrupt.
+   dummy = mcp23s08_pin1 -- Clear any pending interrupt.
+   while !key_is_pressed() loop end loop
+   print_string(serial_data, "Setting Interrupt compare value 1 on pin 1.\r\n")
+   print_string(serial_data, "If pin is 1 HIGH (which is the case due to pull-up) pin 5 must go HIGH immediately, pin 4 HIGH is error.\r\n")
+   print_string(serial_data, "Press any key for next step.\r\n")
+   mcp23s08_port = 0x00 -- All LEDs off.
+   external_interrupt = FALSE
+   mcp23s08_set_interrupt_compare_value(0b0000_0000) -- Compare pin with value 0.  If it differs it will trigger the interrupt.
+   mcp23s08_set_interrupt_on_change(0b0000_0010)     -- This will immediately trigger the interrupt since the pin is HIGH and the value is LOW.
+   while !external_interrupt loop end loop
+   -- It must be the interrupt generated by pin 0, if not we make pin 4 HIGH, instead of pin 5.
+   if (mcp23s08_get_interrupt_flags & 0b0000_0010) != 0 then
+      mcp23s08_pin5 = HIGH
+   else
+      mcp23s08_pin4 = HIGH
+   end if 
+   mcp23s08_set_interrupt_on_change(ALL_DISABLED) -- Disable the interrupt.
+   while !key_is_pressed() loop end loop
+   print_crlf(serial_data)
+end if 
+
+   print_string(serial_data, "All done. Restart test.\r\n")
+   print_crlf(serial_data)
+
+end loop

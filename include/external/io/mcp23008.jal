@@ -1,0 +1,1234 @@
+-- Title: Library functions for the MSP23008.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library functions for the MSP23008. The port and individual
+--              port bits are all accessed using pseudo variables. In this way
+--              accessing the pins is the same as accessing PIC IO pins. 
+--              The provided pin functions are (x = 0..7):
+--                  mcp23008_pinx_direction  using value INPUT/OUTPUT
+--                  mcp23008_pinx_polarty    using value ENABLED/DISABLED
+--                  mcp23008_pinx            using value HIGH/LOW
+--                  mcp23008_latchx          using value HIGH/LOW
+--                  mcp23008_pull_upx        using value ENABLED/DISABLED
+--               Port pseudo variables, activating all pins at once:
+--                  mcp23008_port_direction  Bits 0 = output, 1 = input
+--                  mcp23008_port_polarity   Bits 0 = normal, 1 = inverted
+--                  mcp23008_port            Bits 0 = LOW, 1 = HIGH
+--                  mcp23008_latch           Bits 0 = LOW, 1 = HIGH
+--                  mcp23008_pull_up         Bits 0 = DISABLED, 1 = ENABLED
+--               All other functions are provided via procedures and functions as
+--               described in the Public API section.
+--
+--              The default IIC address of 0x40 can be overruled by defining:
+--                 const byte MCP23008_IIC_ADDRESS = <address>
+--
+--              This pin must be set to output by the user.
+--
+-- Sources: Microchip MCP23008/MCP23008 8-bit I/O Expander with serial interface.
+--          Datasheet DS20001919F.
+--
+
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+ 
+-- Default IIC address if not defined by the user. Address is defined as:
+-- 0 1 0 0 A2 A1 A0 R/W (W = 0 is write which must be the default value).
+if !defined(MCP23008_IIC_ADDRESS) then
+   const byte MCP23008_IIC_ADDRESS = 0b0100_0000 -- A0..A2 to GND.
+end if 
+
+-- -------------------------- Public API ---------------------------------------
+
+-- The API for controlling the pin functionality is given in the description 
+-- using pseudo variables.
+
+-- Here only the additional procedures and functions are mentioned. 
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt polarity to active HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_active_high()
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt polarity to active LOW.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_active_low() 
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt output to open drain.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_output_open_drain() 
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt output to driving.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_output_driving() 
+
+-- -----------------------------------------------------------------------------
+-- Enable slew rate for SDA output.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_slew_rate() 
+
+-- -----------------------------------------------------------------------------
+-- Disable lew rate for SDA output.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_disable_slew_rate() 
+
+-- -----------------------------------------------------------------------------
+-- Set interrupt on change register. Bit set is ENABLE, bit clear is DISABLE.
+-- See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_on_change(byte in value)
+
+-- -----------------------------------------------------------------------------
+-- Set interrupt compare value. See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_compare_value(byte in value)
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt control value. See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_control(byte in value)
+
+-- -----------------------------------------------------------------------------
+-- Return the interrupt flags. See datasheet for details.
+-- -----------------------------------------------------------------------------
+function mcp23008_get_interrupt_flags() return byte
+
+-- -----------------------------------------------------------------------------
+-- Return the interrupt capture status. See datasheet for details.
+-- -----------------------------------------------------------------------------
+function mcp23008_get_interrupt_capture() return byte
+
+-- ---------------------------- Implementation ---------------------------------
+
+-- -------------- Private constants and function prototypes --------------------
+
+-- Configuration and control registers of the MCP23008/MCP23008 (MCP23x08).
+const byte _MCP23008_IODIR   = 0x00
+const byte _MCP23008_IPOL    = 0x01
+const byte _MCP23008_GPINTEN = 0x02
+const byte _MCP23008_DEFVAL  = 0x03
+const byte _MCP23008_INTCON  = 0x04
+const byte _MCP23008_IOCON   = 0x05
+const byte _MCP23008_GPPU    = 0x06
+const byte _MCP23008_INTF    = 0x07
+const byte _MCP23008_INTCAP  = 0x08 -- Read only.
+const byte _MCP23008_GPIO    = 0x09
+const byte _MCP23008_OLAT    = 0x0A
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the MCP23008 via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _mcp23008_read_data(byte in register) return byte
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the MCP23008 via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _mcp23008_write_data(byte in register, byte in data)
+
+-- -----------------------------------------------------------------------------
+-- Update the given bit (0..7) of the given register with the given bit value.
+-- -----------------------------------------------------------------------------
+procedure _mcp23008_update_register_bit(byte in register, byte in bit_number, 
+                                        bit in bit_value)
+
+-- -----------------------------------------------------------------------------
+-- Get the given bit (0..7) from the given register and return its value.
+-- -----------------------------------------------------------------------------
+function  _mcp23008_get_register_bit(byte in register, byte in bit_number) 
+                                     return bit
+
+-- ------------------------------- Final implemenation -------------------------
+
+-- Pin pseudo variables.
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 0. 
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin0_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 0, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 0. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin0_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 0)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 1. 
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin1_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 1, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 1. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin1_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 1)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 2.
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin2_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 2, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 2. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin2_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 2)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 3.
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin3_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 3, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 3. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin3_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 3)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 4.
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin4_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 4, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 4. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin4_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 4)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 5.
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin5_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 5, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 5. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin5_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 5)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 6.
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin6_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 6, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 6. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin6_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 6)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the pin direction of pin 7. 
+-- Direction TRUE equals INPUT, direction FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin7_direction'put(bit in direction) is
+
+   _mcp23008_update_register_bit(_MCP23008_IODIR, 7, direction)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the pin direction of pin 7. 
+-- Return value TRUE equals INPUT, FALSE equals OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin7_direction'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IODIR, 7)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the port direction.
+-- Direction with bits set are to INPUT, bits cleared are set to OUTPUT.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_port_direction'put(byte in direction) is
+
+   _mcp23008_write_data(_MCP23008_IODIR, direction)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the port direction. 
+-- Return value with bits set are INPUT, bits cleared are OUTPUT.
+-- -----------------------------------------------------------------------------
+function mcp23008_port_direction'get() return byte is
+
+   return _mcp23008_read_data(_MCP23008_IODIR)
+     
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 0. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin0_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 0, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 0. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin0_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 0)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 1. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin1_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 1, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 1. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin1_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 1)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 2. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin2_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 2, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 2. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin2_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 2)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 3. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin3_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 3, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 3. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin3_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 3)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 4. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin4_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 4, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 4. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin4_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 4)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 5.
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin5_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 5, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 5. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin5_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 5)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 6. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin6_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 6, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 6. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin6_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 6)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the input polarity of pin 7. 
+-- Polarity ENABLED (TRUE) is inverted, polarity DISABLED (FALSE) is normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin7_polarity'put(bit in polarity) is
+
+   _mcp23008_update_register_bit(_MCP23008_IPOL, 7, polarity)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the input polarity of pin 7. 
+-- Return value TRUE represents inverted, polarity FALSE represents normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin7_polarity'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_IPOL, 7)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the port input polarity.
+-- Polarity with bits set are inverted, bits cleared are normal.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_port_polarity'put(byte in polarity) is
+
+   _mcp23008_write_data(_MCP23008_IPOL, polarity)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the port polarity. 
+-- Return value with bits set are inverted, bits cleared are normal.
+-- -----------------------------------------------------------------------------
+function mcp23008_port_polarity'get() return byte is
+
+   return _mcp23008_read_data(_MCP23008_IPOL)
+     
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 0. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin0'put(bit in level) is
+
+   var byte data 
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 0, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 0.
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin0'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 0)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 1. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin1'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 1, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 1. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin1'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 1)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 2. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin2'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 2, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 2. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin2'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 2)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 3. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin3'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 3, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 3.
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin3'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 3)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 4. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin4'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 4, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 4. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin4'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 4)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 5. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin5'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 5, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 5. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin5'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 5)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 6.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin6'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 6, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 6. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin6'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 6)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of port pin 7. 
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pin7'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPIO, 7, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of port pin 7. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_pin7'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPIO, 7)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseuse variable to set the port value. 
+-- Value with bits set represents HIGH, bits cleared represents LOW.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_port'put(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_GPIO, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the port value.
+-- Return value with bits set represents HIGH, bits cleared represents LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_port'get() return byte  is
+
+   return _mcp23008_read_data(_MCP23008_GPIO)
+     
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 0.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch0'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 0, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 0. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch0'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 0)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 1.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch1'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 1, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 1. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch1'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 1)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 2.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch2'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 2, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 2. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch2'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 2)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 3.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch3'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 3, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 3. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch3'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 3)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 4.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch4'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 4, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 4. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch4'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 4)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 5.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch5'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 5, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 5. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch5'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 5)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 6.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch6'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 6, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 6. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch6'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 6)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the level of latch bit 7.
+-- Level FALSE represents LOW, TRUE represents HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch7'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_OLAT, 7, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the level of latch bit 7. 
+-- Return value TRUE represents level is HIGH, FALSE represents level is LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch7'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_OLAT, 7)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the latch value.  
+-- Value with bits set represents HIGH, bits cleared represents LOW.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_latch'put(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_OLAT, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the latch value. 
+-- Return value with bits set represents HIGH, bits cleared represents LOW.
+-- -----------------------------------------------------------------------------
+function mcp23008_latch'get() return byte is
+
+   return _mcp23008_read_data(_MCP23008_OLAT)
+     
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 0. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up0'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 0, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 0.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up0'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 0)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 1. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up1'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 1, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 1.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up1'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 1)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 2. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up2'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 2, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 2.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up2'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 2)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 3. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up3'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 3, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 3.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up3'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 3)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 4. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up4'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 4, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 4.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up4'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 4)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 5. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up5'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 5, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 5.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up5'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 5)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 6. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up6'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 6, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 6.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up6'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 6)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration of port pin 7. 
+-- Level TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up7'put(bit in level) is
+
+   _mcp23008_update_register_bit(_MCP23008_GPPU, 7, level)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration of port pin 7.
+-- Return value TRUE represents ENABLED, FALSE represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up7'get() return bit is
+
+   return _mcp23008_get_register_bit(_MCP23008_GPPU, 7)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to set the resistor pull-up configuration.
+-- Value with bits set represents ENABLED, bits cleared represents DISABLED.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_pull_up'put(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_GPPU, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the resistor pull-up configuration.
+-- Return value with bits set represents ENABLED, bits cleared represents DISABLED.
+-- -----------------------------------------------------------------------------
+function mcp23008_pull_up'get() return byte is
+
+   return _mcp23008_read_data(_MCP23008_GPPU)
+     
+end function
+
+-- Other procedures and functions.
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt polarity to active HIGH.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_active_high() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 1, TRUE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt polarity to active LOW.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_active_low() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 1, FALSE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt output to open drain.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_output_open_drain() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 2, TRUE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt output to driving.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_output_driving() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 2, FALSE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Enable slew rate for SDA output.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_slew_rate() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 4, TRUE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Disable lew rate for SDA output.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_disable_slew_rate() is
+
+   _mcp23008_update_register_bit(_MCP23008_IOCON, 4, FALSE)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set interrupt on change register. Bit set is ENABLE, bit clear is DISABLE.
+-- See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_on_change(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_GPINTEN, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set interrupt compare value. See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_compare_value(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_DEFVAL, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Set the interrupt control value. See datasheet for details.
+-- -----------------------------------------------------------------------------
+procedure mcp23008_set_interrupt_control(byte in value) is
+
+   _mcp23008_write_data(_MCP23008_INTCON, value)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Return the interrupt flags. See datasheet for details.
+-- -----------------------------------------------------------------------------
+function mcp23008_get_interrupt_flags() return byte is
+
+   return _mcp23008_read_data(_MCP23008_INTF)
+     
+end function
+
+-- -----------------------------------------------------------------------------
+-- Return the interrupt capture status. See datasheet for details.
+-- -----------------------------------------------------------------------------
+function mcp23008_get_interrupt_capture() return byte is
+
+   return _mcp23008_read_data(_MCP23008_INTCAP)
+     
+end function
+
+-- ----------------------------- Private functions -----------------------------
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the MCP23008 via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _mcp23008_read_data(byte in register) return byte is
+
+   var byte data
+   var bit dummy
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   dummy = i2c_transmit_byte(MCP23008_IIC_ADDRESS)
+   dummy = i2c_transmit_byte(register)
+   i2c_restart()
+   dummy = i2c_transmit_byte(MCP23008_IIC_ADDRESS | 0b0000_0001)
+   data = i2c_receive_byte(FALSE) -- Only one byte, so NACK.
+   i2c_stop()
+
+   return data
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the MCP23008 via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _mcp23008_write_data(byte in register, byte in data) is
+
+   var bit dummy
+
+   i2c_start()
+   dummy = i2c_transmit_byte(MCP23008_IIC_ADDRESS)
+   dummy = i2c_transmit_byte(register)
+   dummy = i2c_transmit_byte(data)
+   i2c_stop()
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Update the given bit (0..7) of the given register with the given bit value.
+-- -----------------------------------------------------------------------------
+procedure _mcp23008_update_register_bit(byte in register, byte in bit_number, 
+                                        bit in bit_value) is
+
+   var byte data
+   var byte selector = 0b0000_0001
+
+   for bit_number loop 
+      selector = selector << 1
+   end loop
+
+   data = _mcp23008_read_data(register)
+   if bit_value then
+      data = (data | selector)
+   else
+      data = (data & !selector)
+   end if 
+   _mcp23008_write_data(register, data)
+     
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Get the given bit (0..7) from the given register and return its value.
+-- -----------------------------------------------------------------------------
+function  _mcp23008_get_register_bit(byte in register, byte in bit_number) 
+                                     return bit is
+
+   var byte data
+   var byte selector = 0b0000_0001
+
+   for bit_number loop 
+      selector = selector << 1
+   end loop
+
+   data = _mcp23008_read_data(register)
+
+   return (data & selector) != 0
+
+end function
+
+
+
