@@ -2,16 +2,14 @@
 """
 Title: Create new pinmap.py from MPLABX.
 
-Author: Rob Hamerling, Copyright (c) 2009..2017. All rights reserved.
+Author: Rob Hamerling, Copyright (c) 2009..2024. All rights reserved.
 
 Adapted-by:
-
-Revision: $Revision$
 
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
    pinmap_create.py - create new pinmap.py from MPLABX.
@@ -38,7 +36,13 @@ Sources: N/A
 Notes: - Last checked for corrections/errors/omisions with MPLABX 4.05
          (but check may not be complete!).
 
-
+   Changes by RobH per 2024_04_xx
+    - introduced parallel processing of .pic files
+      for building a dictionary of pin names in the .pic files
+    - creation of new pinmap.py and pinalias.json directly
+      from pin names dictionary
+    - progress info reduced: only information messages shown,
+      all prepended by the appropriate picname
 """
 
 from pic2jal_environment import check_and_set_environment
@@ -48,26 +52,34 @@ if (base == ""):
 
 import os
 import sys
+import glob
 import re
 from xml.dom.minidom import parse, Node
-import shutil
-
-from pinmap import pinmap                                   # read current pinmap contents
-
-fpinmapnew  = os.path.join(base, "pinmap.py")               # in destination directory
-fpinaliases = os.path.join(base, "pinaliases.json")         #
+from concurrent import futures
 
 picdir     = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")   # place of .pic files
+#picdir = os.path.join("/", "media", "rob", "XS2000A",  "picdevices." + mplabxversion,
+#                "mplabx." + mplabxversion, "content", "edc")   # place of .pic files
+#print(f"Overridden by: {picdir}")
+
+# old pinmap (may have additional or overriding info)
+from pinmap import pinmap                                   # read current pinmap contents
+
+# place for intermediate results
+# tempbase    = os.path.join ("/", "media", "ram")            # temporary files
+
+# new files to be created
+fpinmapnew  = os.path.join(base, "pinmap.py")               # destination directory
+fpinaliases = os.path.join(base, "pinaliases.json")         #
 
 portpin    = re.compile(r"^R[A-L]{1}[0-7]{1}\Z")            # Rx0..7 (x in range A..L)
 gpiopin    = re.compile(r"^GP[0-5]{1}\Z")                   # GP0..5
-
 
 # aliases to be excluded when starting with one of the following strings:
 pinexcl = ("AVDD", "AVSS", "D+", "D-", "VDD", "VPP", "VSS",
            "ICD", "ICSP", "PGC", "PGD", "INT", "IOC")
 
-# ------------------------------
+
 def list_pic(fp, pic, alias):
    """ list all pins and their aliases of a single pic in dictionary alias
    """
@@ -85,15 +97,12 @@ def list_pic(fp, pic, alias):
    fp.write('   "' + pic + '": \n          {' + ', '.join(pl) + "\n          }")
 
 
-
-# -------------------------------------
 def create_pinmap_pic(picname, filepath):
    """ process a specific PIC (expect picname in upper case)
        Commented-out lines seem to be obsolete with MPLABX 4.01
        or may have been in error.
        These lines are preserved for later analysis
    """
-   print(picname)                                           # progress signal
 
    dom = parse(filepath)                                    # load .pic file
 
@@ -120,29 +129,29 @@ def create_pinmap_pic(picname, filepath):
             pass
          elif alias.startswith("RB") & picname.startswith("12"):   # 12F with PortB
             aliaslist.append("RA" + alias[-1])              # RBx -> RAx
-            print("  Renamed pin", alias, "to RA" + alias[-1])
+            print(picname, "  Renamed pin", alias, "to RA" + alias[-1])
             aliaslist.append("GP" + alias[-1])              # add GPx
-            print("  Added alias GP" + alias[-1])
+            print(picname, "  Added alias GP" + alias[-1])
 #         elif alias in("RB1AN10", "RC7AN9"):                # MPLABX errors
 #            aliaslist.append(alias[0:3])
 #            aliaslist.append(alias[3:])
-#            print("  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber)
+#            print(picname "  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber)
          elif (alias == "DAC1VREF+N"):                      # MPLABX typo(?)
             aliaslist.append("DAC1VREF+")
-            print("  Replaced", alias, "by DAC1VREF+ for pin", pinnumber)
+            print(picname, "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber)
          elif ( (picname in ("16F1707", "16LF1707")) &
                 (alias == "AN9") & (pinnumber == 8) ):
             aliaslist.append("AN8")
-            print("  Replaced alias", alias, "by AN8 for pin", pinnumber)
+            print(picname, "  Replaced alias", alias, "by AN8 for pin", pinnumber)
          elif ( (picname in ("18F2439", "18F2539", "18F4439", "18F4539")) &
                 (alias.startswith("PWM")) ):
             aliaslist.append(alias)
             if alias[-1] == "1":
                aliaslist.append("RC2")                      # MPLABX omission
-               print("  Added RC2 to pin", pinnumber)
+               print(picname, "  Added RC2 to pin", pinnumber)
             else:
                aliaslist.append("RC1")
-               print("  Added RC1 to pin", pinnumber)
+               print(picname, "  Added RC1 to pin", pinnumber)
          elif (not alias in aliaslist):                     # not a duplicate
             aliaslist.append(alias)                         # add normal alias!
 
@@ -150,25 +159,25 @@ def create_pinmap_pic(picname, filepath):
       if (picname in ("16LF1559")) & (pinnumber == 18):
          if not "AN1" in aliaslist:
             aliaslist.append("AN1")                         # missing in MPLABx 2.30
-            print("  Added missing alias AN1 to pin", pinnumber)
+            print(picname, "  Added missing alias AN1 to pin", pinnumber)
 #     elif (picname in ("16F1618", "16LF1618", "16F1619", "16LF1619")) & (pinnumber == 19):
 #        if not "AN0" in aliaslist:
 #           aliaslist.append("AN0")                         # missing in MPLABx 2.30
-#           print("  Added missing alias AN0 to pin", pinnumber)
+#           print(picname, "  Added missing alias AN0 to pin", pinnumber)
       elif (picname.startswith(("16F1919", "16LF1919")) &
            ("RF2" in aliaslist) & ("ANF1" in aliaslist) ) :
          aliaslist.remove("ANF1")
          aliaslist.append("ANF2")
-         print("  Replaced alias ANF1 by ANF2 for pin", pinnumber)
+         print(picname, "  Replaced alias ANF1 by ANF2 for pin", pinnumber)
 #     elif (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
 #        aliaslist = ["RE3"] + aliaslist                   # missing pin name
-#        print("  Added RE3 to pin", pinnumber)
+#        print(picname, "  Added RE3 to pin", pinnumber)
 #     elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):
 #        aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
-#        print("  Aliaslist of pin", pinnumber, "copied from old pinmap")
+#        print(picname, "  Aliaslist of pin", pinnumber, "copied from old pinmap")
 #     elif (picname in ("18F86J11", "18F86J16", "18F87J11"))  & (pinnumber == 55):
 #        aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
-#        print("  Aliaslist of pin", pinnumber, "copied from old pinmap")
+#        print(picname, "  Aliaslist of pin", pinnumber, "copied from old pinmap")
 
       portbit = None
       for alias in aliaslist:
@@ -184,34 +193,22 @@ def create_pinmap_pic(picname, filepath):
 
       if portbit != None:                                   # found Rxy or GPx
          if portbit in pinlist:
-            print("  Duplicate pin specification:", portbit, "pin", pinnumber, "skipped")
+            print(picname, "  Duplicate pin specification:", portbit, "pin", pinnumber, "skipped")
          else:
             pinlist[portbit] = aliaslist                    # add aliaslist this pin
 
    if len(pinlist) > 0:                                     # not empty
-      return pinlist                                        # new mapping
+      return (picname, pinlist)                               # new mapping
    elif pinmap.get(picname) != None:                        # present in old list
      print("  Pinlist missing in .pic file, entry copied from current pinmap")
-     return pinmap[picname]                                 # old mapping
+     return (picname, pinmap[picname])                        # old mapping
    else:
      print("  Pinlist missing, add it manually!")
-     return {}
+     return (None, None)
 
 
-# ---------------------
-def build_pinmap():
-   """ Create new pinmap.py, possibly used by other Jallib libaries
-   """
-   piccount = 0
-   pinmap = {}                                                 # new dictionary
-   for (root, dirs, files) in os.walk(picdir):                 # whole tree (incl subdirs!)
-      dirs.sort()
-      files.sort()                                             # for unsorted filesystems!
-      for file in files:
-         picname = os.path.splitext(file)[0][3:].upper()       # picname in upper case
-         pinmap[picname] = create_pinmap_pic(picname.upper(), os.path.join(root,file))
-         piccount = piccount + 1
-
+def build_pinmap_new(pinmap):
+   # Create new pinmap.py, possibly used by other Jallib libaries
    piclist = sorted(list(pinmap.keys()))                       # get list of keys
    try:
       with open(fpinmapnew, "w") as fp:
@@ -221,23 +218,17 @@ def build_pinmap():
             fp.write(",\n")
          list_pic(fp, piclist[-1], pinmap[piclist[-1]])        # last
          fp.write("\n}\n")
+      return len(piclist)
    except IOError:
-      print("   Failed to write:", fpinaliases)
+      print("   Failed to write:", fpinmapnew)
+      return 0
 
 
-   return piccount
-
-
-# ---------------------
-def build_pinaliases():
+def build_pinaliases(pinmap):
    """ Create new pinaliases.json for device files
        No duplicate aliases! Suffix added when multiple pins
        have the same alias (in case of PICs with APFCON or PPS)
    """
-   import imp
-   newpinfile = imp.load_source('pinmap', fpinmapnew)
-   pinmap = newpinfile.pinmap                                   # import newly created pinmap.py
-   print("PICs in pinmap", len(pinmap.items()))
    for pic,picpin in pinmap.items():
       pinaliases = {}
       for pin,aliases in picpin.items():
@@ -257,7 +248,6 @@ def build_pinaliases():
          if len(pins) > 1:                                     # duplicates
             for pin in pins:
                picpin[pin][picpin[pin].index(alias)] += "_%s" % pin
-
    # print aliasfile in a more compact format than with json.dump()
    piclist = sorted(list(pinmap.keys()))                         # get list of keys
    try:
@@ -268,25 +258,51 @@ def build_pinaliases():
             fp.write(",\n")
          list_pic(fp, piclist[-1], pinmap[piclist[-1]])           # last
          fp.write("\n}\n")
+         return len(piclist)
    except IOError:
       print("   Failed to write:", fpinaliases)
+      return 0
 
+
+def collect_pinmap():
+    # creates and returns a dictionary with pinmapping per PIC
+    to_do = []
+    print(f"Starting {os.cpu_count()} processes")
+    with futures.ProcessPoolExecutor() as executor:
+        for (root, dirs, files) in os.walk(picdir):             # whole tree (incl subdirs!)
+            dirs.sort()
+            files.sort()                                        # for unsorted filesystems!
+            for file in files:
+                picname = os.path.splitext(file)[0][3:].upper()
+                fs = executor.submit(create_pinmap_pic, picname, os.path.join(root, file))
+                to_do.append(fs)
+    # futures.wait(to_do, return_when=futures.ALL_COMPLETED)
+    pinmap = {}
+    for fs in futures.as_completed(to_do):
+        res = fs.result()               # key (picname) : value (pinmap dictionary)
+        pinmap[res[0]] = res[1]
+    return pinmap
 
 
 # ================ mainline =======================
 
 if (__name__ == "__main__"):
 
-   print("Building new pinmap from .pic files in", picdir)
-   piccount = build_pinmap()
-   if (piccount <= 0):
-      print("Could not create new pinmap file", fpinmapnew)
-      exit(1)
-   print("Generated pinmap", fpinmapnew, "for", piccount, "PICs")
+    print(f"Collecting Pin info")
+    pinmap = collect_pinmap()            # collect
 
-   print("Building new pin aliases file:", fpinaliases)
-   build_pinaliases()
+    print(f"Building new pinmap from .pic files in {picdir}")
+    if (pinmap_count := build_pinmap_new(pinmap)):
+        print(f"Generated {fpinmapnew} for {pinmap_count} PICs")
+    else:
+        print(f"Failed to create new pinmap file {fpinmapnew}")
+        exit(1)
 
+    print("Building new pin aliases file:", fpinaliases)
+    if (alias_count := build_pinaliases(pinmap)):
+        print(f"Generated {fpinaliases} for {alias_count} PICs")
+    else:
+        print(f"Failed to create new pinaliases file {fpinaliases}")
+        exit(1)
 
-
-
+#

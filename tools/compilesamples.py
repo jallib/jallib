@@ -3,14 +3,14 @@
 Title: Compile all Jallib samples
 
 Author: Rob Hamerling, Copyright (c) 2015..2017, all rights reserved.
+        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
 
-Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+Adapted-by: 
 
 Compiler: N/A
 
-This file is part of jallib  http://jallib.googlecode.com
-Released under the BSD license
-             http://www.opensource.org/licenses/bsd-license.php
+This file is part of jallib  https://github.com/jallib/jallib
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
   Python script to compile Jallib sample programs with new device files.
@@ -48,7 +48,7 @@ import fnmatch
 import shutil
 import platform
 
-scriptversion   = "0.0.4"
+scriptversion   = "1.0"
 scriptauthor    = "Rob Hamerling"
 
 platform_name = platform.system()
@@ -58,8 +58,7 @@ if (platform_name == "Linux"):
    jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
    compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
 elif (platform_name == "Windows"):
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")                   # local copy jallib master
-#   jallib   = os.path.join("D:\\", "GitHub_Copy", "jallib")             # local copy jallib master
+   jallib   = os.path.join("D:\\", "GitHub", "jallib")         # local copy jallib master
    compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
 elif (platform_name == "Darwin"):
    jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
@@ -72,7 +71,7 @@ else:
 smpdir  = os.path.join(jallib, "sample")                       # directory with Jallib samples
 incldir = os.path.join(jallib, "include")                      # Jallib include directory tree
 libdir  = os.path.join(base, "lib")                            # directory with collected libraries
-devdir  = os.path.join(base, "test")                           # directory with new device files
+devdir  = os.path.join(base, "device")                         # directory with new device files
 logdir  = os.path.join(base, "log")                            # log files
 
 if (os.path.exists(logdir) == False):
@@ -135,6 +134,7 @@ def prepare_queue():
    for file in files:
       if (fnmatch.fnmatch(file, "1*.jal") & (file.find("_blink_") < 0)):   # sample, not blink-a-led
          q.put(file)                                           # queue for compilation
+         print(file)
    return q.qsize()                                            # return number of queued samples
 
 

@@ -2,16 +2,15 @@
 """
 Title: Generate Jallib device files and blink-a-led samples.
 
-Author: Rob Hamerling, Copyright (c) 2017..2019, all rights reserved.
+Author: Rob Hamerling, Copyright (c) 2017..2024, all rights reserved.
+        Rob Jansen,    Copyright (c) 2020..2024, all rights reserved.
 
-Adapted-by: Rob Jansen
-
-Revision: $Revision$
+Adapted-by: 
 
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
    Run all scripts to create device files and blink samples,
@@ -22,6 +21,11 @@ Sources: N/A
 
 Notes:
    - See the file README.pic2jal for user instructions
+
+   Changes 2024-03-08
+   - replaced subprocess by popen method
+   - 'args' parameter in run_script() never used: removed
+
 
 """
 
@@ -49,30 +53,28 @@ except:
    python_exec = "python"                             # Python3 is probably default
 
 # -------------------------------
-def run_script(cmd, args=None):                       # args expected as list of arguments
-   """ Run a script as subprocess.
+def run_script(script):                               
+   """ Run a Python script as subprocess.
        Check result, when failing: log output and return False
        Always create log file for pic2jal and blink-a-led scripts
    """
-   if (not os.path.exists(cmd)):
-      print("Could not find script", cmd)
+   if (not os.path.exists(script)):
+      print("Could not find script", script)
       return False
-   cmdlist = [python_exec, cmd]
-   if (args != None):
-      cmdlist = cmdlist + args
-   print("Running:", " ".join(cmdlist), "...")
-   try:
-      log = subprocess.check_output(cmdlist, stderr=subprocess.STDOUT, universal_newlines=True, shell=False)
-      if (cmd in ("pic2jal.py", "blink-a-led.py")):   # logs desired for these scripts!
-         slog = os.path.join(base, os.path.splitext(cmd)[0] + ".log")
-         with open(slog, "w") as fp:
-            print(log, file=fp)                       # save script output
-   except subprocess.CalledProcessError as e:
-      slog = os.path.join(base, os.path.splitext(cmd)[0] + ".log")
-      with open(slog, "w") as fp:
-         print(e.output, file=fp)                     # save compiler output
-      print("   Failed, see", slog, "for details")
-      return False
+   cmdstring = f"{python_exec} {script}"
+   print(f"Running: {cmdstring} ...")
+   output = os.popen(cmdstring)                 # start process
+   loglist = output.readlines()                 # subprocess output: list of lines
+   if (((rc := output.close()) is not None) or           # in case of failure
+       (script in ("pic2jal.py", "blink-a-led.py"))):    # always a log desired
+      flog = os.path.join(base, script[:-2] + "log")     # build name for log file
+      with open(flog, "w") as fp:               # create log file
+         fp.write("".join(loglist))             # save output
+      if rc is not None:                        # script error(s)
+         print(f"{script} failed, returncode: {rc}") 
+         return False
+      else:
+         print(f"See logfile: {flog}")       
    print("   Successful!")
    return True
 
@@ -81,8 +83,7 @@ def run_script(cmd, args=None):                       # args expected as list of
 # --- E N T R Y  P O I N T ---
 # ----------------------------
 if (__name__ == "__main__"):
-   """ Start process
-   """
+   """ Start process """
 
    print("Generating JalV2 device files and blink-a-led samples")
 
@@ -91,7 +92,7 @@ if (__name__ == "__main__"):
       sys.stdout.write("==> WARNING! Found existing destination: " + base + "\n")
       sys.stdout.write("==>          Press 'Y' to discard all contents and continue: ")
       sys.stdout.flush()
-      if ("Y" != sys.stdin.readline().strip().upper()):    # check response
+      if "Y" != sys.stdin.readline().strip().upper():    # check response
          exit(99)                            # terminate to preserve destination
       else:
          shutil.rmtree(base)                 # start from scratch!
@@ -99,43 +100,39 @@ if (__name__ == "__main__"):
 
    # step 1
    # extract the required .pic files from MPLABX
-   if (run_script("mplabxtract.py") == False):
+   if run_script("mplabxtract.py") == False:
       exit(1)
 
    # step 2
    # Create human readable versions of .pic files
-   if (run_script("xmltree.py") == False):
+   if run_script("xmltree.py") == False:
       exit(2)
 
    # step 3
    # Create new pinmap.py and pinaliases.json files
-   if (run_script("pinmap_create.py") == False):
+   if run_script("pinmap_create.py") == False:
       exit(3)
 
    # step 4
    # copy required files for next step to destination
    print("Copying some files to", base)
    try:
-#      shutil.copy2("datasheet.list", base)
-      shutil.copy2("devicespecific.json", base)
+       shutil.copy2("devicespecific.json", base)
+#      shutil.copy2("../jallib/tools/devicespecific.json", base)    # RobH
    except:
       print("Failed to copy file(s) to", base)
       exit(4)
 
    # step 5
    # Create device files
-   if (run_script("pic2jal.py", args=["test"]) == False):
+   if run_script("pic2jal.py") == False:
       exit(5)
 
    # step 6
    # Verify device files and create, verify and compile blink-a-led samples
-   if (run_script("blink-a-led.py", args=["test"]) == False):
+   if (run_script("blink-a-led.py") == False):
       exit(6)
 
    print("\nAll done!\n")
 
-
-
-
-
-
+#

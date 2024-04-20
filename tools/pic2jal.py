@@ -2,8 +2,8 @@
 """
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
-Author: Rob Hamerling, Copyright (c) 2014..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
+Author: Rob Hamerling, Copyright (c) 2014..2024, all rights reserved.
+        Rob Jansen,    Copyright (c) 2020..2024, all rights reserved.
 
 Adapted-by:
 
@@ -43,6 +43,31 @@ Notes:
        pydoc3 -w pic2jal
 """
 
+""" 
+   Changes for multiprocessing
+   - removed runtype argument: runs now always as previous 'test' mode,
+     generated device files are created directly in 'dstdir',
+     (which is renamed to 'device')
+   - script version upgraded to 1.6.0
+   - Added 'futures' for multiprocessing
+   - First a list of all (selected) .PIC files and the 
+     chipdef_jallib.jal file are created. 
+     Since 'procid' is needed in chipdef_jallib.jal but the xml 
+     file is not yet scanned yet, procid is collected by a simple 
+     separate procedure which scans the raw xml file for edc:procid=.    
+   - The list of XML files is handed over to a (new) scheduling
+     procedure to create the device files in parallel depending on
+     the available processor cores.
+   - Because of multiprocessing the console log is not (always) showing
+     errors/warnings in sync with the device type. The messages  
+     should be prefixed with the PIC type. Probably best method is
+     by adding a log formatting procedure.
+   - on several places string formatting with: f"..." is introduced
+   - pinanmap removed, not used anymore (was required by ADC libraries)
+   - procedures read_devspec() and read_pinaliases() removed,
+     devspec and pinaliases are read at script import
+"""
+
 from pic2jal_environment import check_and_set_environment
 
 base, mplabxversion = check_and_set_environment()  # obtain environment variables
@@ -57,12 +82,12 @@ import re
 import shutil
 import time
 from xml.dom.minidom import parse, Node
+from concurrent import futures
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "1.5.5"     # script version
+scriptversion = "2.0"       # script version
 compilerversion = "2.5r8"   # latest JalV2 compiler version
-jallib_contribution = True  # True: for jallib, False: for private use
 
 # Additional file specifications
 # paths may have to be adapted to local environment
@@ -70,14 +95,21 @@ picdir = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")  # .pic
 pinaliasfile = os.path.join(base, "pinaliases.json")  # pin aliases
 devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties not in MPLABX
 
-# destination of device files depends on 1st commandline parameter
-
-# --- global variables
-cfgvar = {}  # collection of some PIC properties
-# (needed before creating device file)
+# needed before creating device file:
 devspec = {}  # contents of devicespecific.json
+with open(devspecfile, "r") as fp:              # 2024-03-xx RobH
+    devspec = json.load(fp)  # obtain contents 
+
 pinaliases = {}  # contents of pinaliases.py
-pinanmap = {}  # pin_ANx pins
+with open(pinaliasfile, "r") as fp:             # 2024-03-xx RobH
+    pinaliases = json.load(fp)  # obtain contents 
+
+dstdir = os.path.join(base, "device")  # destination of device files
+if not os.path.exists(dstdir):
+    os.makedirs(dstdir)             
+
+# --- global variables per individual device
+cfgvar = {}  # collection of some PIC properties
 sharedmem = []  # list if allocatable shared mem ranges
 sfr_mirrors = {}  # base address + mirror addresses if any
 names = []  # list of names of declared variables
@@ -481,11 +513,7 @@ def list_copyright(fp):
              "--\n" +
              "-- Compiler: " + compilerversion + "\n" +
              "--\n")
-    if (jallib_contribution == True):
-        fp.write("-- This file is part of jallib (https://github.com/jallib/jallib)\n")
-    else:
-        fp.write("-- This file is following Jallib-style (https://github.com/jallib/jallib)\n")
-
+    fp.write("-- This file is part of jallib (https://github.com/jallib/jallib)\n")
     fp.write("-- Released under the ZLIB license" +
              " (http://www.opensource.org/licenses/zlib-license.html)\n--\n")
 
@@ -497,18 +525,12 @@ def list_chipdef_header(fp):
    Returns: nothing
    """
     list_separator(fp)
-    if (jallib_contribution == True):
-        fp.write("-- Title: Common Jallib include file for device files\n")
-    else:
-        fp.write("-- Title: Common Jallib-style include file for device files\n")
+    fp.write("-- Title: Common Jallib include file for device files\n")
     list_copyright(fp)  # insert copyright and other info
     fp.write("-- Sources:\n" +
              "--\n" +
              "-- Description:\n")
-    if (jallib_contribution == True):
-        fp.write("--    Common Jallib include file for device files\n")
-    else:
-        fp.write("--    Common Jallib-style include file for device files\n")
+    fp.write("--    Common Jallib include file for device files\n")
     fp.write("--\n" +
              "-- Notes:\n" +
              "--    - This file is generated by <pic2jal.py> script version " + scriptversion + "\n" +
@@ -928,17 +950,17 @@ def list_sfr(fp, sfr):
 def list_sfr_subfield(fp, child, sfrname, offset):
     """ Generate declaration of a register subfield
 
-   Input:   - output file
-            - SFRDef child node
-            - SFR name
-            - field offset
-   Output:
-   Returns: offset next child
-   Notes:   - bitfield
-            - pin_A3 and pin_E3 are frequently MCLR pins and read only,
-              and then declared under PORTA/E, rather than LATA/E.
-            - some configuration info collected
-   """
+    Input:   - output file
+             - SFRDef child node
+             - SFR name
+             - field offset
+    Output:
+    Returns: offset next child
+    Notes:   - bitfield
+             - pin_A3 and pin_E3 are frequently MCLR pins and read only,
+               and then declared under PORTA/E, rather than LATA/E.
+             - some configuration info collected
+    """
     global cfgvar
     if (child.nodeType == Node.ELEMENT_NODE):
 
@@ -3431,8 +3453,6 @@ def collect_config_info(root, picname):
     cfgvar.clear()  # empty dict. of config variables
     pic = root.getElementsByTagName("edc:PIC")
     cfgvar["procid"] = eval(pic[0].getAttribute("edc:procid"))  # first (only) "PIC" node
-    if (runtype == "CHIPDEF"):
-        return  # nothing more needed for a chipdef run
     cfgvar["picname"] = picname
     cfgvar["adcs_bits"] = 0  # adcs bits in ANSEL/ANCON
     cfgvar["cmxcon0mask"] = "0000_0000"  # power on reset state
@@ -3718,7 +3738,6 @@ def load_fuse_defaults(root):
                 dcraddr = load_dcrdef_default(dcrdef, dcraddr)
 
 
-
 def load_dcrdef_default(dcrdef, addr):
     """ Load individual configuration byte/word
 
@@ -3738,39 +3757,7 @@ def load_dcrdef_default(dcrdef, addr):
     return addr
 
 
-def read_devspec_file():
-    """ Read devicespecific.json
-
-   Input:   (nothing, uses global variable 'devspec')
-   Output:  fills "devspec" dictionary
-   Returns: (nothing)
-   """
-    global devspec  # global variable
-    with open(devspecfile, "r") as fp:
-        devspec = json.load(fp)  # obtain contents devicespecific
-
-
-def read_pinaliases_file():
-    """ Read pinaliases file pinaliases.json
-
-   Input:   (nothing, uses global variable 'pinaliases')
-   Output:  fills "pinaliases" dictionary
-   Returns: (nothing)
-   """
-    global pinaliases  # global variable
-    global pinanmap
-    with open(pinaliasfile, "r") as fp:
-        pinaliases = json.load(fp)  # obtain contents devicespecific
-        pinanmap = {}  # with lists of ANx pin aliases per pic
-        for PICname in pinaliases:  # capitals!
-            pinanmap[PICname] = []
-            for pin in pinaliases[PICname]:
-                for alias in pinaliases[PICname][pin]:
-                    if (alias.startswith("AN") & (alias[2:].isdigit() | alias[3:].isdigit())):
-                        pinanmap[PICname].append(alias)
-
-
-def pic2jal(picfile, dstdir):
+def pic2jal(picfile):
     """ Convert a single MPLABX .pic file to a JalV2 device file
 
    Input:   - path of the .pic file
@@ -3790,8 +3777,7 @@ def pic2jal(picfile, dstdir):
 
     root = parse(picfile)  # load xml file
     collect_config_info(root, picname)  # first scan for selected info
-    if (runtype == "CHIPDEF"):
-        return
+
     with open(os.path.join(dstdir, picname + ".jal"), "w") as fp:  # device file to be built
         list_devicefile_header(fp, picfile)
         list_config_memory(fp)
@@ -3804,7 +3790,15 @@ def pic2jal(picfile, dstdir):
         fp.write("--\n")
 
 
-def generate_devicefiles(selection, dstdir):
+def create_device_file(devspec):
+    """ Create single device file """
+    picspec = os.path.split(devspec)[-1]                    # filename.ext
+    picname = os.path.splitext(picspec)[0][3:].lower()      # remove extension and 'pic' prefix
+    pic2jal(devspec)                                        # create device file from .pic file
+    return 1                                                # device file created    
+
+                                    
+def generate_devicefiles(selection):
     """ Main procedure.
    Process external configuration info
    Select .pic files to be processed (ic 8-bits flash PICs)
@@ -3823,14 +3817,29 @@ def generate_devicefiles(selection, dstdir):
         "16xxxx": "(Enhanced) Mid-Range (14-bits core)",
         "18xxxx": "High Performance Series (16-bits core)"
     }
-    read_devspec_file()  # PIC specific info #
-    read_pinaliases_file()  # pin aliases
+
+    def get_procid(picfile):
+        # obtain procid from xml file
+        procid = 0
+        # print(f"{picfile=}")
+        with open(picfile, "r") as fp:
+            while (ln := fp.readline()) != "": 
+                if (offset := ln.find("edc:procid=")) >= 0:
+                    items = ln[offset + 11 :].split()
+                    procid = eval(items[0].strip('"'))
+                    # print(f"{offset=} {procid=}")
+                    return procid    
+            else:
+                print("no procid found")
+                return 0
+
+    devs = []  # list of PIC files from which to build device file
+
     with open(os.path.join(dstdir, "chipdef_jallib.jal"), "w") as fp:  # common include for device files
         list_chipdef_header(fp)  # create header of chipdef file
-        devcount = 0
         for (root, dirs, files) in os.walk(picdir):  # whole tree (incl subdirs!)
             dirs.sort()  # sort on core type: 12-, 14-, 16-bit
-            if (os.path.split(root)[1] in list(typedir.keys())):  # directory with 8-bits pics
+            if os.path.split(root)[1] in typedir:  # directory with 8-bits pics
                 fp.write("--\n-- " + typedir[os.path.basename(root)] + "\n--\n")
                 files.sort()  # alphanumeric order
                 for file in files:
@@ -3840,10 +3849,10 @@ def generate_devicefiles(selection, dstdir):
                             if (picname.upper() in devspec):  # present in devicespecific
                                 picdata = devspec[picname.upper()]  # some properties of this PIC
                                 if (picdata.get("DATASHEET", "-") != "-"):  # must have datasheet
-                                    pic2jal(os.path.join(root, file), dstdir)  # create device file from .pic file
+                                    devs.append(os.path.join(root, file))   # add .pic file to list
+                                    procid = get_procid(os.path.join(root, file))
                                     fp.write("const  word  PIC_%-14s" % picname.upper() + \
-                                             " = 0x%X" % (cfgvar["procid"]) + "\n")
-                                    devcount = devcount + 1
+                                             " = 0x%X" % procid + "\n")
                                 else:
                                     print(picname, "   no datasheet!")
                             else:
@@ -3852,56 +3861,54 @@ def generate_devicefiles(selection, dstdir):
                             print("   ", picname, "temporarily(?) excluded!")
 
         fp.write("--\n")
-    return devcount
+
+    if len(devs) > 0:
+        devs.sort()                                 # alphanumeric order
+        # Start a number of parallel processes 
+        cpu_count = min(os.cpu_count(), len(devs))  # (max) parallel processes
+        print(f"Starting {cpu_count} processes")
+        with futures.ProcessPoolExecutor(max_workers=cpu_count) as processes:
+            fs = {processes.submit(create_device_file, dev) : dev for dev in devs}
+            futures.wait(fs, return_when=futures.ALL_COMPLETED)
+            return sum(f.result() for f in futures.as_completed(fs))
+    else:
+        print(f"No device files found matching {selection}")
+        return 0
+
 
 
 # === E N T R Y   P O I N T =============================================
 
 if (__name__ == "__main__"):
     """ Process commandline parameters, start process, clock execution
-   """
-
-    if (len(sys.argv) > 1):
-        runtype = sys.argv[1].upper()
-    else:
-        print("Specify at least PROD, TEST or CHIPDEF as first argument")
-        print("and optionally a pictype as second argument (wildcards allowed)")
+    """
+    if len(sys.argv) > 2:
+        print("Expecting maximum 1 argument: PIC selection (wildcards, e.g. '16F8*')")
+        print("When using wildcards, specify selection string between quotes")
+        print("or use the command 'set -f' to suppress wildcard expansion by the shell")
         sys.exit(1)
-
-    if (runtype == "PROD"):
-        print("PROD option temporary disabled")
-        sys.exit(1)
-    elif (runtype == "TEST"):
-        dstdir = os.path.join(base, "test")
-    elif (runtype == "CHIPDEF"):
-        dstdir = os.path.join(base, "test")
-        print("==> Only 'chipdef_jallib' will be created (in", dstdir, ")!")
-    else:
-        print("Specify PROD, TEST or CHIPDEF as first argument")
-        print("and optionally a PICtype as second argument (wildcards allowed)")
-        sys.exit(1)
-    if not os.path.exists(dstdir):
-        os.makedirs(dstdir)  # destination of device files
-
-    if (len(sys.argv) > 3):
-        print("Expecting not more than 2 arguments: runtype + selection")
-        sys.exit(1)
-    elif (len(sys.argv) > 2):
-        selection = sys.argv[2]
-        if (selection == "*"):  # special case
-            selection = "1*"  # replacement
-        elif selection.upper().startswith("PIC"):
-            selection = selection[3:]  # strip 'PIC' prefix
+    if len(sys.argv) > 1:
+        selection = sys.argv[1].lower()                 # device files: lower case names
     else:
         selection = "1*"
+    
+    
 
     if not os.path.exists(devspecfile):
         shutil.copyfile("devicespecific.json", devspecfile)
 
     print("   Pic2jal script version", scriptversion,
           "\n   Creating JalV2 device files with MPLABX version", mplabxversion)
-    elapsed = time.time()
-    count = generate_devicefiles(selection.lower(), dstdir)  # call real generation routine
-    elapsed = time.time() - elapsed
-    print("Generated %d device files in %.1f seconds (%.1f per second)" % \
-          (count, elapsed, count / elapsed))
+    start_time = time.time()
+
+    device_count = generate_devicefiles(selection.lower())  # call real generation routine
+
+    print(f"Generated {device_count} device files")
+    runtime = time.time() - start_time
+    print(f"Runtime: {runtime:.1f} seconds")
+    if runtime > 0:
+        print(f"        ({device_count/runtime:.2f} device files per second)")
+
+#
+
+

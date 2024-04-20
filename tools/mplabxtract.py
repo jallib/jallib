@@ -3,15 +3,14 @@
 Title: Collect .PIC files of JALV2 supported PICs
 
 Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
-
-Adapted-by: Rob Jansen, Copyright (c) 2018..2022, all rights reserved.
-
-Revision: $Revision$
+        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
+		
+Adapted-by: 
 
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
    Copy .PIC files of JALV2 supported PICs from MPLABX to working directory
