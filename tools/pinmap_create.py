@@ -43,6 +43,8 @@ Notes: - Last checked for corrections/errors/omisions with MPLABX 4.05
       from pin names dictionary
     - progress info reduced: only information messages shown,
       all prepended by the appropriate picname
+    - the mplabxtract script collects all .PIC files in
+        'mplabx'.mplabxversion (no subdirectories)
 """
 
 from pic2jal_environment import check_and_set_environment
@@ -57,16 +59,10 @@ import re
 from xml.dom.minidom import parse, Node
 from concurrent import futures
 
-picdir     = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")   # place of .pic files
-#picdir = os.path.join("/", "media", "rob", "XS2000A",  "picdevices." + mplabxversion,
-#                "mplabx." + mplabxversion, "content", "edc")   # place of .pic files
-#print(f"Overridden by: {picdir}")
+picdir     = os.path.join(base, "mplabx")                   # place of .pic files
 
 # old pinmap (may have additional or overriding info)
 from pinmap import pinmap                                   # read current pinmap contents
-
-# place for intermediate results
-# tempbase    = os.path.join ("/", "media", "ram")            # temporary files
 
 # new files to be created
 fpinmapnew  = os.path.join(base, "pinmap.py")               # destination directory
@@ -97,14 +93,15 @@ def list_pic(fp, pic, alias):
    fp.write('   "' + pic + '": \n          {' + ', '.join(pl) + "\n          }")
 
 
-def create_pinmap_pic(picname, filepath):
+def create_pinmap_pic(filepath):
    """ process a specific PIC (expect picname in upper case)
        Commented-out lines seem to be obsolete with MPLABX 4.01
        or may have been in error.
        These lines are preserved for later analysis
    """
 
-   dom = parse(filepath)                                    # load .pic file
+   picname = os.path.splitext(filepath)[0][3:].upper()      # remove prefix and .ext
+   dom = parse(os.path.join(picdir, filepath))              # load .pic file
 
    pinnumber = 0
    pinlist = {}                                             # new dictionary
@@ -170,7 +167,7 @@ def create_pinmap_pic(picname, filepath):
          aliaslist.append("ANF2")
          print(picname, "  Replaced alias ANF1 by ANF2 for pin", pinnumber)
 #     elif (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
-#        aliaslist = ["RE3"] + aliaslist                   # missing pin name
+#        aliaslist = ["RE3"] + aliaslist                    # missing pin name
 #        print(picname, "  Added RE3 to pin", pinnumber)
 #     elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):
 #        aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
@@ -198,10 +195,10 @@ def create_pinmap_pic(picname, filepath):
             pinlist[portbit] = aliaslist                    # add aliaslist this pin
 
    if len(pinlist) > 0:                                     # not empty
-      return (picname, pinlist)                               # new mapping
+      return (picname, pinlist)                             # new mapping
    elif pinmap.get(picname) != None:                        # present in old list
      print("  Pinlist missing in .pic file, entry copied from current pinmap")
-     return (picname, pinmap[picname])                        # old mapping
+     return (picname, pinmap[picname])                      # old mapping
    else:
      print("  Pinlist missing, add it manually!")
      return (None, None)
@@ -209,14 +206,14 @@ def create_pinmap_pic(picname, filepath):
 
 def build_pinmap_new(pinmap):
    # Create new pinmap.py, possibly used by other Jallib libaries
-   piclist = sorted(list(pinmap.keys()))                       # get list of keys
+   piclist = sorted(list(pinmap.keys()))                    # get list of keys
    try:
       with open(fpinmapnew, "w") as fp:
          fp.write("pinmap = {\n")
-         for i in range(len(piclist) - 1):                     # all but last
+         for i in range(len(piclist) - 1):                  # all but last
             list_pic(fp, piclist[i], pinmap[piclist[i]])
             fp.write(",\n")
-         list_pic(fp, piclist[-1], pinmap[piclist[-1]])        # last
+         list_pic(fp, piclist[-1], pinmap[piclist[-1]])     # last
          fp.write("\n}\n")
       return len(piclist)
    except IOError:
@@ -235,28 +232,28 @@ def build_pinaliases(pinmap):
          newpins = []
          for alias in aliases:
             if alias != pin:
-               if alias.endswith("-"):                         # ending
-                  alias = alias[:-1] + "_NEG"                  #  -  -->  _NEG
-               elif alias.endswith("+"):                       #
-                  alias = alias[:-1] + "_POS"                  #  +  -->  _POS
-               alias = alias.replace("+", "_POS_")             #
-               alias = alias.replace("-", "_NEG_")             #  embedded
+               if alias.endswith("-"):                      # ending
+                  alias = alias[:-1] + "_NEG"               #  -  -->  _NEG
+               elif alias.endswith("+"):                    #
+                  alias = alias[:-1] + "_POS"               #  +  -->  _POS
+               alias = alias.replace("+", "_POS_")          #
+               alias = alias.replace("-", "_NEG_")          #  embedded
                newpins.append(alias)
                pinaliases.setdefault(alias,[]).append(pin)
          picpin[pin] = newpins
       for alias,pins in pinaliases.items():
-         if len(pins) > 1:                                     # duplicates
+         if len(pins) > 1:                                  # duplicates
             for pin in pins:
                picpin[pin][picpin[pin].index(alias)] += "_%s" % pin
-   # print aliasfile in a more compact format than with json.dump()
-   piclist = sorted(list(pinmap.keys()))                         # get list of keys
+   # produce aliasfile in a more compact format than with json.dump()
+   piclist = sorted(list(pinmap.keys()))                    # get list of keys
    try:
       with open(fpinaliases, "w") as fp:
          fp.write("{\n")
-         for i in range(len(piclist) - 1):                        # all but last
+         for i in range(len(piclist) - 1):                  # all but last
             list_pic(fp, piclist[i], pinmap[piclist[i]])
             fp.write(",\n")
-         list_pic(fp, piclist[-1], pinmap[piclist[-1]])           # last
+         list_pic(fp, piclist[-1], pinmap[piclist[-1]])     # last
          fp.write("\n}\n")
          return len(piclist)
    except IOError:
@@ -266,22 +263,10 @@ def build_pinaliases(pinmap):
 
 def collect_pinmap():
     # creates and returns a dictionary with pinmapping per PIC
-    to_do = []
-    print(f"Starting {os.cpu_count()} processes")
+    picfiles = sorted(os.listdir(picdir))                   # all .PIC files
     with futures.ProcessPoolExecutor() as executor:
-        for (root, dirs, files) in os.walk(picdir):             # whole tree (incl subdirs!)
-            dirs.sort()
-            files.sort()                                        # for unsorted filesystems!
-            for file in files:
-                picname = os.path.splitext(file)[0][3:].upper()
-                fs = executor.submit(create_pinmap_pic, picname, os.path.join(root, file))
-                to_do.append(fs)
-    # futures.wait(to_do, return_when=futures.ALL_COMPLETED)
-    pinmap = {}
-    for fs in futures.as_completed(to_do):
-        res = fs.result()               # key (picname) : value (pinmap dictionary)
-        pinmap[res[0]] = res[1]
-    return pinmap
+        results = executor.map(create_pinmap_pic, picfiles)
+    return {r[0] : r[1] for r in results}
 
 
 # ================ mainline =======================

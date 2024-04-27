@@ -22,7 +22,7 @@ Sources: N/A
 Notes:
    - See the file README.pic2jal for user instructions
 
-   Changes 2024-03-08
+   Changes 2024-04-xx
    - replaced subprocess by popen method
    - 'args' parameter in run_script() never used: removed
 
@@ -36,6 +36,7 @@ if ((base == "") | (mplabxversion == "")):
 
 import sys
 import os
+import time
 import subprocess
 import shutil
 
@@ -53,7 +54,7 @@ except:
    python_exec = "python"                             # Python3 is probably default
 
 # -------------------------------
-def run_script(script):                               
+def run_script(script):
    """ Run a Python script as subprocess.
        Check result, when failing: log output and return False
        Always create log file for pic2jal and blink-a-led scripts
@@ -71,10 +72,10 @@ def run_script(script):
       with open(flog, "w") as fp:               # create log file
          fp.write("".join(loglist))             # save output
       if rc is not None:                        # script error(s)
-         print(f"{script} failed, returncode: {rc}") 
+         print(f"{script} failed, returncode: {rc}")
          return False
       else:
-         print(f"See logfile: {flog}")       
+         print(f"See logfile: {flog}")
    print("   Successful!")
    return True
 
@@ -86,6 +87,8 @@ if (__name__ == "__main__"):
    """ Start process """
 
    print("Generating JalV2 device files and blink-a-led samples")
+
+   start_time = time.time()                  #
 
    # prepare
    if os.path.exists(base):                  # old base
@@ -115,12 +118,11 @@ if (__name__ == "__main__"):
 
    # step 4
    # copy required files for next step to destination
-   print("Copying some files to", base)
+   print("Copying required files(s) to", base)
    try:
        shutil.copy2("devicespecific.json", base)
-#      shutil.copy2("../jallib/tools/devicespecific.json", base)    # RobH
    except:
-      print("Failed to copy file(s) to", base)
+      print("Failed to copy required file(s) to", base)
       exit(4)
 
    # step 5
@@ -134,5 +136,6 @@ if (__name__ == "__main__"):
       exit(6)
 
    print("\nAll done!\n")
+   print(f"Total time: {time.time() - start_time : .1f} seconds")
 
 #

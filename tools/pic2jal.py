@@ -43,29 +43,29 @@ Notes:
        pydoc3 -w pic2jal
 """
 
-""" 
-   Changes for multiprocessing
+"""
+   Changes ff 2024-04-xx (multiprocessing and other)
    - removed runtype argument: runs now always as previous 'test' mode,
      generated device files are created directly in 'dstdir',
      (which is renamed to 'device')
    - script version upgraded to 1.6.0
    - Added 'futures' for multiprocessing
-   - First a list of all (selected) .PIC files and the 
-     chipdef_jallib.jal file are created. 
-     Since 'procid' is needed in chipdef_jallib.jal but the xml 
-     file is not yet scanned yet, procid is collected by a simple 
-     separate procedure which scans the raw xml file for edc:procid=.    
+   - First a list of all (selected) .PIC files and the
+     chipdef_jallib.jal file are created.
+     Since 'procid' is needed in chipdef_jallib.jal but the xml
+     file is not yet scanned yet, procid is collected by a simple
+     separate procedure which scans the raw xml file for edc:procid=.
    - The list of XML files is handed over to a (new) scheduling
      procedure to create the device files in parallel depending on
      the available processor cores.
-   - Because of multiprocessing the console log is not (always) showing
-     errors/warnings in sync with the device type. The messages  
-     should be prefixed with the PIC type. Probably best method is
-     by adding a log formatting procedure.
    - on several places string formatting with: f"..." is introduced
    - pinanmap removed, not used anymore (was required by ADC libraries)
    - procedures read_devspec() and read_pinaliases() removed,
      devspec and pinaliases are read at script import
+   - the mplabxtract script collects all .PIC files in
+        'mplabx'.mplabxversion (no subdirectories)
+     the generate_devicefiles() procedure changed accordingly
+
 """
 
 from pic2jal_environment import check_and_set_environment
@@ -91,7 +91,7 @@ compilerversion = "2.5r8"   # latest JalV2 compiler version
 
 # Additional file specifications
 # paths may have to be adapted to local environment
-picdir = os.path.join(base, "mplabx." + mplabxversion, "content", "edc")  # .pic files
+picdir = os.path.join(base, "mplabx")
 pinaliasfile = os.path.join(base, "pinaliases.json")  # pin aliases
 devspecfile = os.path.join(base, "devicespecific.json")  # some PIC properties not in MPLABX
 
@@ -102,11 +102,11 @@ with open(devspecfile, "r") as fp:              # 2024-03-xx RobH
 
 pinaliases = {}  # contents of pinaliases.py
 with open(pinaliasfile, "r") as fp:             # 2024-03-xx RobH
-    pinaliases = json.load(fp)  # obtain contents 
+    pinaliases = json.load(fp)  # obtain contents
 
 dstdir = os.path.join(base, "device")  # destination of device files
 if not os.path.exists(dstdir):
-    os.makedirs(dstdir)             
+    os.makedirs(dstdir)
 
 # --- global variables per individual device
 cfgvar = {}  # collection of some PIC properties
@@ -3795,9 +3795,9 @@ def create_device_file(devspec):
     picspec = os.path.split(devspec)[-1]                    # filename.ext
     picname = os.path.splitext(picspec)[0][3:].lower()      # remove extension and 'pic' prefix
     pic2jal(devspec)                                        # create device file from .pic file
-    return 1                                                # device file created    
+    return 1                                                # device file created
 
-                                    
+
 def generate_devicefiles(selection):
     """ Main procedure.
    Process external configuration info
@@ -3821,14 +3821,12 @@ def generate_devicefiles(selection):
     def get_procid(picfile):
         # obtain procid from xml file
         procid = 0
-        # print(f"{picfile=}")
         with open(picfile, "r") as fp:
-            while (ln := fp.readline()) != "": 
+            while (ln := fp.readline()) != "":
                 if (offset := ln.find("edc:procid=")) >= 0:
                     items = ln[offset + 11 :].split()
                     procid = eval(items[0].strip('"'))
-                    # print(f"{offset=} {procid=}")
-                    return procid    
+                    return procid
             else:
                 print("no procid found")
                 return 0
@@ -3837,26 +3835,17 @@ def generate_devicefiles(selection):
 
     with open(os.path.join(dstdir, "chipdef_jallib.jal"), "w") as fp:  # common include for device files
         list_chipdef_header(fp)  # create header of chipdef file
-        for (root, dirs, files) in os.walk(picdir):  # whole tree (incl subdirs!)
-            dirs.sort()  # sort on core type: 12-, 14-, 16-bit
-            if os.path.split(root)[1] in typedir:  # directory with 8-bits pics
-                fp.write("--\n-- " + typedir[os.path.basename(root)] + "\n--\n")
-                files.sort()  # alphanumeric order
-                for file in files:
-                    picname = os.path.splitext(file)[0][3:].lower()  # determine lowercase picname from filename
-                    if fnmatch.fnmatch(picname, selection):  # selection by user wildcard
-                        if (picname not in l_tempexcl):  # not temporary excluded
-                            if (picname.upper() in devspec):  # present in devicespecific
-                                picdata = devspec[picname.upper()]  # some properties of this PIC
-                                if (picdata.get("DATASHEET", "-") != "-"):  # must have datasheet
-                                    devs.append(os.path.join(root, file))   # add .pic file to list
-                                    procid = get_procid(os.path.join(root, file))
-                                    fp.write("const  word  PIC_%-14s" % picname.upper() + \
-                                             " = 0x%X" % procid + "\n")
-                                else:
-                                    print(picname, "   no datasheet!")
-                            else:
-                                print(picname, "   not present in", devspecfile)  # sound a bell!
+        for file in sorted(os.listdir(picdir)):
+            picname = os.path.splitext(file)[0][3:].lower()  # determine lowercase picname from filename
+            if fnmatch.fnmatch(picname, selection):  # selection by user wildcard
+                if (picname not in l_tempexcl):  # not temporary excluded
+                    if (picname.upper() in devspec):  # present in devicespecific
+                        picdata = devspec[picname.upper()]  # some properties of this PIC
+                        if (picdata.get("DATASHEET", "-") != "-"):  # must have datasheet
+                            devs.append(os.path.join(picdir, file))   # add .pic file to list
+                            procid = get_procid(os.path.join(picdir, file))
+                            fp.write("const  word  PIC_%-14s" % picname.upper() + \
+                                     " = 0x%X" % procid + "\n")
                         else:
                             print("   ", picname, "temporarily(?) excluded!")
 
@@ -3864,13 +3853,10 @@ def generate_devicefiles(selection):
 
     if len(devs) > 0:
         devs.sort()                                 # alphanumeric order
-        # Start a number of parallel processes 
-        cpu_count = min(os.cpu_count(), len(devs))  # (max) parallel processes
-        print(f"Starting {cpu_count} processes")
-        with futures.ProcessPoolExecutor(max_workers=cpu_count) as processes:
-            fs = {processes.submit(create_device_file, dev) : dev for dev in devs}
-            futures.wait(fs, return_when=futures.ALL_COMPLETED)
-            return sum(f.result() for f in futures.as_completed(fs))
+        # Start a number of parallel processes
+        with futures.ProcessPoolExecutor() as executor:
+            results = executor.map(create_device_file, devs)
+            return sum(results)
     else:
         print(f"No device files found matching {selection}")
         return 0
@@ -3891,8 +3877,6 @@ if (__name__ == "__main__"):
         selection = sys.argv[1].lower()                 # device files: lower case names
     else:
         selection = "1*"
-    
-    
 
     if not os.path.exists(devspecfile):
         shutil.copyfile("devicespecific.json", devspecfile)
@@ -3910,5 +3894,3 @@ if (__name__ == "__main__"):
         print(f"        ({device_count/runtime:.2f} device files per second)")
 
 #
-
-

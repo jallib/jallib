@@ -24,9 +24,9 @@
 
   Sources:
 
-  Version: 0.8
+  Version: 0.8 dd 2024-04-xx
    - runtype selection (PROD / TEST) removed (test mode only left)
-   - validation script: import of 'jallib' and direct invocation 
+   - validation script: import of 'jallib' and direct invocation
      (not called in a subprocess qwith Python)
    - devspec contents loaded at import time (no more 'global')
      all other globals (var, fusedef) passed as procedure arguments
@@ -39,16 +39,16 @@
    - some minor changes, cleanup, optimisations, harminisation, like:
       - check for PGM pin incorporated in search for blink pin
       - validation log (with validation errors): 'pgmname.jal.vlog'
-      - compiler log (with compile errors/warnings): 'pgmname.jal.log' 
+      - compiler log (with compile errors/warnings): 'pgmname.jal.log'
       - 'haspgmpin' moved into 'var' dictionary
-      - use of formatted strings (f"...")   
-      
+      - use of format strings (f"...")
+
 
   Notes:
-   - One of more blink-a-led sample is generated for every device file:
+   - One or more blink-a-led samples are generated for every device file:
      a HS sample if possible and INTOSC sample if possible
    - For PICs with USB support a sample is generated using HS_USB.
-   - The generation of samples can be limited to a subset by 
+   - The generation of samples can be limited to a subset by
      supplying (part of a) PIC type (with wildcards, e.g.: "16f8*").
 
 """
@@ -65,12 +65,12 @@ import time
 import glob
 import json
 import platform
-
 from concurrent import futures
 
-import jallib3 
+import jallib3                                  # Python 3 version
 
-# --- basic working parameters
+# global constants
+
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
 CompilerVersion = "2.5r8"   # latest JalV2 compiler version
 scriptversion = "2.0"       # script version
@@ -78,7 +78,7 @@ scriptversion = "2.0"       # script version
 platform_name = platform.system()
 # specification of system dependent compiler executable
 if platform_name == "Linux":
-   compiler = os.path.join("/", "home", "rob", "jallib", "compiler", "jalv2-x86-64")
+   compiler = os.path.join("/", "home", "rob", "jalv2compiler", "bin", "jalv2-x86-64")
 elif platform_name == "Windows":
    compiler = os.path.join(os.getcwd(), "jalv2.exe")
 elif platform_name == "Darwin":
@@ -98,9 +98,9 @@ with open(devspecfile, "r") as fp:
 
 def scan_devfile(devfile):
    """ Scan device file for selected device info """
-  
+
    var = {"ircfwidth" : 0}                      # new, default width OSCCON_IRCF
-   fusedef = {}                                 # new 
+   fusedef = {}                                 # new
 
    def collect_fusedef(fp):
       """ Scan (part of) device file for keywords of current fusedef """
@@ -196,7 +196,7 @@ def scan_devfile(devfile):
                elif ln.find(" OSCCON1_NDIV ") >= 0:
                   var["osccon1_ndiv"] = True
                elif ln.find(" OSCTUNE_PLLEN ") >= 0:
-                  var["osctune_pllen"] = True        
+                  var["osctune_pllen"] = True
    return var, fusedef
 
 
@@ -214,7 +214,7 @@ def find_blinkpin(devfile, var):
             if (pinpq := f" pin_{p}{q} ") in fstr:    # 'isolated' pin declaration
                pinpq = pinpq.strip()                  # strip leading, trailing blanks
                # print(f"{pinpq=} pindir: < {pinpq}_direction>", fstr.find(f" {pinpq}_direction"))
-               if (pinpq_dir := f" {pinpq}_direction") in fstr:  # pin direction 
+               if (pinpq_dir := f" {pinpq}_direction") in fstr:  # pin direction
                   return pinpq                        # use this pin for LED
                else:                                  # no TRIS-bit found
                   # print(f"   {devfile} Found {pinpq} but no {pinpq_dir}, skipped")
@@ -235,8 +235,8 @@ def validate_jalfile(jalfile):
       if not (len(loglist[0]) == 0 and len(loglist[1]) == 0):
          with open(vlog, "w") as fp:                  # create log
             if len(loglist[0]) > 0:
-               fp.write(f"[{loglist[0]}]")    
-            if len(loglist[1]) > 0:         
+               fp.write(f"[{loglist[0]}]")
+            if len(loglist[1]) > 0:
                fp.write(f"[{oglist[1]}]]")
          print(f"Validation of {jalfile} failed,\n   see: {vlog}")
          return False
@@ -244,23 +244,22 @@ def validate_jalfile(jalfile):
          # print(f"Validation of {jalfile} succeeded!")
          return True
    except Exception as e:
-      print(f"Validation of {jalfile} failed:\n  {e}")  
+      print(f"Validation of {jalfile} failed:\n  {e}")
       return False
    return True
 
-   
+
 def compile_sample(pgmname):
    """ Compile sample program and check the result
        Return 0 if compilation with no errors or warnings
        otherwise return result code and create .log file
-   """  
-   cmd = f"{compiler} -no-asm -no-hex -no-codfile -s {devdir} {os.path.join(dstdir,pgmname)}"    
-   # print(cmd)
-   flog = os.path.join(dstdir, pgmname + ".log")      # compiler output report 
-   if os.path.exists(flog):                           
+   """
+   cmd = f"{compiler} -no-asm -no-hex -no-codfile -s {devdir} {os.path.join(dstdir,pgmname)}"
+   flog = os.path.join(dstdir, pgmname + ".log")      # compiler output report
+   if os.path.exists(flog):
       os.remove(flog)
    try:
-      output = os.popen(cmd)                          # with full command string 
+      output = os.popen(cmd)                          # with full command string
       loglist = output.readlines()                    # list of output lines
       if (rc := output.close()) is not None:          # in case of failure
          with open(flog, "w") as fp:                  # create log
@@ -271,13 +270,11 @@ def compile_sample(pgmname):
             warnings = int(lastlist[2])
             print(f"Compilation of {pgmname} failed: {errors=} {warnings=}; ")
             print(f"   {rc=} see: {flog}")
-         compiletime[pgmname] = time.perf_counter() - compilestart
          return rc
       else:                                           # compilation succeeded
-         # print(f"   Compilation of {pgmname} succeeded")
          return 0
    except Exception as e:
-      print(f"Compilation of {pgmname} failed:", e)  
+      print(f"Compilation of {pgmname} failed:", e)
       return 1
    return 0
 
@@ -287,7 +284,7 @@ def build_sample(pic, pin, osctype, oscword, fusedef, var):
        Type of oscillator determines contents.
        Returns source file program name if successful, None if not
    """
-   if osctype in ("HS","INTOSC", "HS_USB", "INTOSC_USB"):
+   if osctype in ("HS", "INTOSC", "HS_USB", "INTOSC_USB"):
       pgmname = pic + "_blink_" + osctype.lower()
    elif osctype in ("HS_32MHZ"):
       pgmname = pic + "_blink_hs"  # Newer PICs have HS_xxMHZ like the PIC18F16Q20
@@ -295,8 +292,7 @@ def build_sample(pic, pin, osctype, oscword, fusedef, var):
       print("   Unrecognized oscillator type:", osctype)
       return None
 
-   # picdata = dict(list(devspec[pic.upper()].items()))  # pic specific info
-   picdata = devspec.get(pic.upper(), {})                # pic specific info 
+   picdata = devspec.get(pic.upper(), {})             # pic specific info
 
    # No 4 MHz INTOSC for some PICs indicated by mentioning the OSCCON_IRCF in devicespecific.json but
    # without a value ("-").
@@ -315,7 +311,7 @@ def build_sample(pic, pin, osctype, oscword, fusedef, var):
          if kwd in fusedef[fuse]:
             fp.write("pragma target %-8s %-25s " % (fuse.upper(), kwd) + "-- " + cmt + "\n")
 
-   pgmname = pgmname + ".jal"                      # add jal extension
+   pgmname = pgmname + ".jal"                         # add jal extension
    with open(os.path.join(dstdir, pgmname),  "w") as fp:
       fp.write("-- ------------------------------------------------------\n")
       fp.write("-- Title: Blink-a-led of the Microchip pic" + pic + "\n")
@@ -537,7 +533,7 @@ def build_validate_compile_sample(pic, blink_pin, osctype, oscword, fusedef, var
    return True                                     # Everythng OK
 
 def main(dev):
-   """ Create one or more blink-a-led samples for this device file 
+   """ Create one or more blink-a-led samples for this device file
        Return the number of error-free samples
    """
    def create_sample(dev, osctype, oscword):
@@ -576,9 +572,9 @@ def main(dev):
          # The USB variant.
          if ("HS_PLL" in fusedef["osc"]) & ("usb_bdt" in var):
             if build_validate_compile_sample(picname, blink_pin, "HS_USB", "HS_PLL", fusedef, var):
-               counter += 1     
+               counter += 1
       return counter
-   
+
    jalfile = os.path.join(devdir, dev)
    if not validate_jalfile(jalfile):               # device file does not validate
       return 0
@@ -628,7 +624,7 @@ def main(dev):
       print("   Could not create a blink-a-led sample for", dev)
       return 0                                     # skip this PIC
 
-   return sample_count
+   return sample_count                             # number of generated samples
 
 
 
@@ -648,28 +644,24 @@ if __name__ == "__main__":
    else:
       selection = "1*"
    if not selection.endswith(".jal"):
-      selection += ".jal"                             # only .jal files 
+      selection += ".jal"                             # only .jal files
 
    print("Creating blink-a-led samples")
    start_time = time.time()
-   cwd = os.getcwd()                                  # remember current directory
-   os.chdir(devdir)                                   # dir with device files
-   devs = glob.glob(selection)                        # list of device files (filename.ext)
-   os.chdir(cwd)                                      # back to working dir
-   if len(devs) == 0:
+   cwd = os.getcwd()                                  # remember current dir
+   os.chdir(devdir)                                   # to device files
+   devs = glob.glob(selection)                        # selected device files
+   os.chdir(cwd)                                      # back
+   if not len(devs):
       print(f"No device files found matching {selection}")
       sys.exit(1)
 
    devs.sort()                                        # alphanumeric order
 
-   # Start a number of parallel processes 
-   cpu_count = min(os.cpu_count(), len(devs))         # (max) parallel processes
-   print(f"Starting {cpu_count} processes")
-   with futures.ProcessPoolExecutor(max_workers=cpu_count) as processes:
-      fs = {processes.submit(main, dev) : dev for dev in devs}
-      futures.wait(fs, return_when=futures.ALL_COMPLETED)
-      sample_count = sum(f.result() for f in futures.as_completed(fs))
-
+   # Start a number of parallel processes
+   with futures.ProcessPoolExecutor() as executor:
+       results = executor.map(main, devs)             # for all selected PICs
+       sample_count = sum(results)
    print(f"Generated {sample_count} blink-a-led samples")
    runtime = time.time() - start_time
    print(f"Runtime: {runtime:.1f} seconds")

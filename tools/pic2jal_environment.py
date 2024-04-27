@@ -55,7 +55,7 @@ def check_and_set_environment():
       base = os.environ["PIC2JAL"]                 # obtain existing path of destination
    except:                                         # when not present: create new
       if (platform_name == "Linux"):
-         base = os.path.join("/", "home", "rob", "picdevices." + mplabxversion)  # with Linux
+         base = os.path.join("/", "media", "ram", "picdevices." + mplabxversion)  # with Linux
       elif (platform_name == "Windows"):
         base = os.path.join("D:\\", "picdevices")                                # with Windows
       elif (platform_name == "Darwin"):
@@ -65,7 +65,7 @@ def check_and_set_environment():
          return ["",""]                            # problem
       sys.stdout.write("Base for all output: " + base + "\n")
       os.environ["PIC2JAL"] = base                 # set new destination path
-  
+
    return [base, mplabxversion]                    # all done!
 
 
