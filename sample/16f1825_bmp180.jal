@@ -1,0 +1,133 @@
+-- Title: Sample program for the BMP180 pressure sensor.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program for the BMP180 pressure sensor, controlled via IIC.
+--              The program prints the temperature and pressure via the serial port
+--              using different resoluton modes for the pressure measurement.
+--
+-- Sources: Bosch BMP180 Datasheet version 2.5, document BST-BMP180-DS000-09.
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 16 MHz (just to be sure on 3.3 Volt).
+pragma target clock    16_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    DISABLED        -- No PLL 
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     INTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1111                 -- Set 16 MHz 
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC
+
+-- Enable weak pull up for all pins.
+WPUA = 0b0011_1111     
+WPUC = 0b0011_1111     
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+_usec_delay(100_000)     -- Let the hardware stabilize.
+
+-- Setup uart for communication. 
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate  = 115200  
+include serial_hardware
+serial_hw_init()
+alias serial is serial_hw_data
+
+include print
+include delay
+
+-- Definitions for the IIC interface.
+alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
+alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+const word _i2c_bus_speed = 4 -- 400 kHz. 
+const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
+
+-- When using i2c_hardware.
+-- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
+-- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
+include i2c_hardware  
+
+-- When using i2c_software.
+-- alias i2c_scl_direction is pin_C0_direction 
+-- alias i2c_sda_direction is pin_C1_direction 
+-- const _i2c_scl_timeout = 1_000  -- units are in bit-times.
+-- include i2c_software  
+
+-- Now initialize the IIC library.
+i2c_initialize()
+
+-- Now include the library and initialize.
+include bmp180
+bmp180_init()
+
+-- Variables.
+var sdword pressure
+var sword temperature
+
+print_string(serial, "BMP180 temperature and pressure sensor sample program.\r\n")
+
+forever  loop 
+
+   -- Read the temperature.
+   temperature =  bmp180_get_temperature()
+   print_string(serial, "The current temperature in 0.1 degrees Celcius is: ")
+   print_sdword_dec(serial, temperature)
+   print_crlf(serial)
+   -- Print in format xx.x.
+   print_string(serial, "The current temperature in degrees Celcius is: ")
+   if (temperature < 0) then
+      serial = "-"
+   else
+      serial = "+"
+   end if
+   print_word_dec(serial, word(temperature) / 10)
+   serial = "."
+   print_word_dec(serial, word(temperature) % 10)
+   print_crlf(serial)
+   
+   -- The pressure can be calulated with different resolution by changing the mode.
+   -- The initial mode after reset (and init) is BMP180_MODE_ULTRA_LOW_POWER.
+   if (bmp180_get_mode == BMP180_MODE_ULTRA_LOW_POWER) then
+      print_string(serial, "Pressure in standard mode.\r\n")
+      bmp180_set_mode(BMP180_MODE_STANDARD)
+   elsif (bmp180_get_mode == BMP180_MODE_STANDARD) then
+      print_string(serial, "Pressure in high resolution mode.\r\n")
+      bmp180_set_mode(BMP180_MODE_HIGH_RES)
+   elsif (bmp180_get_mode == BMP180_MODE_HIGH_RES) then
+      print_string(serial, "Pressure in ultra high resolution mode.\r\n")
+      bmp180_set_mode(BMP180_MODE_ULTRA_HIGH_RES)     
+   else
+      print_string(serial, "Pressure in ultra low power mode.\r\n")
+      bmp180_set_mode(BMP180_MODE_ULTRA_LOW_POWER)  
+   end if 
+
+   -- Read the pressure, this can take some time depending on the resolution mode.
+   pressure = bmp180_get_pressure()
+   print_string(serial, "The current pressure in Pa is: ")
+   print_sdword_dec(serial, pressure)
+   print_crlf(serial)
+   print_string(serial, "The current pressure in hPa is: ")
+   print_sdword_dec(serial, pressure / 100)
+   serial = "."
+   print_sdword_dec(serial, pressure % 100)
+   print_crlf(serial)
+   print_crlf(serial)
+     
+   delay_1s(3)
+
+end loop
+

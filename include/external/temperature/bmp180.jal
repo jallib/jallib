@@ -1,0 +1,403 @@
+-- Title: Library functions for the BMP180 pressure sensor.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library functions for the BMP180 pressure sensor. The main
+--              program has to setup the IIC communication using an IIC clock of 
+--              at most 3.4 MHz.
+--
+-- Sources:Bosch BMP180 Datasheet version 2.5, document BST-BMP180-DS000-09.
+--
+
+-- ============================= Public API=====================================
+
+-- ---------------------------- Public constants -------------------------------
+
+-- Resolution modes and oversampling settings.
+const byte BMP180_MODE_ULTRA_LOW_POWER = 0 -- Default.
+const byte BMP180_MODE_STANDARD        = 1
+const byte BMP180_MODE_HIGH_RES        = 2
+const byte BMP180_MODE_ULTRA_HIGH_RES  = 3
+
+-- ------------------ Public procedures and functions  -------------------------
+
+-- -----------------------------------------------------------------------------
+-- Initialize the BMP180 library. This also resets the device.
+-- The IIC interface must be initialized.
+-- -----------------------------------------------------------------------------
+procedure bmp180_init()
+
+-- -----------------------------------------------------------------------------
+-- Reset the BMP180 device. 
+-- -----------------------------------------------------------------------------
+procedure bmp180_reset()
+
+-- -----------------------------------------------------------------------------
+-- Set the resolution mode.
+-- -----------------------------------------------------------------------------
+procedure bmp180_set_mode(byte in mode) 
+
+-- -----------------------------------------------------------------------------
+-- Get the resolution mode.
+-- -----------------------------------------------------------------------------
+function bmp180_get_mode() return byte
+
+-- -----------------------------------------------------------------------------
+-- Get the current temperature. This is a blocking call. The delay is depending
+-- on the last selected resolution mde and is at least 4.5 ms. See datasheet.
+-- Temperature is returned as a value of 0.1 degrees Celcius.
+-- -----------------------------------------------------------------------------
+function bmp180_get_temperature() return sword
+
+-- -----------------------------------------------------------------------------
+-- Get the current pressure. This is a blocking call. The delay is depending on
+-- the last selected resolution mode and can be larger than 31 ms. See datasheet.
+-- Pressure is returned in Pascal (Pa).
+-- -----------------------------------------------------------------------------
+function bmp180_get_pressure() return sdword
+
+-- ============================ Implementation =================================
+
+-- ---------------- Private constants and function prototypes ------------------
+
+const byte _BMP180_IIC_ADDRESS = 0b1110_1110 -- IIC write address (A0 = 0).
+
+-- BMP180 register addresses. 
+-- Control and data registers addresses. These are 8 bit addresses.
+const byte _BMP180_REG_OUT_XLSB   = 0xF8 -- Read only.
+const byte _BMP180_REG_OUT_LSB    = 0xF7 -- Read only.
+const byte _BMP180_REG_OUT_MSB    = 0xF6 -- Read only.
+const byte _BMP180_REG_CTRL_MEAS  = 0xF4 
+const byte _BMP180_REG_SOFT_RESET = 0xE0 
+const byte _BMP180_REG_ID         = 0xD0 -- Read only. Fixed value 0x55.
+
+-- Calibration addressess This is a word address so register address is MSB.
+const byte _BMP180_REG_AC1 = 0xAA
+const byte _BMP180_REG_AC2 = 0xAC
+const byte _BMP180_REG_AC3 = 0xAE
+const byte _BMP180_REG_AC4 = 0xB0
+const byte _BMP180_REG_AC5 = 0xB2
+const byte _BMP180_REG_AC6 = 0xB4
+const byte _BMP180_REG_B1  = 0xB6
+const byte _BMP180_REG_B2  = 0xB8
+const byte _BMP180_REG_MB  = 0xBA
+const byte _BMP180_REG_MC  = 0xBC
+const byte _BMP180_REG_MD  = 0xBE
+
+-- Commands.
+const byte _BMP180_READ_TEMPERATURE_CMD = 0x2E
+const byte _BMP180_READ_PRESSURE_CMD    = 0x34
+
+
+-- -----------------------------------------------------------------------------
+-- Read a the raw temperaturee and return it.
+-- -----------------------------------------------------------------------------
+function _read_raw_temperature() return dword 
+
+-- -----------------------------------------------------------------------------
+-- Read a the raw pressure and return it.
+-- -----------------------------------------------------------------------------
+function _read_raw_pressure() return dword 
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the BMP180 via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _bmp180_read_data_byte(byte in register) return byte
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the BMP180 via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _bmp180_write_data_byte(byte in register, byte in data)
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the given register of the BMP180 via the IIC interface.
+-- The BMP180 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+function _bmp180_read_data_word(byte in register) return word
+
+-- -----------------------------------------------------------------------------
+-- Calculate the value of B5. We need this more than once. See datasheet figure 4.
+-- -----------------------------------------------------------------------------
+function _bmp180_calculate_b5(sdword in raw_data) return sdword
+
+-- --------------------------- Private variables -------------------------------
+
+-- Calibration coefficients to be obtained from the EEPROM of the device.
+var sword _bmp180_ac1, _bmp180_ac2, _bmp180_ac3
+var word  _bmp180_ac4, _bmp180_ac5, _bmp180_ac6 
+var sword _bmp180_b1, _bmp180_b2, _bmp180_mb, _bmp180_mc, _bmp180_md
+
+var byte _bmp180_oversampling -- Holds the resolution mode.
+
+-- ============================ Final implemenation ============================
+
+-- -----------------------------------------------------------------------------
+-- Initialize the BMP180 library. This also resets the device.
+-- The IIC interface must be initialized..
+-- -----------------------------------------------------------------------------
+procedure bmp180_init() is
+
+    bmp180_reset()
+
+   -- Read the calibration coefficients.
+   _bmp180_ac1 =  sword(_bmp180_read_data_word(_BMP180_REG_AC1))
+   _bmp180_ac2 =  sword(_bmp180_read_data_word(_BMP180_REG_AC2))
+   _bmp180_ac3 =  sword(_bmp180_read_data_word(_BMP180_REG_AC3))
+   _bmp180_ac4 =  _bmp180_read_data_word(_BMP180_REG_AC4)
+   _bmp180_ac5 =  _bmp180_read_data_word(_BMP180_REG_AC5)
+   _bmp180_ac6 =  _bmp180_read_data_word(_BMP180_REG_AC6)
+
+   _bmp180_b1 =  sword(_bmp180_read_data_word(_BMP180_REG_B1))
+   _bmp180_b2 =  sword(_bmp180_read_data_word(_BMP180_REG_B2))
+
+   _bmp180_mb =  sword(_bmp180_read_data_word(_BMP180_REG_MB))
+   _bmp180_mc =  sword(_bmp180_read_data_word(_BMP180_REG_MC))
+   _bmp180_md =  sword(_bmp180_read_data_word(_BMP180_REG_MD))
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Reset the BMP180 device. 
+-- -----------------------------------------------------------------------------
+procedure bmp180_reset() is
+
+   -- Same as power on reset.
+   _bmp180_write_data_byte(_BMP180_REG_SOFT_RESET, 0xB6) 
+   -- Some delay is needed for the device to be accessed again.
+   _usec_delay(10_000)
+
+   -- Oversampling mode set to default value. 
+   bmp180_set_mode(BMP180_MODE_ULTRA_LOW_POWER)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Set the resolution mode.
+-- -----------------------------------------------------------------------------
+procedure bmp180_set_mode(byte in mode) is
+
+   -- The mode itself is used and needed when starting a conversion.
+   _bmp180_oversampling = mode
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Get the resolution mode.
+-- -----------------------------------------------------------------------------
+function bmp180_get_mode() return byte is
+
+   return _bmp180_oversampling
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Get the current temperature. This is a blocking call. The delay is depending
+-- on the last selected resolution mode and is at least 4.5 ms. See datasheet.
+-- Temperature is returned as a value of 0.1 degrees Celcius.
+-- -----------------------------------------------------------------------------
+function bmp180_get_temperature() return sword is
+
+   -- Note. Variable names equal the names in the datasheet figure 4.
+   var sdword b5, ut, t
+
+   ut = sdword(_read_raw_temperature())
+   b5 = _bmp180_calculate_b5(ut)
+   t = (b5 + 8) >> 4
+
+   return sword(t)
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Get the current pressure. This is a blocking call. The delay is depending on
+-- the last selected resolution mode and can be larger than 31 ms. See datasheet.
+-- Pressure is returned in Pascal (Pa).
+-- -----------------------------------------------------------------------------
+function bmp180_get_pressure() return sdword is
+
+   -- Note. Variable names equal the names in the datasheet figure 4.
+   var sdword b3, b5, b6, x1, x2, x3, p, up, ut
+   var dword b4, b7
+   var byte data
+
+   -- Read both the temperature and the pressure since we need b5 for pressure.
+   ut = sdword(_read_raw_temperature)
+   b5 = _bmp180_calculate_b5(ut)
+   up = sdword(_read_raw_pressure)
+   
+   -- Now calculate the true pressure. 
+   b6 = b5 - 4000
+   x1 = (sdword(_bmp180_b2) * ((b6 * b6) >> 12)) >> 11
+   x2 = (sdword(_bmp180_ac2) * b6) >> 11
+   x3 = x1 + x2
+
+   b3 = ((((sdword(_bmp180_ac1) * 4) + x3) << sdword(_bmp180_oversampling)) + 2) / 4
+   x1 = (sdword(_bmp180_ac3) * b6) >> 13
+   x2 = (sdword(_bmp180_b1) * ((b6 * b6) >> 12)) >> 16
+   x3 = ((x1 + x2) + 2) >> 2
+
+   b4 = (dword(_bmp180_ac4) * (dword(x3) + 32_768)) >> 15
+   b7 = dword(up - b3) * (dword(50_000) >> _bmp180_oversampling)
+
+   if (b7 < 0x80_000_000) then
+      p = sdword((b7 * 2) / b4)
+   else
+      p = sdword((b7 / b4) * 2)
+   end if 
+   x1 = (p >> 8) * (p >> 8)
+   x1 = (x1 * 3_038) >> 16
+   x2 = (-7_357 * p) >> 16
+
+   p = p + (((x1 + x2) + sdword(3_791)) >> 4)
+
+   return p
+
+end function
+
+
+-- ----------------------------- Private functions -----------------------------
+
+-- -----------------------------------------------------------------------------
+-- Read a the raw temperaturee and return it.
+-- -----------------------------------------------------------------------------
+function _read_raw_temperature() return dword is
+
+   var dword temperature_raw
+
+    -- Start measurement. 
+   _bmp180_write_data_byte(_BMP180_REG_CTRL_MEAS, _BMP180_READ_TEMPERATURE_CMD)
+   _usec_delay(4_500)
+   temperature_raw = 0 
+   temperature_raw = temperature_raw | dword(_bmp180_read_data_word(_BMP180_REG_OUT_MSB))
+
+   return temperature_raw
+  
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Read a the raw pressure and return it.
+-- -----------------------------------------------------------------------------
+function _read_raw_pressure() return dword is
+
+   var dword pressure_raw
+
+   -- Start measurement using the current resolution. 
+   _bmp180_write_data_byte(_BMP180_REG_CTRL_MEAS, _BMP180_READ_PRESSURE_CMD | 
+                          (_bmp180_oversampling << 6))
+
+   -- Delay depends on the resolution.
+   if (_bmp180_oversampling == BMP180_MODE_ULTRA_LOW_POWER) then
+      _usec_delay(4_500)
+   elsif (_bmp180_oversampling == BMP180_MODE_STANDARD) then
+      _usec_delay(7_500)
+   elsif (_bmp180_oversampling == BMP180_MODE_HIGH_RES) then
+      _usec_delay(13_500)
+   else
+      _usec_delay(25_500)
+   end if 
+
+   -- First get both the raw pressure. See datasheet figure 4.
+   pressure_raw = 0 
+   pressure_raw = pressure_raw | dword(_bmp180_read_data_word(_BMP180_REG_OUT_MSB))
+   pressure_raw = pressure_raw << 8
+   pressure_raw = pressure_raw | dword(_bmp180_read_data_byte(_BMP180_REG_OUT_XLSB))
+   pressure_raw = pressure_raw >> (8 - _bmp180_oversampling)
+
+   return pressure_raw
+  
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the BMP180 via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _bmp180_read_data_byte(byte in register) return byte is
+
+   var byte data
+   var bit dummy
+
+   -- First write the register then switch to reading the data. 
+   i2c_start()
+   dummy = i2c_transmit_byte(_BMP180_IIC_ADDRESS)
+   dummy = i2c_transmit_byte(register)
+   i2c_restart()
+   dummy = i2c_transmit_byte(_BMP180_IIC_ADDRESS | 0b0000_0001)
+   data = i2c_receive_byte(FALSE) -- Only one byte, so NACK.
+   i2c_stop()
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the BMP180 via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _bmp180_write_data_byte(byte in register, byte in data) is
+
+   var bit dummy
+
+   i2c_start()
+   dummy = i2c_transmit_byte(_BMP180_IIC_ADDRESS)
+   dummy = i2c_transmit_byte(register)
+   dummy = i2c_transmit_byte(data)
+   i2c_stop()
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the given register of the BMP180 via the IIC interface.
+-- The BMP180 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+function _bmp180_read_data_word(byte in register) return word is
+
+   var word data 
+   var byte data_low  at data
+   var byte data_high at data + 1
+   var bit dummy
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   dummy = i2c_transmit_byte(_BMP180_IIC_ADDRESS)
+   dummy = i2c_transmit_byte(register)
+   i2c_restart()
+   dummy = i2c_transmit_byte(_BMP180_IIC_ADDRESS | 0b0000_0001)
+   -- Word data in the BMP180 is stored with MSB first.
+   data_high = i2c_receive_byte(TRUE) 
+   data_low = i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Calculate the value of B5. We need this more than once. See datasheet figure 4.
+-- -----------------------------------------------------------------------------
+function _bmp180_calculate_b5(sdword in raw_data) return sdword is
+
+   -- Note. Variable names equal the names in the datasheet figure 4.
+   var sdword b5, x1, x2
+   
+   x1 = (raw_data - sdword(_bmp180_ac6)) * sdword(_bmp180_ac5) >> 15
+   x2 = (sdword(_bmp180_mc) << 11) / (x1 + sdword(_bmp180_md))
+   b5 = x1 + x2
+
+   return b5
+
+end function
+
+
+
