@@ -1,0 +1,818 @@
+-- Title: Library for the AS5600 and AS5600L Magnetic Rotary Position Sensor
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library functions for the AS5600 and the AS5600L Magnetic
+--              Rotary Position Sensor. The main program has to setup the IIC 
+--              communication using an IIC clock at most 1 MHz.
+-- 
+-- Notes:       The library supports both the AS5600 as well as the AS5600L. 
+--              In order to select the correct device the user must provide the
+--              the correct 7-bit IIC address in the init function. Adresses are:
+--              -) For AS5600  = 0x37. Default address and cannot be changed.
+--              -) For AS5600L = 0x40. Default address but this address can be changed.
+--
+-- Important:   The library also provides burn functions which should only be used 
+--              when needed since burning cycles are limited!
+--              This function is intially not available and can be made available
+--              by defining: 
+--              -) const AS5600L_ENABLE_BURN = TRUE              
+--
+-- Sources: AS5600  AMS datasheet [v1-06] 2018-Jun-20 
+--          AS5600L AMS datasheet [v1-12] 2020-May-14
+--
+
+-- ============================= Public API=====================================
+
+-- ---------------------------- Public constants -------------------------------
+
+-- Power modes.
+const byte AS5600L_POWER_MODE_NOMINAL = 0b0000_0000
+const byte AS5600L_POWER_MODE_LOW_1   = 0b0000_0001
+const byte AS5600L_POWER_MODE_LOW_2   = 0b0000_0010
+const byte AS5600L_POWER_MODE_LOW_3   = 0b0000_0011
+
+-- Hysteresis.
+const byte AS5600L_HYSTERESIS_OFF   = 0b0000_0000
+const byte AS5600L_HYSTERESIS_LSB_1 = 0b0000_0100
+const byte AS5600L_HYSTERESIS_LSB_2 = 0b0000_1000
+const byte AS5600L_HYSTERESIS_LSB_3 = 0b0000_1100
+
+-- Output stage.
+const byte AS5600L_OUTPUT_STAGE_ANALOG_100 = 0b0000_0000
+const byte AS5600L_OUTPUT_STAGE_ANALOG_90  = 0b0001_0000
+const byte AS5600L_OUTPUT_STAGE_PWM        = 0b0010_0000
+
+-- PWM frequency in Hz.
+const byte AS5600L_PWM_115_HZ = 0b0000_0000
+const byte AS5600L_PWM_230_HZ = 0b0100_0000
+const byte AS5600L_PWM_460_HZ = 0b1000_0000
+const byte AS5600L_PWM_920_HZ = 0b1100_0000
+
+-- Slow filter.
+const byte AS5600L_SLOW_FILTER_16X = 0b0000_0000
+const byte AS5600L_SLOW_FILTER_8X  = 0b0000_0001
+const byte AS5600L_SLOW_FILTER_4X  = 0b0000_0010
+const byte AS5600L_SLOW_FILTER_2X  = 0b0000_0011
+
+-- Fast filter threshold.
+const byte AS5600L_FAST_FILTER_NONE   = 0b0000_0000
+const byte AS5600L_FAST_FILTER_LSB_6  = 0b0000_0100
+const byte AS5600L_FAST_FILTER_LSB_7  = 0b0000_1000
+const byte AS5600L_FAST_FILTER_LSB_9  = 0b0000_1100
+const byte AS5600L_FAST_FILTER_LSB_10 = 0b0001_1100
+const byte AS5600L_FAST_FILTER_LSB_18 = 0b0001_0000
+const byte AS5600L_FAST_FILTER_LSB_21 = 0b0001_0100
+const byte AS5600L_FAST_FILTER_LSB_24 = 0b0001_1000
+
+
+-- ------------------ Public procedures and functions  -------------------------
+
+-- -----------------------------------------------------------------------------
+-- Init the AS5600(L) library. This sets the 7-bit IIC address with determines
+-- which device (AS5600 or AS5600L) is selected.
+-- -----------------------------------------------------------------------------
+procedure as5600l_init(byte in iic_address)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the number of times the zero position and 
+-- maximum positions have been programmed. Burning cycles are limited.
+-- -----------------------------------------------------------------------------
+function as5600l_number_of_program_cycles'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the raw position from the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_raw_position'get() return word
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the scaled position from the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_scaled_position'get() return word
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the zero position of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_zero_position'get() return word
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the zero position for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_zero_position'put(word in position)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the maximum position of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_maximum_position'get() return word
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the maximum position for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_maximum_position'put(word in position)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the maximum angle of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_maximum_angle'get() return word
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the maximum angle for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_maximum_angle'put(word in angle)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the power mode.
+-- -----------------------------------------------------------------------------
+function as5600l_power_mode'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the power mode.
+-- -----------------------------------------------------------------------------
+procedure as5600l_power_mode'put(byte in power_mode)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the hysteresis.
+-- -----------------------------------------------------------------------------
+function as5600l_hysteresis'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the hysteresis.
+-- -----------------------------------------------------------------------------
+procedure as5600l_hysteresis'put(byte in hysteresis)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the output stage
+-- -----------------------------------------------------------------------------
+function as5600l_output_stage'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the output stage.
+-- -----------------------------------------------------------------------------
+procedure as5600l_output_stage'put(byte in output_stage)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the PWM frequency.
+-- -----------------------------------------------------------------------------
+function as5600l_pwm_frequency'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the PWM frequency.
+-- -----------------------------------------------------------------------------
+procedure as5600l_pwm_frequency'put(byte in pwm_frequency)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the slow filter.
+-- -----------------------------------------------------------------------------
+function as5600l_slow_filter'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the slow filter. 
+-- -----------------------------------------------------------------------------
+procedure as5600l_slow_filter'put(byte in slow_filter)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the fast filter.
+-- -----------------------------------------------------------------------------
+function as5600l_fast_filter'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the fast filter. 
+-- -----------------------------------------------------------------------------
+procedure as5600l_fast_filter'put(byte in fast_filter)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to change the 7-bit IIC address (AS5600L only). 
+-- -----------------------------------------------------------------------------
+procedure as5600l_iic_address'put(byte in iic_address)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the current 7-bit IIC address (AS5600L only). 
+-- -----------------------------------------------------------------------------
+function as5600l_iic_address'get() return byte 
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the watchdog is on.
+-- -----------------------------------------------------------------------------
+function as5600l_watchdog_on'get() return bit
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to switch the watchdog on or off.
+-- -----------------------------------------------------------------------------
+procedure as5600l_watchdog_on'put(bit in watchdog_on)
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was detected.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_detected'get() return bit
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was too weak.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_too_weak'get() return bit
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was too strong.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_too_strong'get() return bit
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returning the AGC level.
+-- -----------------------------------------------------------------------------
+function as5600l_agc'get() return byte
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returning the magnitude.
+-- -----------------------------------------------------------------------------
+function as5600l_magnitude'get() return word
+
+-- --------------------------------------------------------------------------
+-- Convert the given angle to a degree.
+-- --------------------------------------------------------------------------
+function as5600l_angle_to_degree(word in angle) return word
+
+-- -----------------------------------------------------------------------------
+-- Burn functions. Because the number of times you can burn is limited this,
+-- feature is only available if the user explicitely want to use this by 
+-- defining const AS5600L_ENABLE_BURN = TRUE.
+-- -----------------------------------------------------------------------------
+if defined(AS5600L_ENABLE_BURN) then
+   -- --------------------------------------------------------------------------
+   -- Burn the settings. These are the Magnitude, Configuration and IIC address.
+   -- Note that Magnitude can only be written if the zero position and maximum
+   -- positions are not yet written. 
+   -- --------------------------------------------------------------------------
+   procedure as5600l_burn_settings() 
+
+   -- --------------------------------------------------------------------------
+   -- Burn the angles. These are the zero position and maximum position. 
+   -- --------------------------------------------------------------------------
+   procedure as5600l_burn_angles() 
+end if 
+
+-- ============================ Implementation =================================
+
+-- ---------------- Private constants and function prototypes ------------------
+
+-- AS5600(L) configuraion registers. These are 8 bit addresses.
+const byte _AS5600L_REG_ZMCO = 0x00
+const byte _AS5600L_REG_ZPOS = 0x01 ; Plus 0x02.
+const byte _AS5600L_REG_MPOS = 0x03 ; Plus 0x04.
+const byte _AS5600L_REG_MANG = 0x05 ; Plus 0x06.
+const byte _AS5600L_REG_CONF = 0x07 ; Plus 0x08.
+
+-- AS5600(L) output registers. These are 8 bit addresses.
+const byte _AS5600L_REG_RAW_ANGLE = 0x0C ; Plus 0x0D.
+const byte _AS5600L_REG_ANGLE     = 0x0E ; Plus 0x0F.
+
+-- AS5600(L) status registers. These are 8 bit addresses.
+const byte _AS5600L_REG_STATUS    = 0x0B 
+const byte _AS5600L_REG_AGC       = 0x1A 
+const byte _AS5600L_REG_MAGNITUDE = 0x1B ; Plus 0x1C
+
+-- AS5600(L) burn register.
+const byte _AS5600_REG_BURN = 0xFF
+
+-- AS5600(L) burn commands.
+const byte _AS5600_BURN_ANGLES   = 0x80
+const byte _AS5600_BURN_SETTINGS = 0x40
+
+-- AS5600L IIC registers (AS5600L only).
+const byte _AS5600L_REG_I2C_ADDR  = 0x20 
+const byte _AS5600L_REG_I2C_UPDT  = 0x21 
+
+-- Masks for the status (STATUS) register. 
+const byte _AS5600L_STATUS_MAGNET_STRONG   = 0b0000_1000
+const byte _AS5600L_STATUS_MAGNET_WEAK     = 0b0001_0000 
+const byte _AS5600L_STATUS_MAGNET_DETECTED = 0b0010_0000 
+
+-- Masks for the configuration (CONF) register. 
+const byte _AS5600L_CONF_WATCHDOG  = 0b1000_0000
+
+-- Max raw angle values.
+const word _AS5600L_MAX_ANGLE = 4096
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the AS5600(L) via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _as5600l_read_data_byte(byte in register) return byte
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the AS5600(L) via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _as5600l_write_data_byte(byte in register, byte in data)
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the given register of the AS5600(L) via the IIC interface.
+-- The AS5600 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+function _as5600l_read_data_word(byte in register) return word 
+
+-- -----------------------------------------------------------------------------
+-- Write a word to the given register of the AS5600(L) via the IIC interface.
+-- The AS5600 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+procedure _as5600l_write_data_word(byte in register, word in data) 
+
+-- --------------------------- Private variables -------------------------------
+
+var byte _as5600l_current_iic_address = 0
+
+-- ============================ Final implemenation ============================
+
+-- -----------------------------------------------------------------------------
+-- Init the AS5600(L) library. This sets the 7-bit IIC address with determines
+-- which device (AS5600 or AS5600L) is selected.
+-- -----------------------------------------------------------------------------
+procedure as5600l_init(byte in iic_address) is
+
+    _as5600l_current_iic_address = (iic_address << 1)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the number of times the zero position and 
+-- maximum positions have been programmed. This is limited to at most 3 times.
+-- -----------------------------------------------------------------------------
+function as5600l_number_of_program_cycles'get() return byte is
+
+   return _as5600l_read_data_byte(_AS5600L_REG_ZMCO) & 0x03
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the raw position from the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_raw_position'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_RAW_ANGLE) & 0x0FFF
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the scaled position from the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_scaled_position'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_ANGLE) & 0x0FFF
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the zero position of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_zero_position'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_ZPOS) & 0x0FFF
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the zero position for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_zero_position'put(word in position) is
+
+   _as5600l_write_data_word(_AS5600L_REG_ZPOS, position & 0x0FFF)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the maximum position of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_maximum_position'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_MPOS) & 0x0FFF
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the maximum position for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_maximum_position'put(word in position) is
+
+   _as5600l_write_data_word(_AS5600L_REG_MPOS, position & 0x0FFF)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the maximum angle of the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+function as5600l_maximum_angle'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_MANG) & 0x0FFF
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the maximum angle for the AS5600(L). 
+-- Range is 0..4095.
+-- -----------------------------------------------------------------------------
+procedure as5600l_maximum_angle'put(word in angle) is
+
+   _as5600l_write_data_word(_AS5600L_REG_MANG, angle & 0x0FFF)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the power mode.
+-- -----------------------------------------------------------------------------
+function as5600l_power_mode'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0x03)
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the power mode.
+-- -----------------------------------------------------------------------------
+procedure as5600l_power_mode'put(byte in power_mode) is
+
+    var byte current_mode
+
+   current_mode = _as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0xFC
+   current_mode = current_mode | power_mode
+   _as5600l_write_data_byte(_AS5600L_REG_CONF + 1, current_mode)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the hysteresis.
+-- -----------------------------------------------------------------------------
+function as5600l_hysteresis'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0x0C)
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the hysteresis.
+-- -----------------------------------------------------------------------------
+procedure as5600l_hysteresis'put(byte in hysteresis) is
+
+    var byte current_hysteresis
+
+   current_hysteresis = _as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0xF3
+   current_hysteresis = current_hysteresis | hysteresis
+   _as5600l_write_data_byte(_AS5600L_REG_CONF + 1, current_hysteresis)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the output stage
+-- -----------------------------------------------------------------------------
+function as5600l_output_stage'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0x30)
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the output stage.
+-- -----------------------------------------------------------------------------
+procedure as5600l_output_stage'put(byte in output_stage) is
+
+    var byte current_output_stage
+
+   current_output_stage = _as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0xCF
+   current_output_stage = current_output_stage | output_stage
+   _as5600l_write_data_byte(_AS5600L_REG_CONF + 1, current_output_stage)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the PWM frequency.
+-- -----------------------------------------------------------------------------
+function as5600l_pwm_frequency'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0xC0)
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the PWM frequency.
+-- -----------------------------------------------------------------------------
+procedure as5600l_pwm_frequency'put(byte in pwm_frequency) is
+
+    var byte current_pwm_frequency
+
+   current_pwm_frequency = _as5600l_read_data_byte(_AS5600L_REG_CONF + 1) & 0x3F
+   current_pwm_frequency = current_pwm_frequency | pwm_frequency
+   _as5600l_write_data_byte(_AS5600L_REG_CONF + 1, current_pwm_frequency)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the slow filter.
+-- -----------------------------------------------------------------------------
+function as5600l_slow_filter'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF) & 0x03)
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the slow filter. 
+-- -----------------------------------------------------------------------------
+procedure as5600l_slow_filter'put(byte in slow_filter) is
+
+    var byte current_slow_filter
+
+   current_slow_filter = _as5600l_read_data_byte(_AS5600L_REG_CONF) & 0xFC
+   current_slow_filter = current_slow_filter | slow_filter
+   _as5600l_write_data_byte(_AS5600L_REG_CONF, current_slow_filter)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that returns the fast filter.
+-- -----------------------------------------------------------------------------
+function as5600l_fast_filter'get() return byte is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF) & 0x1C)
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable that sets the fast filter. 
+-- -----------------------------------------------------------------------------
+procedure as5600l_fast_filter'put(byte in fast_filter) is
+
+    var byte current_fast_filter
+
+   current_fast_filter = _as5600l_read_data_byte(_AS5600L_REG_CONF) & 0xE3
+   current_fast_filter = current_fast_filter | fast_filter
+   _as5600l_write_data_byte(_AS5600L_REG_CONF, current_fast_filter)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to change the 7-bit IIC address (AS5600L only). 
+-- -----------------------------------------------------------------------------
+procedure as5600l_iic_address'put(byte in iic_address) is
+
+   _as5600l_current_iic_address = (iic_address << 1)
+   _as5600l_write_data_byte(_AS5600L_REG_I2C_ADDR, _as5600l_current_iic_address)
+   _as5600l_write_data_byte(_AS5600L_REG_I2C_UPDT, _as5600l_current_iic_address)
+
+end procedure 
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to get the current 7-bit IIC address (AS5600L only). 
+-- -----------------------------------------------------------------------------
+function as5600l_iic_address'get() return byte is
+
+   return (_as5600l_current_iic_address >> 1)
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the watchdog is on.
+-- -----------------------------------------------------------------------------
+function as5600l_watchdog_on'get() return bit is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_CONF) & 
+           _AS5600L_CONF_WATCHDOG) == _AS5600L_CONF_WATCHDOG
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable to switch the watchdog on or off.
+-- -----------------------------------------------------------------------------
+procedure as5600l_watchdog_on'put(bit in watchdog_on) is
+
+   var byte current_watchdog
+
+   current_watchdog = _as5600l_read_data_byte(_AS5600L_REG_CONF) & 0x7F
+   if watchdog_on then
+      current_watchdog = current_watchdog | _AS5600L_CONF_WATCHDOG
+   else
+      current_watchdog = current_watchdog & !_AS5600L_CONF_WATCHDOG
+   end if 
+   _as5600l_write_data_byte(_AS5600L_REG_CONF, current_watchdog)
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was detected.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_detected'get() return bit is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_STATUS) & 
+           _AS5600L_STATUS_MAGNET_DETECTED) == _AS5600L_STATUS_MAGNET_DETECTED
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was too weak.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_too_weak'get() return bit is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_STATUS) & 
+           _AS5600L_STATUS_MAGNET_WEAK) == _AS5600L_STATUS_MAGNET_WEAK
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returns TRUE when the magnet was too strong.
+-- -----------------------------------------------------------------------------
+function as5600l_magnet_too_strong'get() return bit is
+
+   return (_as5600l_read_data_byte(_AS5600L_REG_STATUS) & 
+           _AS5600L_STATUS_MAGNET_STRONG) == _AS5600L_STATUS_MAGNET_STRONG
+   
+end function
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returning the AGC level.
+-- -----------------------------------------------------------------------------
+function as5600l_agc'get() return byte is
+
+   return _as5600l_read_data_byte(_AS5600L_REG_AGC) 
+   
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Pseudo variable returning the magnitude.
+-- -----------------------------------------------------------------------------
+function as5600l_magnitude'get() return word is
+
+   return _as5600l_read_data_word(_AS5600L_REG_MAGNITUDE) & 0x0FFF
+   
+end function
+
+-- --------------------------------------------------------------------------
+-- Convert the given angle to a degree.
+-- --------------------------------------------------------------------------
+function as5600l_angle_to_degree(word in angle) return word is
+
+   var dword calculation
+
+      calculation = dword(angle) * 360
+      calculation = calculation / dword(_AS5600L_MAX_ANGLE)
+
+   return word(calculation)
+
+end function
+
+-- --------------------------------------------------------------------------
+-- Burn functions. Because the number of times you can burn is limited to two,
+-- this feature is only available if the user explicitely want to use this by 
+-- defining const AS5600L_ENABLE_BURN = TRUE.
+-- --------------------------------------------------------------------------
+if defined(AS5600L_ENABLE_BURN) then
+
+   -- --------------------------------------------------------------------------
+   -- Burn the settings. These are the Magnitude, Configuration and IIC address.
+   -- Note that Magnitude can only be written if the zero position and maximum
+   -- positions are not yet written. 
+   -- --------------------------------------------------------------------------
+   procedure as5600l_burn_settings() is
+
+
+      _usec_delay(1_000) ; Just to be sure that all wait times are fulfilled.
+      _as5600l_write_data_byte(_AS5600_REG_BURN, _AS5600_BURN_SETTINGS)
+      _usec_delay(2_000) 
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x01)
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x11)
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x10)
+      
+   end procedure
+
+   -- --------------------------------------------------------------------------
+   -- Burn the angles. These are the zero position and maximum position. 
+   -- --------------------------------------------------------------------------
+   procedure as5600l_burn_angles() is
+
+
+      _usec_delay(1_000) ; Just to be sure that all wait times are fulfilled.
+      _as5600l_write_data_byte(_AS5600_REG_BURN, _AS5600_BURN_ANGLES)
+      _usec_delay(2_000) 
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x01)
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x11)
+      _as5600l_write_data_byte(_AS5600_REG_BURN, 0x10)
+      
+   end procedure
+
+end if 
+
+
+
+-- ----------------------------- Private functions -----------------------------
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the AS5600(L) via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _as5600l_read_data_byte(byte in register) return byte is
+
+   var byte data
+   var bit dummy
+
+   -- First write the register then switch to reading the data. 
+   i2c_start()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address)
+   dummy = i2c_transmit_byte(register)
+   i2c_restart()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address | 0b0000_0001)
+   data = i2c_receive_byte(FALSE) -- Only one byte, so NACK.
+   i2c_stop()
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the AS5600(L) via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _as5600l_write_data_byte(byte in register, byte in data) is
+
+   var bit dummy
+
+   i2c_start()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address)
+   dummy = i2c_transmit_byte(register)
+   dummy = i2c_transmit_byte(data)
+   i2c_stop()
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the given register of the AS5600(L) via the IIC interface.
+-- The AS5600 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+function _as5600l_read_data_word(byte in register) return word is
+
+   var word data 
+   var byte data_low  at data
+   var byte data_high at data + 1
+   var bit dummy
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address)
+   dummy = i2c_transmit_byte(register)
+   i2c_restart()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address | 0b0000_0001)
+   -- Word data in the BMP180 is stored with MSB first.
+   data_high = i2c_receive_byte(TRUE) 
+   data_low = i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a word to the given register of the AS5600(L) via the IIC interface.
+-- The AS5600 has data stored with Most Significant Byte (MSB) first.
+-- -----------------------------------------------------------------------------
+procedure _as5600l_write_data_word(byte in register, word in data)  is
+
+   var byte data_low  at data
+   var byte data_high at data + 1
+   var bit dummy
+
+   i2c_start()
+   dummy = i2c_transmit_byte(_as5600l_current_iic_address)
+   dummy = i2c_transmit_byte(register)
+   dummy = i2c_transmit_byte(data_high)
+   dummy = i2c_transmit_byte(data_low)
+   i2c_stop()
+
+end procedure 
+

@@ -1,0 +1,349 @@
+-- Title: Sample program for the AS5600/AS5600L Magnetic Rotary Position Sensor.
+-- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample program for the AS5600/AS5600L Magnetic Rotary Position Sensor, 
+--              controlled via IIC. It demonstrates all available functions.
+--              The library supports both the AS5600 as well as the AS5600L. 
+--              In order to select the correct device the user must provide the
+--              the correct 7-bit IIC address in the init function. Adresses are:
+--              -) For AS5600  = 0x37. Default address and cannot be changed.
+--              -) For AS5600L = 0x40. Default address but this address can be changed.
+-- 
+-- Important:    The library also provides burn functions which should only be used 
+--               when needed since burning cycles are limited!
+--               This function is intially not available and can be made available
+--               by defining: 
+--               -) const AS5600L_ENABLE_BURN = TRUE              
+--
+-- Sources: AS5600  AMS datasheet [v1-06] 2018-Jun-20 
+--          AS5600L AMS datasheet [v1-12] 2020-May-14
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 16 MHz (just to be sure on 3.3 Volt).
+pragma target clock    16_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    DISABLED        -- No PLL 
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     INTERNAL        -- Reset internal
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1111                 -- Set 16 MHz 
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC
+
+-- Enable weak pull up for all pins.
+WPUA = 0b0011_1111     
+WPUC = 0b0011_1111     
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+_usec_delay(100_000)     -- Let the hardware stabilize.
+
+-- Setup uart for communication. 
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate  = 115200  
+include serial_hardware
+serial_hw_init()
+alias serial is serial_hw_data
+
+include print
+include delay
+
+-- Definitions for the IIC interface.
+alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
+alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+const word _i2c_bus_speed = 4 -- 400 kHz. 
+const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
+
+-- When using i2c_hardware.
+-- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
+-- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
+include i2c_hardware  
+
+-- When using i2c_software.
+-- alias i2c_scl_direction is pin_C0_direction 
+-- alias i2c_sda_direction is pin_C1_direction 
+-- const _i2c_scl_timeout = 1_000  -- units are in bit-times.
+-- include i2c_software  
+
+-- Now initialize the IIC library.
+i2c_initialize()
+
+-- The AS5600 or AS5600L is selected by their 7-bit IIC address. 
+const byte AS5600_IIC_ADDRESS  = 0x36 
+const byte AS5600L_IIC_ADDRESS = 0x40 
+-- See the important note above. When the burning feature is used it must
+-- be enabled explicitely by: const AS5600L_ENABLE_BURN = TRUE
+include as5600l
+as5600l_init(AS5600_IIC_ADDRESS) -- This example program uses the AS5600.
+
+-- Variables
+var word position
+var byte pressed_key
+var bit  burn_used = FALSE
+
+-- Procedures
+
+procedure clear_keyboard_buffer() is
+
+   var byte character
+  
+   while serial_hw_read(character) loop 
+   end loop
+
+end procedure
+
+
+procedure wait_for_key_pressed() is
+
+   var byte character
+
+   while !serial_hw_read(character) loop
+   end loop
+   clear_keyboard_buffer()
+
+end procedure
+
+-- Main program starts here.
+print_string(serial, "AS5600/AS5600L Magnetic Rotary Position Sensor sample program.\r\n\n")
+
+forever  loop 
+
+   print_string(serial, "Number of program cycles used by this device: ")
+   print_byte_dec(serial, as5600l_number_of_program_cycles)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   ; Get and store the zero position.
+   clear_keyboard_buffer()
+   while !serial_hw_read(pressed_key) loop
+      print_string(serial, "Set the magnet in the zero position and press a key. Current raw angle is: ")
+      position = as5600l_raw_position
+      print_word_dec(serial, position)
+      print_crlf(serial)
+      delay_1s(1)     
+   end loop
+   as5600l_zero_position = position
+   print_crlf(serial)
+
+   ; Get and store the maximum position.
+   clear_keyboard_buffer()
+   while !serial_hw_read(pressed_key) loop
+      print_string(serial, "Set the magnet in the maximum position and press a key. Current raw angle is: ")
+      position = as5600l_raw_position
+      print_word_dec(serial, position)
+      print_crlf(serial)
+      delay_1s(1)     
+   end loop
+   as5600l_maximum_position = position
+   print_crlf(serial)
+
+   clear_keyboard_buffer()
+   print_string(serial, "Turn the magnet and check the output. Press any key to stop.\r\n")
+   while !serial_hw_read(pressed_key) loop
+
+      ; Show the current zero position en maximum position.
+      print_string(serial, "Stored zero position is : ")
+      print_word_dec(serial, as5600l_zero_position)
+      print_crlf(serial)
+      print_string(serial, "Stored maximum position is : ")
+      print_word_dec(serial, as5600l_maximum_position)
+      print_crlf(serial)
+
+      ; Show the angles.
+      print_string(serial, "Raw angle output: ")
+      position = as5600l_raw_position
+      print_word_dec(serial, position)
+      print_crlf(serial)
+      print_string(serial, "Raw angle in degrees: ")
+      print_word_dec(serial, as5600l_angle_to_degree(position))
+      print_crlf(serial)
+      print_string(serial, "Scaled angle output: ")
+      print_word_dec(serial, as5600l_scaled_position)
+      print_crlf(serial)
+
+      ; Indicate the status of the magnet.
+      if as5600l_magnet_detected then
+         print_string(serial, "Magnet detected.\r\n")
+      else
+         print_string(serial, "No magnet detected.\r\n")
+      end if 
+      if as5600l_magnet_too_weak then
+         print_string(serial, "Magnet is too weak.\r\n")
+      end if 
+      if as5600l_magnet_too_strong then
+         print_string(serial, "Magnet is too strong.\r\n")
+      end if 
+
+      -- Show the AGC level.
+      print_string(serial, "AGC level is: ")
+      print_byte_dec(serial, as5600l_agc)
+      print_crlf(serial)
+
+      -- Show the magnitude level.
+      print_string(serial, "Magnitude level is: ")
+      print_word_dec(serial, as5600l_magnitude)
+      print_crlf(serial)
+      print_crlf(serial)
+      delay_1s(1)     
+
+   end loop
+   clear_keyboard_buffer()
+
+   ; Show and change the power mode.
+   print_string(serial, "Current power mode is: ")
+   print_byte_dec(serial, as5600l_power_mode)
+   print_crlf(serial)
+   print_string(serial, "Changing power mode to: ")
+   print_byte_dec(serial, AS5600L_POWER_MODE_LOW_1)
+   print_crlf(serial)
+   as5600l_power_mode = AS5600L_POWER_MODE_LOW_1
+   print_string(serial, "New power mode is: ")
+   print_byte_dec(serial, as5600l_power_mode)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the hysteresis.
+   print_string(serial, "Current hysteresis is: ")
+   print_byte_dec(serial, as5600l_hysteresis)
+   print_crlf(serial)
+   print_string(serial, "Changing hystersis to: ")
+   print_byte_dec(serial, AS5600L_HYSTERESIS_LSB_3)
+   print_crlf(serial)
+   as5600l_hysteresis = AS5600L_HYSTERESIS_LSB_3
+   print_string(serial, "New hysteris is: ")
+   print_byte_dec(serial, as5600l_hysteresis)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the output stage.
+   print_string(serial, "Current output stage is: ")
+   print_byte_dec(serial, as5600l_output_stage)
+   print_crlf(serial)
+   print_string(serial, "Changing output stage to: ")
+   print_byte_dec(serial, AS5600L_OUTPUT_STAGE_PWM)
+   print_crlf(serial)
+   as5600l_output_stage = AS5600L_OUTPUT_STAGE_PWM
+   print_string(serial, "New output stage is: ")
+   print_byte_dec(serial, as5600l_output_stage)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the PWM frequency.
+   print_string(serial, "Current PWM frequency is: ")
+   print_byte_dec(serial, as5600l_pwm_frequency)
+   print_crlf(serial)
+   print_string(serial, "Changing PWM frequency to: ")
+   print_byte_dec(serial, AS5600L_PWM_460_HZ)
+   print_crlf(serial)
+   as5600l_pwm_frequency= AS5600L_PWM_460_HZ
+   print_string(serial, "New PWM frequency is: ")
+   print_byte_dec(serial, as5600l_pwm_frequency)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the slow filter.
+   print_string(serial, "Current slow filter is: ")
+   print_byte_dec(serial, as5600l_slow_filter)
+   print_crlf(serial)
+   print_string(serial, "Changing slow filter to: ")
+   print_byte_dec(serial, AS5600L_SLOW_FILTER_8X)
+   print_crlf(serial)
+   as5600l_slow_filter = AS5600L_SLOW_FILTER_8X
+   print_string(serial, "New slow filter is: ")
+   print_byte_dec(serial, as5600l_slow_filter)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the fast filter.
+   print_string(serial, "Current fast filter is: ")
+   print_byte_dec(serial, as5600l_fast_filter)
+   print_crlf(serial)
+   print_string(serial, "Changing fast filter to: ")
+   print_byte_dec(serial, AS5600L_FAST_FILTER_LSB_21)
+   print_crlf(serial)
+   as5600l_fast_filter = AS5600L_FAST_FILTER_LSB_21
+   print_string(serial, "New fast filter is: ")
+   print_byte_dec(serial, as5600l_fast_filter)
+   print_crlf(serial)
+   print_crlf(serial)
+
+   -- Show and change the watchdog status.
+   if as5600l_watchdog_on then
+      print_string(serial, "Watchdog is on, switching it off.\r\n")
+      as5600l_watchdog_on = FALSE
+   else
+      print_string(serial, "Watchdog is off, switching it on.\r\n")
+      as5600l_watchdog_on = TRUE
+   end if 
+   if as5600l_watchdog_on then
+      print_string(serial, "Watchdog is now on.\r\n")
+   else
+      print_string(serial, "Watchdog is now off.\r\n")
+   end if  
+   print_crlf(serial)
+
+   -- Change the IIC address (AS5600L only).
+   if (as5600l_iic_address != AS5600_IIC_ADDRESS) then
+      -- AS5600L selected, show and change current IIC address.
+      print_string(serial, "Current IIC address is (AS5600L only): ")
+      print_byte_dec(serial, as5600l_iic_address)
+      print_crlf(serial)
+      print_string(serial, "Changing IIC address to: 0x70\r\n")
+      print_crlf(serial)
+      as5600l_iic_address = 0x70
+      print_string(serial, "New IIC address is: ")
+      print_byte_dec(serial, as5600l_iic_address)
+      print_crlf(serial)
+      print_crlf(serial)
+   end if 
+
+   ; Use of the burn feature. Only use when needed since this feature
+   ; can only be used twice!
+   if defined(AS5600L_ENABLE_BURN) then
+
+      ; In case this is activated by accident we do it only once!
+      if !burn_used then
+         burn_used = TRUE ; Only do this once!!!
+         print_string(serial, "Burn feature actived, only use when needed!\r\n")
+
+         print_string(serial, "Press 'Y' if you want to burn the settings.\r\n")
+         while !serial_hw_read(pressed_key) loop end loop
+         if (pressed_key == "Y") then
+            as5600l_burn_settings()  
+            print_string(serial, "Burning settings completed.\r\n")
+            print_string(serial, "If changed you have to init the library with the set IIC address.\r\n")
+         else
+            print_string(serial, "Burning settings skipped.\r\n")
+         end if 
+            
+         print_string(serial, "Press 'Y' if you want to burn the angles.\r\n")
+         while !serial_hw_read(pressed_key) loop end loop
+         if (pressed_key == "Y") then
+            as5600l_burn_angles() 
+               print_string(serial, "Burning angles completed.\r\n")
+         else
+            print_string(serial, "Burning angles skipped.\r\n")
+         end if 
+      end if 
+      print_crlf(serial)
+   end if 
+
+   print_string(serial, "Press a key to continue.\r\n")
+   wait_for_key_pressed()
+   print_crlf(serial)
+
+end loop
+
