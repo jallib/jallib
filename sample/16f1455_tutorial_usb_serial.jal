@@ -1,30 +1,33 @@
 -- -----------------------------------------------------------------------------
 -- Title: Tutorial USB Serial Demo
--- Author: Rob Jansen, Copyright (c) 2022..2022, all rights reserved.
--- Adapted-by:
--- Compiler: 2.5r6
--- 
--- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
--- 
--- Description: This application demonstrates the functionality of the USB Serial library, 
---              this application will emulate a RS-232 terminal device. Once the USB device 
---              has been detected by the host operating system, it will create a virtual 
---              COM port. When opening this COM on the host computer, using a standard 
---              terminal application. Two LEDs can remotely be controlled and the status 
---              of the LEDs is returned to the host.
+-- Author: Rob Jansen, Copyright (c) 2022..2024, all rights reserved.
+-- Adapted-by: Rob Hamerling, Rob Jansen
+-- Compiler: Jalv25r9
+--
+-- Description: This application demonstrates the functionality of the USB Serial library,
+--              this application will emulate a RS-232 terminal device. Once the USB device
+--              has been detected by the host operating system, it will create a virtual
+--              serial (COM) port. When opening this port on the host computer using a
+--              standard terminal application 2 LEDs can remotely be controlled.
+--              The status of the LEDs is returned to the host.-
+--
 --
 -- Notes: For hardware a 14 pin DIL PIC16F1455 was used. The circuit can be powered by
 --        the USB connection and the PIC16F1455 is connected as follows:
---        *) USB data- wire to pin 12 (D-)
---        *) USB data+ wire to pin 13 (D+)
+--        *) USB data- wire to pin 12 (A1 / D-)
+--        *) USB data+ wire to pin 13 (A0 / D+)
 --        *) USB power wire to pin 1 (VDD). Don't forget a 100nF decoupling capacitor.
 --        *) USB ground wire to pin 14 (VSS or GND)
 --        *) A resistor of 33kOhm to pin 4 (MCLR) and VDD. We use internal reset.
 --        *) A capacitor of 470nF to pin 11 (Vusb3v3) and GND.
---        *) An Yello LED with 330 Ohm resistor to pin 10. Indicates that USB is configured.
---        *) An Red LED with 330 Ohm resistor to pin 9.
---        *) An Green LED with 330 Ohm resistor to pin 8.
+--        *) A Yellow LED with 330 Ohm resistor to pin 8 (C2).
+--           (indicates that USB is configured.)
+--        *) A Red LED with 330 Ohm resistor to pin 6 (C4).
+--        *) A Green LED with 330 Ohm resistor to pin 7 (C3).
+--
+--        For In Circuit Serial Programming:
+--        *) ICSPDAT wire to pin 10 (C0)
+--        *) ICSPCLK wire to pin 9 (C1)
 --
 include 16f1455             -- Target processor.
 
@@ -59,18 +62,18 @@ OSCCON        = 0b1111_1100          -- Select PLL,3x, 16MHz internal oscillator
 OPTION_REG_WPUEN = FALSE             -- Enable weak pull-up for port a.
 WPUA          = 0b0011_1111          -- Weak-pull up for all inputs.
 TRISC         = 0b0000_0000          -- Port c output.
-                               
+
 -- Include serial library and print library for formatting print output.
 include usb_serial
 include print
 
 -- Aliases for LEDs, active HIGH.
-alias led_red is pin_C2                 
+alias led_red is pin_C4
+pin_C4_direction = output            -- Pin 6 of 14 pin DIP.
+alias led_green is pin_C3
+pin_C3_direction = output            -- Pin 7 of 14 pin DIP.
+alias led_yellow is pin_C2
 pin_C2_direction = output            -- Pin 8 of 14 pin DIP.
-alias led_green is pin_C1
-pin_C1_direction = output            -- Pin 9 of 14 pin DIP.
-alias led_yellow is pin_C0           
-pin_C0_direction = output            -- Pin 10 of 14 pin DIP.
 
 -- Variables.
 var byte character
@@ -91,38 +94,43 @@ forever loop
    -- Update Red and Green LEDs.
    led_red = red_value
    led_green = green_value
-   
-   -- Poll the usb ISR function  on a regular base, in order to serve 
-   -- the USB requests
+
+   -- Poll the usb ISR function on a regular base,
+   -- in order to serve the USB requests
    usb_serial_flush()
-   
+
    -- Check if USB device has been configured by the host.
    if ( usb_cdc_line_status() !=  0x00 )  then
-      led_yellow = TRUE   
+      led_yellow = TRUE
    else
-      led_yellow = FALSE  
+      led_yellow = FALSE    -- disconnected
+      red_value = FALSE     -- red led off
+      green_value = FALSE   -- green led off
    end if
-   
-   -- Check for input character. If OK, toggle led value.
+
+   -- Check for input character. If OK, toggle led value and report to host.
    if usb_serial_read(character) then
       if (character == "R") | (character == "r") then
          red_value = !red_value
-         if red_value then 
-           print_string(usb_serial_data, "Red LED is on.")
+         print_string(usb_serial_data, "Red LED is ")
+         if red_value then
+            print_string(usb_serial_data, "on")
          else
-           print_string(usb_serial_data, "Red LED is off.")
+            print_string(usb_serial_data, "off")
          end if
-      elsif (character == "G") | (character == "g") then  
+      elsif (character == "G") | (character == "g") then
          green_value = !green_value
-         if green_value then 
-           print_string(usb_serial_data, "Green LED is on.")
+         print_string(usb_serial_data, "Green LED is ")
+         if green_value then
+            print_string(usb_serial_data, "on")
          else
-           print_string(usb_serial_data, "Green LED is off.")
+            print_string(usb_serial_data, "off")
          end if
       else
-         print_string(usb_serial_data, "Unsupported command.")
+         print_string(usb_serial_data, "Expecting 'r' or 'g'")
       end if
       print_crlf(usb_serial_data)
    end if
 
 end loop
+--
