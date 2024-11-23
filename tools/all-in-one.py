@@ -5,7 +5,7 @@ Title: Generate Jallib device files and blink-a-led samples.
 Author: Rob Hamerling, Copyright (c) 2017..2024, all rights reserved.
         Rob Jansen,    Copyright (c) 2020..2024, all rights reserved.
 
-Adapted-by: 
+Adapted-by:
 
 Compiler: N/A
 
@@ -118,8 +118,8 @@ if (__name__ == "__main__"):
 
    # step 4
    # copy required files for next step to destination
-   print("Copying required files(s) to", base)
    try:
+       print("Copying required files(s) to", base)
        shutil.copy2("devicespecific.json", base)
    except:
       print("Failed to copy required file(s) to", base)

@@ -6,12 +6,10 @@ Author: Rob Hamerling, Copyright (c) 2017..2017. All rights reserved.
 
 Adapted-by:
 
-Revision: $Revision$
-
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
-Released under the BSD license https://www.opensource.org/licenses/bsd-license.php
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
 Description:
    Simple list of all pins and their aliases.

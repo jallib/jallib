@@ -4,7 +4,7 @@ Title: Check if requirements for pic2jal scripts are satisfied:
 
 Author: Rob Hamerling, Copyright (c) 2017..2024. All rights reserved.
         Rob Jansen,    Copyright (c) 2018..2024. All rights reserved.
-		 
+
 Adapted-by:
 
 Compiler: N/A
@@ -54,15 +54,17 @@ def check_and_set_environment():
    try:
       base = os.environ["PIC2JAL"]                 # obtain existing path of destination
    except:                                         # when not present: create new
+      # destination of results for different platforms
       if (platform_name == "Linux"):
-         base = os.path.join("/", "media", "ram", "picdevices." + mplabxversion)  # with Linux
+         base = os.path.join("/", "media", "ram")  # Linux
       elif (platform_name == "Windows"):
-        base = os.path.join("D:\\", "picdevices")                                # with Windows
+        base = os.path.join("D:\\")                # Windows
       elif (platform_name == "Darwin"):
-         base = os.path.join("/", "media", "ram", "picdevices." + mplabxversion) # with OSX
+         base = os.path.join("/", "media", "ram")  # OSX
       else:
          sys.write.stderr("Please add proper environment settings for this platform\n")
-         return ["",""]                            # problem
+         return ["",""]
+      base = os.path.join(base, "picdevices." + mplabxversion)  # all platforms
       sys.stdout.write("Base for all output: " + base + "\n")
       os.environ["PIC2JAL"] = base                 # set new destination path
 

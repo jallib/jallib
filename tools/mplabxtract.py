@@ -4,8 +4,8 @@ Title: Collect .PIC files of JALV2 supported PICs
 
 Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
         Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		
-Adapted-by: 
+
+Adapted-by:
 
 Compiler: N/A
 
@@ -37,7 +37,7 @@ if (base == ""):
 
 import os
 import sys
-import glob
+import fnmatch
 import platform
 import shutil
 
@@ -84,18 +84,16 @@ if (__name__ == "__main__"):
    for picdir in pic_select:                    # all directories with .PIC files
       picvers = os.path.join(xml_prefix, picdir) # path to version directories
       picpath = os.path.join(picvers, "__version__", "edc")  # default path (< 4.20)
-      # There may be more versions in the directory and we need to pick the highest version.
-      files = sorted(list(os.listdir(picvers)))
-      file = files[-1] # Last item from the list is the highest version.
-      if os.path.isdir(os.path.join(picvers, file)):      # must be a directory
-         if "edc" in os.listdir(os.path.join(picvers, file)):  # contains edc directory
-            picpath = os.path.join(picvers, file, "edc")  # modified path
+      # There may be more versions in the directory, we need to pick the highest version.
+      subdirs = sorted(list(os.listdir(picvers)))
+      subdir = subdirs[-1] # Last item from the list is the highest version.
+      if os.path.isdir(os.path.join(picvers, subdir)):  # must be a directory
+         if "edc" in os.listdir(os.path.join(picvers, subdir)):  # contains edc directory
+            picpath = os.path.join(picvers, subdir, "edc")  # path to MCU collection
       print("Processing", picpath)              # progress signal
-      os.chdir(picpath)                         # make it current working directory
-      filelist = glob.glob("PIC1*.PIC")         # make list of selected .PIC files
-      for f in filelist:                        # all of these
-         if f not in unsup:                     # when supported by JalV2
-            shutil.copy2(f, dst)                # copy .PIC file
+      piclist = [x for x in os.listdir(picpath) if fnmatch.fnmatch(x, "PIC1*.PIC")]
+      for pic in piclist:                       # all of these
+         if pic not in unsup:                   # skip when usupported by JalV2
+             shutil.copy2(os.path.join(picpath,pic), dst)             # copy .PIC file
 
    print("Done!\n")
-

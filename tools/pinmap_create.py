@@ -45,7 +45,10 @@ Notes: - Last checked for corrections/errors/omisions with MPLABX 4.05
       all prepended by the appropriate picname
     - the mplabxtract script collects all .PIC files in
         'mplabx'.mplabxversion (no subdirectories)
-"""
+   Changes by RobH per 2024-06-22
+    - replaced xml.dom.minidom by xml.etree/ElementTree
+      for processing xml content
+    """
 
 from pic2jal_environment import check_and_set_environment
 base, mplabxversion = check_and_set_environment()           # obtain environment variables
@@ -54,9 +57,9 @@ if (base == ""):
 
 import os
 import sys
-import glob
+import fnmatch
 import re
-from xml.dom.minidom import parse, Node
+import xml.etree.ElementTree as et
 from concurrent import futures
 
 picdir     = os.path.join(base, "mplabx")                   # place of .pic files
@@ -93,31 +96,39 @@ def list_pic(fp, pic, alias):
    fp.write('   "' + pic + '": \n          {' + ', '.join(pl) + "\n          }")
 
 
-def create_pinmap_pic(filepath):
+def create_pinmap_pic(filespec):
    """ process a specific PIC (expect picname in upper case)
        Commented-out lines seem to be obsolete with MPLABX 4.01
        or may have been in error.
        These lines are preserved for later analysis
    """
+   with open(os.path.join(picdir, filespec), 'r') as fp:
+      xmlstr = fp.read()                                    # xml content
+      # remove 'edc:' and 'xsi:' namespace prefixes
+      xmlstr = xmlstr.replace('edc:', '')
+      xmlstr = xmlstr.replace('xsi:', '')
+   root = et.fromstring(xmlstr)                             # parse xml content
 
-   picname = os.path.splitext(filepath)[0][3:].upper()      # remove prefix and .ext
-   dom = parse(os.path.join(picdir, filepath))              # load .pic file
+   picname = os.path.splitext(filespec)[0][3:].upper()      # remove prefix and .ext
 
    pinnumber = 0
    pinlist = {}                                             # new dictionary
-   for pin in dom.getElementsByTagName("edc:Pin"):          # select pin nodes
+   if (pinsection := root.find('PinList')) is None:           # section with Pin info
+      return picname, pinlist
+
+   for pin in pinsection.findall('Pin'):                     # select pin nodes
       pinnumber = pinnumber + 1                             # calculated next pin
-      for pinc in pin.childNodes:                           # possibly corrected by comment node
-         if pinc.nodeType == pinc.COMMENT_NODE:
-            wlist = pinc.nodeValue.split()
-            if wlist[0].isdigit() == True:
-               pinnumber = int(wlist[0])
-            elif wlist[1].isdigit() == True:
-               pinnumber = int(wlist[1])
+      # for pinc in pin.childNodes:                           # possibly corrected by comment node
+         #if pinc.nodeType == pinc.COMMENT_NODE:
+         #   wlist = pinc.nodeValue.split()
+         #   if wlist[0].isdigit() == True:
+         #      pinnumber = int(wlist[0])
+         #   elif wlist[1].isdigit() == True:
+         #      pinnumber = int(wlist[1])
 
       aliaslist = []                                        # new aliaslist this pin
-      for vpin in pin.getElementsByTagName("edc:VirtualPin"):
-         alias = vpin.getAttribute("edc:name").upper().strip("_").split()[0]  # first word
+      for vpin in pin.findall('VirtualPin'):
+         alias = vpin.get('name').upper().strip('_').split()[0]  # first word
          if alias.startswith(pinexcl):                      # excluded aliases
             pass
          elif (alias.find("MCLR") >= 0):                    # MCLR anywhere in alias name
@@ -263,7 +274,7 @@ def build_pinaliases(pinmap):
 
 def collect_pinmap():
     # creates and returns a dictionary with pinmapping per PIC
-    picfiles = sorted(os.listdir(picdir))                   # all .PIC files
+    picfiles = [x for x in os.listdir(picdir) if fnmatch.fnmatch(x, "PIC1*.PIC")]
     with futures.ProcessPoolExecutor() as executor:
         results = executor.map(create_pinmap_pic, picfiles)
     return {r[0] : r[1] for r in results}

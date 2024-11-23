@@ -4,7 +4,7 @@ Title: Convert XML file into a simple tree structure
 
 Author: Rob Hamerling, Copyright (c) 2014..2024, all rights reserved.
         Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		
+
 Adapted-by:
 
 Compiler: N/A
@@ -24,7 +24,9 @@ Notes:
     - .xmltree files built in parallel with 'futures'
     - the mplabxtract script collects all .PIC files into
         'mplabx'.mplabxversion (no subdirectories)
-
+    Changes RobH 2024-11-xx
+    - use of xml.etree.ElementTree in stead of xml.dom.minidom
+    - some related changes
 """
 
 from pic2jal_environment import check_and_set_environment
@@ -39,74 +41,68 @@ import re
 import time
 import fnmatch
 from concurrent import futures
-from xml.dom.minidom import parse, Node
+import xml.etree.ElementTree as et
 
-picdir = os.path.join(base, "mplabx")
+xmldir = os.path.join(base, "mplabx")                   # location of xml .PIC files
 
-# output (relative path)
+# destination of xmltree files
 xmltreedir = os.path.join(base, "xmltree")              # destination of .xmltree files
 if not os.path.exists(xmltreedir):
    os.makedirs(xmltreedir)                              # with MPLABX version
 
-def child_print(fp, child, level):
-   if (child.nodeType != Node.TEXT_NODE):
-      if child.nodeType == Node.ELEMENT_NODE:
-         fp.write(".."*level + child.localName + "\n")
-         for i in range(child.attributes.length):
-            attr = child.attributes.item(i)
-            fp.write("  "*(level+1) + attr.localName + " = " + attr.value +"\n")
-      elif child.nodeType == Node.COMMENT_NODE:
-         fp.write(".."*level + child.nodeValue + "\n")
+def element_print(fp, element, level):
+    fp.write(".."*level + element.tag + "\n")
+    for attr in element.attrib:
+        fp.write("  "*(level+1) + str(attr) + ' = ' + str(element.get(attr))  + "\n")
 
-def show_nodes(fp, parent, level):
-   child = parent.firstChild
-   child_print(fp, child, level)
-   if child.hasChildNodes():
-      show_nodes(fp, child, level + 1)                  # recursive call
-   while child.nextSibling:
-      child = child.nextSibling
-      child_print(fp, child, level)
-      if child.hasChildNodes():
-         show_nodes(fp, child, level + 1)                # recursive call
+def show_elements(fp, parent, level):
+    for element in iter(parent):
+        element_print(fp, element, level + 1)
+        show_elements(fp, element, level + 1)           # recursive call
 
-def build_xmltree(devspec):
-   picspec = os.path.split(devspec)[-1]                  # filename.ext
-   picname = os.path.splitext(picspec)[0][3:].lower()    # remove extension and 'pic' prefix
-   print(picname)
-   parent = parse(os.path.join(devspec))
-   with open(os.path.join(xmltreedir, picname + ".xmltree"), "w") as fp:
-      show_nodes (fp, parent, 0)
-   return 1                                             # number of output files
+def build_xmltree(picname):
+    print(picname)
+    devspec = os.path.join(xmldir, 'PIC' + picname + '.PIC')
+    with open(devspec, 'r') as fp:
+        xmlstr = fp.read()                              # complete xml content
+        # remove 'edc:' and 'xsi:' namespace prefixes in xml file
+        xmlstr = xmlstr.replace('edc:', '')
+        xmlstr = xmlstr.replace('xsi:', '')
+    root = et.fromstring(xmlstr)                        # parse xml content
+    with open(os.path.join(xmltreedir, picname.lower() + ".xmltree"), "w") as fp:
+        element_print(fp, root, 0)
+        show_elements(fp, root, 0)
+    return 1                                            # number of output files
 
 
 # === mainline ===
 
 if (__name__ == "__main__"):
 
-   if len(sys.argv) > 1:
-      selection = sys.argv[1].upper()
-   else:
-      selection = "1*"                                   # base .pic file selection
+    if len(sys.argv) > 1:
+        selection = sys.argv[1].upper()
+    else:
+        selection = "1*"                                # base .pic file selection
 
-   start_time = time.time()
-   devs = []                                             # new list of filespecs
-   for file in sorted(os.listdir(picdir)):               # all .PIC files
-      picname = os.path.splitext(file)[0][3:].upper()    # pic type
-      if (fnmatch.fnmatch(picname, selection)):          # selection by user wildcard
-         devs.append(os.path.join(picdir, file))         # add filespec to list
+    start_time = time.time()
+    pics = []                                           # new list of filespecs
+    for file in os.listdir(xmldir):                     # all .PIC xml files
+        picname = os.path.splitext(file)[0][3:].upper()     # pic type
+        if (fnmatch.fnmatch(picname, selection)):       # selection by user (wildcard)
+            pics.append(picname)                        # add pic to list
 
-   if len(devs) == 0:
-      print("Nothing in selection")
-      exit(1)
+    if len(pics) == 0:
+        print("Nothing in selection")
+        exit(1)
 
-   # Start a number of parallel processes
-   with futures.ProcessPoolExecutor() as executor:
-      results = executor.map(build_xmltree, devs)        # for all selected PICs
-      count = sum(results)
-   print(f"Generated {count} xmltree files")
-   runtime = time.time() - start_time
-   print(f"Runtime: {runtime:.1f} seconds")
-   if runtime > 0:
-      print(f"        ({count/runtime:.2f} files per second)")
+    # Start a number of parallel processes
+    with futures.ProcessPoolExecutor() as executor:
+        results = executor.map(build_xmltree, pics)     # for all selected PICs
+        count = sum(results)
+    print(f"Generated {count} xmltree files")
+    runtime = time.time() - start_time
+    print(f"Runtime: {runtime:.1f} seconds")
+    if runtime > 0:
+        print(f"        ({count/runtime:.2f} files per second)")
 
 #

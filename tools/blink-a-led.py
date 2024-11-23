@@ -3,7 +3,7 @@
 
   Author: Rob Hamerling, Copyright (c) 2008..2024, all rights reserved.
           Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		  
+
   Adapted-by:
 
   Compiler: N/A
@@ -62,7 +62,7 @@ import sys
 import os
 import datetime
 import time
-import glob
+import fnmatch
 import json
 import platform
 from concurrent import futures
@@ -78,7 +78,7 @@ scriptversion = "2.0"       # script version
 platform_name = platform.system()
 # specification of system dependent compiler executable
 if platform_name == "Linux":
-   compiler = os.path.join("/", "home", "rob", "jalv2compiler", "bin", "jalv2-x86-64")
+   compiler = os.path.join("/", "media", "rob", "XS2000A", "jalv2compiler", "bin", "jalv2-x86-64")
 elif platform_name == "Windows":
    compiler = os.path.join(os.getcwd(), "jalv2.exe")
 elif platform_name == "Darwin":
@@ -86,15 +86,18 @@ elif platform_name == "Darwin":
 else:
    print("Please specify platform specific compiler to this script!")
 
-devdir = os.path.join(base, "device")           # origin of device files
-dstdir = os.path.join(base, "blink")            # destination of samples
+devdir = os.path.join(base, "device")           # origin of new device files
+dstdir = os.path.join(base, "blink")            # destination of new samples
 if not os.path.exists(dstdir):                  # dstdir doesn't exists
    os.makedirs(dstdir)                          # create it
 
-devspec = {}                                    # contents of devicespecific.json
-devspecfile = os.path.join(base, "devicespecific.json")  # specific PIC properties 
+devspecfile = os.path.join(base, "devicespecific.json")  # specific PIC properties
 with open(devspecfile, "r") as fp:
-   devspec = json.load(fp)                      # get contents 
+   devspec = json.load(fp)                      # get dictionary with contents
+
+if not os.path.exists('constants_jallib.jal'):
+   print('Missing required "constants_jallib.jal" in current directory')
+   exit(6)
 
 def scan_devfile(devfile):
    """ Scan device file for selected device info """
@@ -254,7 +257,8 @@ def compile_sample(pgmname):
        Return 0 if compilation with no errors or warnings
        otherwise return result code and create .log file
    """
-   cmd = f"{compiler} -no-asm -no-hex -no-codfile -s {devdir} {os.path.join(dstdir,pgmname)}"
+   opts = '-no-asm -no-hex -no-codfile'               # compiler options
+   cmd = f'{compiler} {opts} -s {devdir} {os.path.join(dstdir,pgmname)}'
    flog = os.path.join(dstdir, pgmname + ".log")      # compiler output report
    if os.path.exists(flog):
       os.remove(flog)
@@ -540,7 +544,7 @@ def main(dev):
       counter = 0
       picname = os.path.splitext(dev)[0]
       # Generate a sample for HS, INTOSC, USB
-      if (osctype == "HS") | (osctype == "HS_32MHZ"):  
+      if (osctype == "HS") | (osctype == "HS_32MHZ"):
          if build_validate_compile_sample(picname, blink_pin, osctype, oscword, fusedef, var):  # primary sample OK
             counter += 1
       elif ("ioscfs" in fusedef) & ("osc" not in fusedef): # Older PICs
@@ -648,16 +652,12 @@ if __name__ == "__main__":
 
    print("Creating blink-a-led samples")
    start_time = time.time()
-   cwd = os.getcwd()                                  # remember current dir
-   os.chdir(devdir)                                   # to device files
-   devs = glob.glob(selection)                        # selected device files
-   os.chdir(cwd)                                      # back
+   devs = [x for x in os.listdir(devdir) if fnmatch.fnmatch(x, selection)]
    if not len(devs):
       print(f"No device files found matching {selection}")
       sys.exit(1)
 
-   devs.sort()                                        # alphanumeric order
-
+   devs = sorted(devs)                                # alphanumeric order
    # Start a number of parallel processes
    with futures.ProcessPoolExecutor() as executor:
        results = executor.map(main, devs)             # for all selected PICs
