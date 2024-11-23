@@ -1,11 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: nRF905 library for wireless communication.
---
--- Author: Rob Jansen, Copyright (c) 2020..2020, all rights reserved.
---
+-- Author: Rob Jansen, Copyright (c) 2020..2024, all rights reserved.
 -- Adapted-by:
---
--- Compiler: 2.5r4
+-- Compiler: 2.5r8
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -62,6 +59,12 @@
 --          processing it. If this feature is not used the main program has to
 --          check frequently if new data is received. In that case the pin
 --          definition nrf905_dr_pin is not needed.
+--          In addition, the following aliases and const must be defined:
+--          -) alias nrf905_external_interrupt_enable is INTCON_INTE 
+--          -) alias nrf905_global_interrupt_enable is INTCON_GIE
+--          -) alias nrf905_external_interrupt_edge is OPTION_REG_INTEDG 
+--          -) alias nrf905_external_interrupt_flag is INTCON_INTF 
+--          -) const nrf905_postive_interrupt_edge = TRUE
 -- 
 --          Some hardware related information:
 --          -) The nRF905 operates at a supply voltage of 3.3 Volt. 
@@ -282,8 +285,6 @@ function  _nrf905_get_status_register() return byte
 function  _nrf905_get_dr_status() return bit
 function  _nrf905_get_am_status() return bit
 procedure _nrf905_copy_data()
-procedure _nrf906_enable_interrupt()
-procedure _nrf906_disable_interrupt() 
 
 -- ------------------------- Final implementation  -----------------------------
 
@@ -308,15 +309,6 @@ var bit  _nrf905_tx_active
 -- Address width we need to remember.
 var byte  _nrf905_tx_address_width
 var byte  _nrf905_rx_address_width
-
--- In case of doing SPI in software we will not include the SPI library but
--- replace the used function by the software implementation with the same name.
-if defined(NRF905_SOFTWARE_SPI) then  
-  function spi_master_hw_exchange(byte in data) return byte
-else
-  -- Use the spi_master_hw_exchange function from hardware SPI library.
-  include spi_master_hw
-end if 
 
 -- ---------------------- Functions and Procedure  -----------------------------
 
@@ -353,9 +345,6 @@ procedure nrf905_init() is
       -- SPI done in software, initialize the relevant pins.
       nrf905_spi_sck = LOW
       nrf905_spi_sdo = LOW 
-   else 
-      -- Setup hardware SPI interface. Not the maximum speed.
-      spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
    end if
 
    -- Set the device to its default values.
@@ -392,7 +381,7 @@ end procedure
 
 if defined(NRF905_SOFTWARE_SPI) then 
 -- SPI interface done in software using same the function name as hardware SPI.
-  function spi_master_hw_exchange(byte in data) return byte is
+  function nrf905_spi_exchange(byte in data) return byte is
 
   var bit data_bit_in at data:0
   var bit data_bit_out at data:7
@@ -458,7 +447,7 @@ procedure nrf905_power_up_tx() is
 
    nrf905_power_up_device()
    nrf905_txen_pin = HIGH
-   nrf905_trx_ce_pin = LOW
+   nrf905_trx_ce_pin = HIGH
    _nrf905_tx_active = TRUE
 
 end procedure
@@ -656,15 +645,19 @@ procedure nrf905_set_tx_address(dword in address) is
    var byte _trash
       
    -- This address is not set in the configuration register.
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW
-   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_TX_ADDR) 
+   _trash = nrf905_spi_exchange(_NRF905_CMD_WRITE_TX_ADDR) 
    for _nrf905_tx_address_width loop
-      _trash = spi_master_hw_exchange(byte(address))
+      _trash = nrf905_spi_exchange(byte(address))
       address = address >> 8
    end loop
    nrf905_csn_pin = HIGH
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
    
 end procedure
 
@@ -786,31 +779,31 @@ procedure nrf905_send_data(byte in data[], byte in nr_of_bytes) is
 
    var byte index, _trash
      
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_power_up_tx()
-   nrf905_csn_pin = LOW 
-   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_TX_PAYLOAD)
+   nrf905_csn_pin = LOW -- Switch temporay back to standby and SPI programming.
+   _trash = nrf905_spi_exchange(_NRF905_CMD_WRITE_TX_PAYLOAD)
    -- We do not write more than the set payload size.
    if (nr_of_bytes > _nrf905_tx_payload_size) then
        nr_of_bytes = _nrf905_tx_payload_size
    end if 
    -- Send the data
    for nr_of_bytes using index loop
-      _trash = spi_master_hw_exchange(data[index])
+      _trash = nrf905_spi_exchange(data[index])
    end loop
    -- We need to stuff the full payload, otherwise we are sending random stuff
    -- at the end. Stuff with 0x00 to clear it.
    for _nrf905_tx_payload_size - nr_of_bytes loop
-       _trash = spi_master_hw_exchange(0x00) 
+       _trash = nrf905_spi_exchange(0x00) 
    end loop  
-   nrf905_csn_pin = HIGH
-   -- Start transmission.
-   nrf905_trx_ce_pin = HIGH 
+   nrf905_csn_pin = HIGH -- Enable TX again.
    if defined(NRF905_USE_INTERRUPT) then
       -- Clear any pending interrupt flag.
       nrf905_external_interrupt_flag = FALSE
-   end if
-   _nrf906_enable_interrupt()
+      nrf905_external_interrupt_enable = TRUE
+   end if 
 
 end procedure
 
@@ -856,26 +849,6 @@ if defined(NRF905_USE_INTERRUPT) then
 end if
 
 
--- Disable the external interrupt.
-procedure _nrf906_disable_interrupt() is
-
-   if defined(NRF905_USE_INTERRUPT) then 
-      nrf905_external_interrupt_enable = FALSE
-   end if 
-   
-end procedure
-
-
--- Enable the external interrupt.
-procedure _nrf906_enable_interrupt() is
-
-   if defined(NRF905_USE_INTERRUPT) then 
-      nrf905_external_interrupt_enable = TRUE
-   end if 
-   
-end procedure
-
-
 -- Copy the rx payload to the receive buffer. Depending on the selected mode
 -- this procedure can be called by the function nrf905_get_data() or by the
 -- function _nrf905_interrupt().
@@ -883,13 +856,15 @@ procedure _nrf905_copy_data() is
 
     var byte data, index
 
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW 
    -- Send read payload command, ignore the data returned. 
-   data = spi_master_hw_exchange(_NRF905_CMD_READ_RX_PAYLOAD)
+   data = nrf905_spi_exchange(_NRF905_CMD_READ_RX_PAYLOAD)
    -- Copy the payload data but not more than the size of the receive buffer. 
    for _nrf905_rx_payload_size using index loop
-      data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+      data = nrf905_spi_exchange(_NRF905_CMD_NOP)
       if index < NRF905_RX_BUFFER_SIZE then
          nrf905_rx_buffer[index] = data
       end if
@@ -899,7 +874,9 @@ procedure _nrf905_copy_data() is
    while _nrf905_get_dr_status() loop
       -- Empty. Ready until data ready is cleard.
    end loop
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
 
 end procedure
 
@@ -909,12 +886,16 @@ function _nrf905_get_status_register() return byte is
 
    var byte status
 
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW
    -- Read from any register, the first data returned is always the status register.
-   status = spi_master_hw_exchange(_NRF905_CMD_NOP) 
+   status = nrf905_spi_exchange(_NRF905_CMD_NOP) 
    nrf905_csn_pin = HIGH
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
    
    return status
 
@@ -943,15 +924,19 @@ function _nrf905_read_configuration_register(byte in location) return byte is
 
    var byte data
 
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW
    -- Read from the register, the first data returned is always the status 
    -- register but we can ignore it.
-   data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG | 
+   data = nrf905_spi_exchange(_NRF905_CMD_READ_CONFIG_REG | 
                                 (location & _NRF905_MASK_CONFIG)) 
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP) 
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP) 
    nrf905_csn_pin = HIGH
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
 
    return data
 
@@ -964,13 +949,17 @@ procedure _nrf905_write_configuration_register(byte in location,
 
    var byte _trash
 
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW
-   _trash = spi_master_hw_exchange(_NRF905_CMD_WRITE_CONFIG_REG |
+   _trash = nrf905_spi_exchange(_NRF905_CMD_WRITE_CONFIG_REG |
                                   (location & _NRF905_MASK_CONFIG))  
-   _trash = spi_master_hw_exchange(value) 
+   _trash = nrf905_spi_exchange(value) 
    nrf905_csn_pin = HIGH
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
 
 end procedure
 
@@ -994,14 +983,16 @@ procedure nrf905_print_configuration_register() is
    var byte data
 
    print_string(serial_hw_data,"RF-Configuration Register.\r\n")
-   _nrf906_disable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = FALSE
+   end if 
    nrf905_csn_pin = LOW
    -- First transfer is the command and returns irrelevant data so can be ignored.
-   data = spi_master_hw_exchange(_NRF905_CMD_READ_CONFIG_REG)   
+   data = nrf905_spi_exchange(_NRF905_CMD_READ_CONFIG_REG)   
 
    -- Now get the data and print it. Channel is distributed over 2 positions.
-   channel = byte(spi_master_hw_exchange(_NRF905_CMD_NOP)) -- Byte 0
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP)          -- Byte 1
+   channel = byte(nrf905_spi_exchange(_NRF905_CMD_NOP)) -- Byte 0
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP)          -- Byte 1
    channel = channel + (16 * (data & 0b0000_0001))
    print_string(serial_hw_data,"Channel: ")
    print_word_dec(serial_hw_data, channel)
@@ -1048,7 +1039,7 @@ procedure nrf905_print_configuration_register() is
    print_crlf(serial_hw_data)
 
    -- Info byte 2.
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP)
    print_string(serial_hw_data,"Byte 2: ")
    print_byte_bin(serial_hw_data, data)
    print_crlf(serial_hw_data)
@@ -1073,26 +1064,26 @@ procedure nrf905_print_configuration_register() is
 
    -- Byte 3.
    print_string(serial_hw_data,"Receive Payload Width: ")
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP)
    print_byte_dec(serial_hw_data, data)
    print_crlf(serial_hw_data)
 
    -- Byte 4.
    print_string(serial_hw_data,"Transmit Payload Width: ")
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP)
    print_byte_dec(serial_hw_data, data)
    print_crlf(serial_hw_data)
 
    -- Byte 5 to 8.
    print_string(serial_hw_data,"RX address: ")
    for 4 loop
-      data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+      data = nrf905_spi_exchange(_NRF905_CMD_NOP)
       print_byte_hex(serial_hw_data, data)
    end loop
    print_crlf(serial_hw_data)
 
    -- Byte 9.
-   data = spi_master_hw_exchange(_NRF905_CMD_NOP)
+   data = nrf905_spi_exchange(_NRF905_CMD_NOP)
    print_string(serial_hw_data,"Byte 9: ")
    print_byte_bin(serial_hw_data, data)
    print_crlf(serial_hw_data)
@@ -1148,7 +1139,9 @@ procedure nrf905_print_configuration_register() is
    print_crlf(serial_hw_data)
 
    nrf905_csn_pin = HIGH
-   _nrf906_enable_interrupt()
+   if defined(NRF905_USE_INTERRUPT) then 
+      nrf905_external_interrupt_enable = TRUE
+   end if 
    
 end procedure
 
