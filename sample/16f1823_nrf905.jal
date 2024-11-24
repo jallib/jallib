@@ -26,20 +26,21 @@ include 16f1823
 -- Variable reduce reduces both RAM and ROM for this sample program.          
 pragma opt variable_reduce yes
 
--- This program uses the internal oscillator at 32 MHz.
-pragma target clock    32_000_000      -- oscillator frequency
-pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
-pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+-- This program uses the internal oscillator at 4 MHz.
+pragma target clock    4_000_000       -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- internal oscillator
+pragma target PLLEN    DISABLED        -- PLL off
+pragma target CLKOUTEN DISABLED        -- no clock output
 pragma target WDT      DISABLED        -- No Watchdog
 pragma target PWRTE    ENABLED         -- Power up timer enabled
 pragma target BROWNOUT DISABLED        -- No brownout reset
 pragma target FCMEN    DISABLED        -- No clock monitoring
 pragma target IESO     DISABLED        -- int/ext osc. switch
-pragma target LVP      ENABLED         -- Low voltage programming
+pragma target LVP      DISABLED        -- No low voltage programming
 pragma target MCLR     INTERNAL        -- Reset internal
--- Set the internal clock frequency to 32 MHz.
-OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
-OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+OSCCON_SCS = 0                         -- select primary oscillator
+OSCCON_IRCF = 0b1101                   -- 4 MHz
+OSCCON_SPLLEN = FALSE                  -- software PLL off
 
 -- Enable weak pull up for all pins.
 WPUA = 0b0011_1111       
@@ -111,6 +112,9 @@ const byte NRF905_RX_PAYLOAD_SIZE = 25
 const byte NRF905_RX_BUFFER_SIZE  = 25
 include nrf905
  
+-- Use my own RF channel (default is 108). Range from 0 .. NRF905_MAX_CHANNEL.
+const word MY_CHANNEL = 50
+
 -- LED on/off definitions.
 const bit LED_ON = TRUE
 const bit LED_OFF = FALSE
@@ -145,8 +149,8 @@ nrf905_set_crystal_clock(NRF905_CRYSTAL_CLK_16MHZ)
 -- Set a different payload width for this program.
 nrf905_set_rx_payload_width(NRF905_RX_PAYLOAD_SIZE)
 nrf905_set_tx_payload_width(NRF905_TX_PAYLOAD_SIZE)
--- A little bit more power please.
-nrf905_set_power_level(NRF905_POWER_LEVEL_MED)  
+nrf905_set_power_level(NRF905_POWER_LEVEL_MIN)  
+nrf905_set_rf_channel(MY_CHANNEL)
 
 -- Transmit a welcome message at start up.
 nrf905_send_data(hello, count(hello))  
