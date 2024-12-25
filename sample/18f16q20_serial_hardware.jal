@@ -1,0 +1,87 @@
+-- -----------------------------------------------------------------------------
+-- Title: Serial hardware test program for USART 1.
+--
+-- Author: Rob Jansen, Copyright (c) 2024..2024 all rights reserved.
+--
+-- Adapted-by:
+--
+-- Compiler: 2.5r8
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: USART 1 test program for the Microchip PIC18F16Q20. 
+--
+-- Sources: Based on the original serial hardware sample program by Joep Suijs.
+--
+-- Notes:
+--
+-- -----------------------------------------------------------------------------
+--
+include 18f16q20                       -- target PICmicro
+--
+-- This program uses the internal oscillator at 64 MHz.
+pragma target clock    64_000_000      -- oscillator frequency
+--
+pragma target OSC      OFF             -- internal oscillator
+pragma target RSTOSC   HFINTOSC_64MHZ  -- select 64 MHz
+pragma target CLKOUTEN DISABLED        -- no clock output
+pragma target WDT      DISABLED        -- watchdog
+pragma target XINST    DISABLED        -- do not use extended instructionset
+pragma target DEBUG    DISABLED        -- no debugging
+pragma target BROWNOUT DISABLED        -- no brownout reset
+pragma target FCMEN    DISABLED        -- no clock monitoring
+pragma target CSWEN    ENABLED         -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED         -- low voltage programming
+pragma target MCLR     INTERNAL        -- internal reset
+pragma target MVECEN   DISABLED        -- Do not use multi vectored interrupts
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCFRQ = 0b1000                        -- Fosc 64MHz
+--
+enable_digital_io()                    -- make all pins digital I/O
+
+-- Assign the pins. Note: This must always be done to let it work even for
+-- the default assignment.
+include pps
+pps_control_lock(FALSE)
+RC6PPS  = PPS_TX1  -- TX1 re-assigned to C6 = pin 8 of 20 pin DIP 
+U1RXPPS = PPS_RC7  -- C7 re-assigned to RX1 = pin 9 of 20 pin DIP 
+pps_control_lock(TRUE)
+
+-- Include and initialize serial hardware library.
+const serial_hw_baudrate = 115200
+alias pin_TX_direction is pin_C6_direction  -- Transmit pin.
+alias pin_RX_direction is pin_C7_direction  -- Receive pin.
+include serial_hardware
+serial_hw_init()
+
+include print                              -- output library
+print_string(serial_hw_data, "Hello serial hardware world") 
+
+-- inform user PIC is ready !
+serial_hw_write("!")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+
+forever loop
+
+   -- if there is a char, echo it back.
+   if (serial_hw_read(char))	then
+      serial_hw_write(char)	-- that's the echo...
+   end if
+
+   -- code block below prints a dot, every now and then, to signal
+   -- the pic is alive, waiting to receiver character from the host
+   counter = counter - 1    -- count down
+   if (counter == 0) then   -- until zero
+      counter = 50000       -- then start over counting from 50000
+      serial_hw_data = "."  -- and output a dot to the serial port
+   end if
+   
+end loop
+
