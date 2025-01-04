@@ -20,9 +20,9 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
-2.5r9 -- 27 december 2024
+2.5r9 -- 04 january 2025
+         * Fixed issue#33: Constant string does not work for PIC16F883
          * Fixed issue#35: Compiler adds additional but non functioning code due to partial implementation.
-         * Fixed issue#36: Printing const arrays from records does not work correctly.
 
 2.5r8 -- 16 may 2023
          * Fixed issue#28: Program goes haywire when using look-up tables for fonts and code size becomes bigger than 16k.
