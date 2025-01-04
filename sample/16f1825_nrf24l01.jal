@@ -1,26 +1,35 @@
 -- -----------------------------------------------------------------------------
 -- Title: Sample program for the nRF24L01+  
 --
--- Author: Rob Jansen, Copyright (c) 2019..2020 all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2019..2025 all rights reserved.
 --
 -- Adapted-by:
 --
--- Compiler: 2.5r3
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
--- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: This program sends a message once every two seconds to two different 
 --              nRF24L01+ devices and will print any received message from these 
 --              devices. The pipe from which the message was received will be 
 --              printed as to show from which device the message was received.
+--              This sample file uses SPI hardware 1 but also shows how to set
+--              it up for using the nRF24L01+ using SPI software.
 --    
--- Sources:
+-- Notes:       See sample program 16f1823_nrf24l01.jal (using SPI hardware 1)
+--              or 16f1829_nrf24l01.jal (using SPI hardware 2) for the counter 
+--              part of this sample program which is the receiver of the message 
+--              sent.
 --
--- Notes:       See sample program 16f1823_nrf24l01.jal for the counter part of  
---              this sample program (the receiver of the message sent).
+--              Some hardware related information:
+--              -) The nRF24L01+ operates at a supply voltage of 3.3 Volt but
+--                 can interface directly with a PIC operating at 5 Volt.
+--              -) The nRF24L01+ is very sensitive to fluctuations on the power
+--                 supply. Make sure you connect a capacitor of 100 uF close 
+--                 to the the power lines of the nRF24L01+
 --
-include 16f1825                 
+include 16f1825                
 
 -- This program uses the internal oscillator at 32 MHz.
 pragma target clock    32_000_000      -- oscillator frequency
@@ -37,10 +46,10 @@ pragma target MCLR     EXTERNAL        -- Reset internal
 OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
 OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
 
--- Enable weak pull up for all unused ports since some inputs are not connected
-WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
-WPUC = 0b0011_1000       -- Weak pull-up for unused pins.
-OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+-- Enable weak pull up for all pins.
+WPUA = 0b0011_1111       
+WPUC = 0b1111_1111        
+OPTION_REG_WPUEN = FALSE  
 
 enable_digital_io()
 
@@ -49,19 +58,38 @@ alias pin_RX_direction  is pin_C5_direction  -- Pin 5 for 14 pin DIP.
 alias pin_TX_direction  is pin_C4_direction  -- Pin 6 for 14 pin DIP.
 const serial_hw_baudrate = 115_200
 include serial_hardware
+alias serial is serial_hw_data
 serial_hw_init()
 
--- nRF24L01+ pin definition.
-alias nrf24_spi_sck is pin_C0 -- Pin 10 for 14 pin DIP
-alias nrf24_spi_sck_direction is pin_C0_direction
-alias nrf24_spi_sdi is pin_C1 -- Pin 9 for 14 pin DIP.    
-alias nrf24_spi_sdi_direction is pin_C1_direction   
-alias nrf24_spi_sdo is pin_C2 -- Pin 8 for 14 pin DIP.
-alias nrf24_spi_sdo_direction is pin_C2_direction 
-alias nrf24_ce_pin  is pin_A4 -- Pin 3 for 14 pin DIP. 
-alias nrf24_ce_pin_direction is pin_A4_direction 
-alias nrf24_csn_pin is pin_A5 -- Pin 2 for 14 pin DIP. 
-alias nrf24_csn_pin_direction is pin_A5_direction 
+-- Select SPI hardware or use software SPI. Software SPI gives you more 
+-- flexibility in which pins you want to use.
+-- const NRF24_SOFTWARE_SPI = TRUE -- Remove comments to enable software spi.
+
+-- The 'defined' below is only added to show what is needed when using either
+-- software SPI or hardware SPI. This example shows the use of SPI hardware 1. 
+-- Note that you can also use SPI hardware 2 if your PIC supports that. 
+if defined(NRF24_SOFTWARE_SPI) then
+   -- These are only needed for software SPI. Pins can be assigned to any port
+   -- but keep the pin direction aliases in line.
+   alias nrf24_spi_sck is pin_C0 
+   alias nrf24_spi_sdi is pin_C1    
+   alias nrf24_spi_sdo is pin_C2 
+else 
+   -- Hardware SPI, setup hardware SPI 1 interface. 
+   include spi_host_hw
+   alias nrf24_spi_exchange is spi_host_hw_exchange
+   -- The maximim SPI clock frequency for the nRF24L01+ is 10 MHz so if the
+   -- target clock of the PIC is above 40 MHz use SPI_RATE_FOSC_16.
+   spi_init(SPI_MODE_00, SPI_RATE_FOSC_4) 
+end if
+-- Other reruired nRF24L01 pin aliases
+alias nrf24_spi_sck_direction is pin_C0_direction -- Pin 10 for 14 pin DIP
+alias nrf24_spi_sdi_direction is pin_C1_direction -- Pin  9 for 14 pin DIP.  
+alias nrf24_spi_sdo_direction is pin_C2_direction -- Pin  8 for 14 pin DIP.
+alias nrf24_ce_pin  is pin_C3                     -- Pin  7 for 14 pin DIP. 
+alias nrf24_ce_pin_direction is pin_C3_direction 
+alias nrf24_csn_pin is pin_C4                     -- Pin  6 for 14 pin DIP. 
+alias nrf24_csn_pin_direction is pin_C4_direction 
 
 -- nRF24L01 transmit and receive address for this module must be defined, 5 bytes.
 -- In case of more receive addresses only the first byte (LSB) of the receive 
@@ -91,31 +119,33 @@ var word timer
 var bit sending_data
 
 -- Show welcome message.
-print_string(serial_hw_data,start)
-print_crlf(serial_hw_data)
+print_string(serial,start)
+print_crlf(serial)
 
 timer = 0  
 sending_data = FALSE
 device_to_send_to = 1
 
+
 forever loop
+
    -- Loop timer 1 ms.
    _usec_delay(1_000)
    
    -- Send a message to one of the devices and alternate devices..
    timer = timer + 1
    if (timer >= 2_000) then
-      print_crlf(serial_hw_data)
+      print_crlf(serial)
       if (device_to_send_to == 1)
       then
          -- Send to first device.
-         print_string(serial_hw_data,"Sending data to device 1 ... ")   
+         print_string(serial,"Sending data to device 1 ... ")   
          nrf24_set_transmit_address(NRF24_TRANSMIT_ADDR)
          device_to_send_to = 2
       elsif (device_to_send_to == 2)
       then
          -- Send to second device.
-         print_string(serial_hw_data,"Sending data to device 2 ... ")   
+         print_string(serial,"Sending data to device 2 ... ")   
          nrf24_set_transmit_address(NRF24_TRANSMIT_ADDR_2)
          device_to_send_to = 1
       end if
@@ -130,27 +160,29 @@ forever loop
    if sending_data & nrf24_tx_ready() then
       -- Transmission done, check if successful.
       if nrf24_tx_ok() then
-         print_string(serial_hw_data,"Transmission OK! \r\n")   
+         print_string(serial,"Transmission OK! \r\n")   
       else
-         print_string(serial_hw_data,"Transmission failed! \r\n")   
+         print_string(serial,"Transmission failed! \r\n")   
       end if
-      print_crlf(serial_hw_data)
-      print_string(serial_hw_data,"Enabling receiver ... \r\n")   
+      print_crlf(serial)
+      print_string(serial,"Enabling receiver ... \r\n")   
       nrf24_power_up_rx()
       sending_data = FALSE
    end if 
 
    -- Print the message from any of the 2 devices.
    if nrf24_get_data(pipe, counter) then
-       print_crlf(serial_hw_data)
-       print_string(serial_hw_data,"Receiving data from pipe (device) ")   
+       print_crlf(serial)
+       print_string(serial,"Receiving data from pipe (device) ")   
       -- Print pipe number in ASCII and then the data.
-      serial_hw_data = pipe + 0x30
-      print_string(serial_hw_data,": ")
+      serial = pipe + 0x30
+      print_string(serial,": ")
       for counter using index loop
-         serial_hw_data = nrf24_read_buffer[index]
+         serial = nrf24_read_buffer[index]
       end loop
-      print_crlf(serial_hw_data)
+      print_crlf(serial)
   end if
+
+
 end loop
 

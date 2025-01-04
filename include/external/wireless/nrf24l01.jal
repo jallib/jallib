@@ -1,11 +1,11 @@
 -- -----------------------------------------------------------------------------
 -- Title: nRF24L01+ library for wireless communication.
 --
--- Author: Rob Jansen, Copyright (c) 2019..2020, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2019..2025, all rights reserved.
 --
 -- Adapted-by:
 --
--- Compiler: 2.5r3
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -19,18 +19,27 @@
 --          https://github.com/sirloon/jaluino/blob/master/lib/nrf24l01.jal
 --
 -- Notes:   The following pins must be defined by the main program before 
---          including this library:
---          -) alias nrf24_spi_sck            -- To sck of nRF24L01+
---          -) alias nrf24_spi_sck_direction 
---          -) alias nrf24_spi_sdi            -- To MISO of nRF24L01+ 
---          -) alias nrf24_spi_sdi_direction 
---          -) alias nrf24_spi_sdo            -- To MOSI of nRF24L01+ 
---          -) alias nrf24_spi_sdo_direction 
---          -) alias nrf24_ce_pin             -- To ce of nRF24L01+ 
---          -) alias nrf24_ce_pin_direction 
---          -) alias nrf24_csn_pin            -- To csn of nRF24L01+ 
---          -) alias nrf24_csn_pin_direction 
+--          including this library for both software SPI and hardware SPI:          
+--          -) alias nrf24_spi_sck_direction  -- SCK to sck of nRF24L01+ 
+--          -) alias nrf24_spi_sdi_direction  -- SDI to MISO of nRF24L01+
+--          -) alias nrf24_spi_sdo_direction  -- SDO to MOSI of nRF24L01+ 
+--          -) alias nrf24_ce_pin_direction   -- To ce of nRF24L01+ 
+--          -) alias nrf24_csn_pin_direction  -- To csn of nRF24L01+ 
+--          -) alias nrf24_ce_pin             
+--          -) alias nrf24_csn_pin            
+--          In addtion when using software SPI (see below):
+--          -) alias nrf24_spi_sck            
+--          -) alias nrf24_spi_sdi             
+--          -) alias nrf24_spi_sdo            
 --
+--          When using harware SPI (1 or 2) you need to include the SPI JAL
+--          library and initialize the SPI inteface, example given for 1:
+--          -) include spi_host_hw
+--          -) alias nrf24_spi_exchange is spi_host_hw_exchange
+--          And initialize the hardware SPI using MODE_00:
+--          -) spi_init(SPI_MODE_00, SPI_RATE_FOSC_4) 
+--          Use SPI_RATE_FOSC_16 when the target clock is > 40 MHz.
+-- 
 --          Define the NRF24_RECEIVE_ADDR using the correct number of bytes 
 --          (default is 5) in an array with the Least Significant Byte (LSB)
 --          first. This address must be defined before including this library.
@@ -42,13 +51,15 @@
 --
 --          The maximum payload size is set to NRF24_PAYLOAD_SIZE, which also 
 --          creates are receive buffer called 'nrf24_read_buffer' of the same 
---          size. To change this use: 
+--          size. The default size is 25 bytes. To change this use: 
 --          -) const byte NRF24_PAYLOAD_SIZE = <your size>.
 --          The payload size range is between 1 and 32 (= NRF24_MAX_PAYLOAD).
 --     
---          By default the SPI hardware is used. This library also implemented
---          a software SPI interface. In order to use this define the following:
+--          This library also implemented a software SPI interface. 
+--          In order to use this define the following:
 --          -) const NRF24_SOFTWARE_SPI = TRUE 
+--          In this case the section about hardware SPI initialization is
+--          not needed.
 --
 --          Some hardware related information:
 --          -) The nRF24L01+ operates at a supply voltage of 3.3 Volt but can
@@ -305,10 +316,7 @@ function  _nrf24_get_dynamic_payload_size() return byte
 -- In case of doing SPI in software we will not include the SPI library but
 -- replace the used function by the software implementation with the same name.
 if defined(NRF24_SOFTWARE_SPI) then  
-  function spi_master_hw_exchange(byte in data) return byte
-else
-  -- Use the spi_master_hw_exchange function from hardware SPI library.
-  include spi_master_hw
+  function nrf24_spi_exchange(byte in data) return byte
 end if 
 
 -- Dynamic payload status.
@@ -328,27 +336,22 @@ var bit _nrf24_dynamic_payload_enabled
 -- -) Set RF TX power power to 0 dBm (default).
 -- -) Enable dynamic payload length.
 procedure nrf24_init() is
+
    _usec_delay(100_000) -- Power ramp up time or power on reset time.
-   -- Initialize SPI and other required pins.
-   nrf24_spi_sck_direction = output
-   nrf24_spi_sdi_direction = input
-   nrf24_spi_sdo_direction = output
-   nrf24_csn_pin_direction = output
-   nrf24_ce_pin_direction = output
+   -- Initialize the module with the receive address and initial settings.
    if defined(NRF24_SOFTWARE_SPI) then
       -- SPI done in software, initialze the relevant pins.
       nrf24_spi_sck = LOW
       nrf24_spi_sdo = LOW 
-   else 
-     -- Setup hardware SPI interface. The maximim clock frequency for the 
-     -- nRF24L01+ is 10 MHz.
-      if (target_clock > 40_000_000) then
-         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
-      else
-         spi_init(SPI_MODE_00, SPI_RATE_FOSC_4)
-      end if
-   end if
-   -- Initialize the module with the receive address and initial settings.
+   end if  
+
+   -- Enable pin directions.
+   nrf24_spi_sck_direction = output
+   nrf24_spi_sdi_direction = input
+   nrf24_spi_sdo_direction = output
+   nrf24_csn_pin_direction = output
+   nrf24_ce_pin_direction  = output
+
    nrf24_set_address_width(NRF24_ADDR_WIDTH_5)
    -- Set receiving address, on pipe 1 (pipe 0 is used to auto-ACK, 
    -- combined with TX address).
@@ -363,6 +366,7 @@ procedure nrf24_init() is
    _nrf24_flush_rx()
    _nrf24_flush_tx()
    nrf24_power_down()
+   
 end procedure
 
 
@@ -609,7 +613,7 @@ function nrf24_data_available() return bit is
       data_present = true
    else
       status = _nrf24_read_byte_register(NRF24_FIFO_STATUS)
-      data_present = (status & (1 << NRF24_RX_EMPTY)) == 0
+      data_present = ((status & (1 << NRF24_RX_EMPTY)) == 0)
    end if
    return data_present
 end function
@@ -617,7 +621,7 @@ end function
 
 if defined(NRF24_SOFTWARE_SPI) then 
   -- SPI interface done in software using same the function name as hardware SPI.
-  function spi_master_hw_exchange(byte in data) return byte is
+  function nrf24_spi_exchange(byte in data) return byte is
   var bit data_bit_in at data:0
   var bit data_bit_out at data:7
 
@@ -647,19 +651,19 @@ procedure nrf24_send_data(byte in data[], byte in length) is
    -- Copy data to device, start with the number of bytes to send. Also check
    -- if the message is not too long, othewise we maximize it.
    nrf24_csn_pin = low   
-   _trash = spi_master_hw_exchange(NRF24_W_TX_PAYLOAD)
+   _trash = nrf24_spi_exchange(NRF24_W_TX_PAYLOAD)
    if (length > NRF24_PAYLOAD_SIZE) then
       length = NRF24_PAYLOAD_SIZE
    end if 
    -- Send the given data to the device.
    for length using index loop
-      _trash = spi_master_hw_exchange(data[index])
+      _trash = nrf24_spi_exchange(data[index])
    end loop
    -- If we use dynamic payload we are done, if not we need to fill up the 
    -- TX fifo to NRF24_PAYLOAD_SIZE with zero.
    if !_nrf24_dynamic_payload_enabled then
       for (NRF24_PAYLOAD_SIZE - length) loop
-         _trash = spi_master_hw_exchange(0)
+         _trash = nrf24_spi_exchange(0)
       end loop  
    end if
    nrf24_csn_pin = high
@@ -692,9 +696,9 @@ function nrf24_get_data(byte out pipe, byte in out how_long) return bit is
       end if 
       -- Copy the received data to the receive buffer.
       nrf24_csn_pin = low 
-      _trash = spi_master_hw_exchange(NRF24_R_RX_PAYLOAD)
+      _trash = nrf24_spi_exchange(NRF24_R_RX_PAYLOAD)
       for how_long using index loop
-        nrf24_read_buffer[index] = spi_master_hw_exchange(NRF24_NOP)
+        nrf24_read_buffer[index] = nrf24_spi_exchange(NRF24_NOP)
       end loop
       nrf24_csn_pin = high 
       -- Reset data ready in status register.
@@ -715,7 +719,7 @@ procedure _nrf24_flush_rx() is
    var byte _trash 
    
    nrf24_csn_pin = low
-   _trash = spi_master_hw_exchange(NRF24_FLUSH_RX)
+   _trash = nrf24_spi_exchange(NRF24_FLUSH_RX)
    nrf24_csn_pin = high
 end procedure
 
@@ -725,7 +729,7 @@ procedure _nrf24_flush_tx() is
    var byte _trash 
    
    nrf24_csn_pin = low
-   _trash = spi_master_hw_exchange(NRF24_FLUSH_TX)
+   _trash = nrf24_spi_exchange(NRF24_FLUSH_TX)
    nrf24_csn_pin = high
 end procedure
 
@@ -735,8 +739,8 @@ procedure _nrf24_write_byte_register(byte in reg, byte in value) is
    var byte _trash
 
    nrf24_csn_pin = low
-   _trash = spi_master_hw_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
-   _trash = spi_master_hw_exchange(value)
+   _trash = nrf24_spi_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
+   _trash = nrf24_spi_exchange(value)
    nrf24_csn_pin = high
 end procedure
 
@@ -747,9 +751,9 @@ procedure _nrf24_write_array_register(byte in reg, byte in data[]) is
 
    len = byte(count(data))
    nrf24_csn_pin = low
-   _trash = spi_master_hw_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
+   _trash = nrf24_spi_exchange(NRF24_W_REGISTER | (NRF24_REGISTER_MASK & reg))
    for len using index loop
-      _trash = spi_master_hw_exchange(data[index])
+      _trash = nrf24_spi_exchange(data[index])
    end loop
    nrf24_csn_pin = high
 end procedure
@@ -761,9 +765,9 @@ function _nrf24_read_byte_register(byte in reg) return byte is
 
    nrf24_csn_pin = low
    -- First transfer is the command and returns irrelevant data so can be ignored.
-   data = spi_master_hw_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
+   data = nrf24_spi_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
    -- Now get the data.
-   data = spi_master_hw_exchange(NRF24_NOP)
+   data = nrf24_spi_exchange(NRF24_NOP)
    nrf24_csn_pin = high
    return data
 end function
@@ -781,9 +785,9 @@ function _nrf24_get_dynamic_payload_size() return byte is
 
    nrf24_csn_pin = low   
    -- Send command.
-   payload_size = spi_master_hw_exchange(NRF24_R_RX_PL_WID)
+   payload_size = nrf24_spi_exchange(NRF24_R_RX_PL_WID)
    -- Read payload size.
-   payload_size = spi_master_hw_exchange(NRF24_NOP) 
+   payload_size = nrf24_spi_exchange(NRF24_NOP) 
    nrf24_csn_pin = high
    if (payload_size > NRF24_MAX_PAYLOAD) then
       -- Incorrect, flush receive fifo.
@@ -944,10 +948,10 @@ procedure nrf24_print_address_register(byte in str[], byte in reg, byte in qty) 
    print_string(serial_hw_data,str)
    while qty != 0 loop
       nrf24_csn_pin = low
-      _trash = spi_master_hw_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
+      _trash = nrf24_spi_exchange(NRF24_R_REGISTER | (NRF24_REGISTER_MASK & reg))
       -- Now get all data.
       for count(NRF24_RECEIVE_ADDR) loop
-         data  = spi_master_hw_exchange(NRF24_NOP)
+         data  = nrf24_spi_exchange(NRF24_NOP)
          print_byte_hex(serial_hw_data,data)  
       end loop
       nrf24_csn_pin = high
