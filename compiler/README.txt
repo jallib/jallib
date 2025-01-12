@@ -20,7 +20,7 @@ For device files and include files visit: https://github.com/jallib/jallib/tree/
 
 History
 =======
-2.5r9 -- 04 january 2025
+2.5r9 -- 12 january 2025
          * Fixed issue#33: Constant string does not work for PIC16F883
          * Fixed issue#35: Compiler adds additional but non functioning code due to partial implementation.
 
