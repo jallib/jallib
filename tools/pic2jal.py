@@ -3,7 +3,7 @@
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
 
 Author: Rob Hamerling, Copyright (c) 2014..2024, all rights reserved.
-        Rob Jansen,    Copyright (c) 2020..2024, all rights reserved.
+        Rob Jansen,    Copyright (c) 2020..2025, all rights reserved.
 
 Adapted-by:
 
@@ -500,6 +500,31 @@ instruction_set_def = { "cpu_p16f1_v1"  : 1,
                         "cpu_mid_v10"   : 5,
                         "pic18"         : 6,
                         "egg"           : 7}
+
+# 2025-02-07: The following is a temporary fix for the PIC16F1713 and PIC16F1716 due to an error in MPLABX
+pic16f1713_6_pps_fix_def = {"NCOOUT": 0x03,
+                            "CLC1OUT": 0x04,
+                            "CLC2OUT": 0x05,
+                            "CLC3OUT": 0x06,
+                            "CLC4OUT": 0x07,
+                            "COG1A": 0x08,
+                            "COG1B": 0x09,
+                            "COG1C": 0x0A,
+                            "COG1D": 0x0B,
+                            "CCP1": 0x0C,
+                            "CCP2": 0x0D,
+                            "PWM3OUT": 0x0E,
+                            "PWM4OUT": 0x0F,
+                            "SDO": 0x11,
+                            "SDA": 0x11,
+                            "SCL": 0x10,
+                            "SCK": 0x10,
+                            "CK": 0x14,
+                            "TX": 0x14,
+                            "DT": 0x15,
+                            "C1OUT": 0x16,
+                            "C2OUT": 0x17
+                             }
 
 def list_copyright(fp):
     """ Add copyright, etc to header in device files and chipdef_jallib
@@ -2156,9 +2181,24 @@ def list_pps_out_consts(fp, root, picname):
             for vpin in vpins:
                 pinfunc = vpin.get("name")
                 pinfunc = pinfunc.upper()
-                if (pinpatt := vpin.get("ppsval")) is None:
-                    ppsoutdict[nopatt] = pinfunc  # assign dummy
-                    nopatt += 1
+                pinpatt = vpin.get("ppsval")
+                if pinpatt is None:
+                    pinpatt = "0"
+                if pinpatt == "0":
+ #               if (pinpatt := vpin.get("ppsval")) is None:
+                    # No value found. First check if we need to apply the pps fix for 16f1713/16f1716.
+                    if (picname in ("16f1713", "16f1716")) and (pinfunc in pic16f1713_6_pps_fix_def):
+                        pinpatt = pic16f1713_6_pps_fix_def[pinfunc]
+                        # Same code as below but since it is temporary we duplicate it for now.
+                        if pinpatt in ppsoutdict:
+                            tmp = ppsoutdict[pinpatt]  # get old
+                            tmp.append(pinfunc)
+                            ppsoutdict[pinpatt] = tmp
+                        else:
+                            ppsoutdict[pinpatt] = [pinfunc]
+                    else:
+                        ppsoutdict[nopatt] = pinfunc  # assign dummy
+                        nopatt += 1
                 else:
                     if (len(pinpatt) < 5):  # probably dec or hex
                         pinpatt = eval(pinpatt)
