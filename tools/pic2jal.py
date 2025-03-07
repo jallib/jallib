@@ -501,7 +501,7 @@ instruction_set_def = { "cpu_p16f1_v1"  : 1,
                         "pic18"         : 6,
                         "egg"           : 7}
 
-# 2025-02-07: The following is a temporary fix for the PIC16F1713 and PIC16F1716 due to an error in MPLABX
+# 2025-02-07: The following is a temporary fix for the PIC16(L)F1713 and PIC16(L)F1716 due to an error in MPLABX
 pic16f1713_6_pps_fix_def = {"NCOOUT": 0x03,
                             "CLC1OUT": 0x04,
                             "CLC2OUT": 0x05,
@@ -2185,9 +2185,9 @@ def list_pps_out_consts(fp, root, picname):
                 if pinpatt is None:
                     pinpatt = "0"
                 if pinpatt == "0":
- #               if (pinpatt := vpin.get("ppsval")) is None:
                     # No value found. First check if we need to apply the pps fix for 16f1713/16f1716.
-                    if (picname in ("16f1713", "16f1716")) and (pinfunc in pic16f1713_6_pps_fix_def):
+                    if ((picname in ("16f1713", "16f1716", "16lf1713", "16lf1716")) and
+                        (pinfunc in pic16f1713_6_pps_fix_def)):
                         pinpatt = pic16f1713_6_pps_fix_def[pinfunc]
                         # Same code as below but since it is temporary we duplicate it for now.
                         if pinpatt in ppsoutdict:
