@@ -90,8 +90,8 @@ from concurrent import futures
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "2.1"       # script version
-compilerversion = "2.5r8"   # latest JalV2 compiler version
+scriptversion = "2.2"       # script version
+compilerversion = "2.5r9"   # latest JalV2 compiler version
 
 # Additional file specifications
 # paths may have to be adapted to local environment

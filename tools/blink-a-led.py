@@ -2,7 +2,7 @@
 """ Create and compile blink-a-led samples.
 
   Author: Rob Hamerling, Copyright (c) 2008..2024, all rights reserved.
-          Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
+          Rob Jansen,    Copyright (c) 2018..2025 all rights reserved.
 
   Adapted-by:
 
@@ -72,7 +72,7 @@ import jallib3                                  # Python 3 version
 # global constants
 
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
-CompilerVersion = "2.5r8"   # latest JalV2 compiler version
+CompilerVersion = "2.5r9"   # latest JalV2 compiler version
 scriptversion = "2.0"       # script version
 
 platform_name = platform.system()

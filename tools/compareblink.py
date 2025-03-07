@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
 """
-Title: Compare new device files with previous committed device files
+Title: Compare new device blink samples with previous committed blink samples
 
-Author: Rob Hamerling, Copyright (c) 2017..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		
-Adapted-by: 
+Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+
+Adapted-by:
 
 Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
+
 Description:
-   Compare new device files with previous committed device files
+   Compare new blink sample files with previous committed blink sample files
    - skip header (about 35 lines)
    - when difference(s) show the first different line of each
    - when different show files with Kdiff3 (optional)
    - log names of files between which differences are detected.
-   - generate commandfile to copy changed or new files to old directory.
    Output files are stored in the directory of the [PIC2JAL] environment variable
 
 Sources: N/A
 
 Notes:
    Adapt the platform dependent variables to your situation
+   Only tested for the Windows platform.
 
 """
 
@@ -45,25 +45,24 @@ platform_name = platform.system()
 
 # --- system dependent paths
 if (platform_name == "Linux"):
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
+    olddir = os.path.join("/", "media", "nas", "picdevices", "blink")  # previous device files
     kdiff = "kdiff3"  # assumed to be in path
-    cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
+    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
 elif (platform_name == "Windows"):
-    #   olddir = os.path.join("D:\\", "jallib-master", "include", "device")      # previous device files
-    olddir = os.path.join("D:\\", "GitHub", "jallib", "include", "device")  # previous device files, current Master
+    olddir = os.path.join("D:\\", "GitHub", "jallib", "sample")  # previous device files, current Master
     kdiff = os.path.join("C:\\", "Program Files", "KDiff3", "kdiff3.exe")  # full path
-    cpy = os.path.join(base, "comparejal_copy.cmd")  # copy commandfile
+    cpy = os.path.join(base, "compareblink_copy.cmd")  # copy commandfile
 elif (platform_name == "Darwin"):  # Mac
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
+    olddir = os.path.join("/", "media", "nas", "picdevices", "blink")  # previous device files
     kdiff = "kdiff3"  # assumed to be in path
-    cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
+    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
 else:
     print("Please add platform specific info to this script!")
     exit(1)
 
-newdir = os.path.join(base, "device")  # new device files
-log = os.path.join(base, "comparejal_devices.log")  # list with change device files
-log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information
+newdir = os.path.join(base, "blink")  # new blink sample files
+log = os.path.join(base, "compareblink_devices.log")  # list with changed sample files
+log_d = os.path.join(base, "compareblink_details.log")  # list with detailed information
 
 
 # -----------------------------------------------------
@@ -91,8 +90,8 @@ def compare_devs(newdevs, selection):
 
         olddev = os.path.join(olddir, picname + ".jal")  # pathspec old device file
         if not os.path.exists(olddev):
-            print("   Seems a new device")
-            fd.write("   Seems a new device " + " \n")
+            print("   Seems a new blink sample")
+            fd.write("   Seems a new blink sample " + " \n")
             fl.write("++ " + newdev + "\n")
             if (platform_name == "Linux"):
                 fc.write("cp ")
@@ -115,12 +114,12 @@ def compare_devs(newdevs, selection):
             print("   Failed to open old:", olddev, ", terminating!")
             break
 
-        # skip header part of new and old device files
+        # skip header part of new and old blink files
         newl = " "
-        while not newl.startswith("include chipdef_jallib"):
+        while not newl.startswith("include"):
             newl = fn.readline()
         oldl = " "
-        while not oldl.startswith("include chipdef_jallib"):
+        while not oldl.startswith("include"):
             oldl = fo.readline()
 
         comparecount += 1
@@ -194,7 +193,7 @@ if (__name__ == "__main__"):
     else:
         selection = "1*"  # all device files
 
-    print("Comparing 2 collections of include files:")
+    print("Comparing 2 collections of blink sample files:")
     print("  ", newdir, "<-->", olddir)
 
     newdevs = glob.glob(os.path.join(newdir, selection))
@@ -207,8 +206,8 @@ if (__name__ == "__main__"):
     comparecount, diffcount, newcount = compare_devs(newdevs, selection)  # pass list of device files
 
     if ((diffcount > 0) | (newcount > 0)):
-        print("\nOf the", len(newdevs), "new device files", comparecount, "were compared,", diffcount, "did NOT match!")
-        print("There are", newcount, "new device files to be added to", olddir)
+        print("\nOf the", len(newdevs), "new blink sample files", comparecount, "were compared,", diffcount, "did NOT match!")
+        print("There are", newcount, "new blink samples files to be added to", olddir)
         print("See", log, "for a list of files with different files.\n")
     else:
         print("\nNo differences found in", comparecount, "device files.\n")
