@@ -3688,7 +3688,7 @@ def generate_devicefiles(selection):
     devs = []  # start list of PIC xml files (filespecs)
     with open(os.path.join(dstdir, "chipdef_jallib.jal"), "w") as fp:  # common include for device files
         list_chipdef_header(fp)  # create header of chipdef file
-        for file in os.listdir(xmldir):
+        for file in sorted(os.listdir(xmldir)):
             picname = os.path.splitext(file)[0][3:].lower()  # obtain picname from filename
             if fnmatch.fnmatch(picname, selection):  # selection by user wildcard
                 if (picdata := devspec.get(picname.upper())):  # some properties of this PIC
