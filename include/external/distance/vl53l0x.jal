@@ -1,0 +1,1507 @@
+-- -----------------------------------------------------------------------------
+-- Title: VL53L0X Time-of-Flight ranging sensor library.
+-- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Libray for the VL53L0X Time-of-Flight ranging sensor. It is controlled 
+--              using the IIC interface at a maximum speed of 400 kHz.
+--
+-- Sources: Based on the vl53l0x-arduino: https://github.com/pololu/vl53l0x-arduino
+--          Datasheet STMicroelectronics  VL53L0X DS11555 - Rev 6
+--
+-- Notes:   The main program must initialize the used - default - IIC interface 
+--          with a maximum speed of 400 kHz and with a I2C_HARDWARE_TIMEOUT 
+--          defined. 
+--
+--          Info about the vl53l0x module:
+--          -) Operated at 5 volt due to an on-board voltage regulator of 2.8 Volt.
+--          -) Has an on-board level shifter for the IIC signals for 5 Volt operation,
+--             including the required IIC pull-up resistors.
+--          -) Has a shutdown input pin which is NOT 5 Volt tolerant. Shutdown can
+--             be activated by pulling this pin low using an open drain pin.
+--             This pin is pulled-up high by an on-board resistor to the internal VDD 
+--             of 2.8 Volt so the module is active when not connected.
+--          -) Has an GPIO pin which is pulled-up high by an on-board resistor to the 
+--             internal VDD of 2.8 Volt and is open drain. It is used to generate an
+--             interrupt after a measurement is done. The pin is NOT 5 Volt tolerant
+--             so when used connect it to a level shifter or via a transistor. 
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+-- Default IIC address of the VL53L0X, LSB is read/write bit. This address is
+-- used by the VL53L0X module after power up.
+const byte VL53L0X_IIC_DEFAULT_ADDRESS = 0x52
+
+-- Enumeration used. 
+const byte VL53L0X_VCSEL_PERIOD_PRE_RANGE = 0
+const byte VL53L0X_VCSEL_PERIOD_FINAL_RANGE = 1
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- Public API ---------------------------------------
+-- -----------------------------------------------------------------------------
+
+-- ----------------------------------------------------------------------------- 
+-- Set the IIC address of the VL53L0X to the given address.
+-- The default after power up is: VL53L0X_IIC_DEFAULT_ADDRESS
+-- ----------------------------------------------------------------------------- 
+procedure vl53l0x_set_iic_address(byte in address) 
+
+-- ----------------------------------------------------------------------------- 
+-- Get the IIC address of the VL53L0X module.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_iic_address() return byte 
+
+-- -----------------------------------------------------------------------------
+-- Check presence of correct module. Returns TRUE when valid
+-- -----------------------------------------------------------------------------
+function vl53l0x_valid_module() return bit 
+
+-- -----------------------------------------------------------------------------
+-- Initialize sensor using sequence based on VL53L0X_DataInit(),
+-- VL53L0X_StaticInit(), and VL53L0X_PerformRefCalibration().
+-- This function does not perform reference SPAD calibration
+-- (VL53L0X_PerformRefSpadManagement()), since the API user manual says that it
+-- is performed by ST on the bare modules. It seems like that should work well
+-- enough unless a cover glass is added. We use the 2V8 mode since at power up 
+-- the module is in 1V8 mode. At initialization the module ID is checked.
+-- Returns TRUE if initialization was succesful.
+-- ----------------------------------------------------------------------------
+function vl53l0x_init() return bit 
+
+-- ----------------------------------------------------------------------------- 
+-- Set the response timeout. The response of the VL53L0X depends on the settings
+-- that are used. The timeout given is in ms. Timeout must be > 0 and < 10_000.
+-- Default after initialization is 250 ms.
+-- ----------------------------------------------------------------------------- 
+procedure vl53l0x_set_timeout(word in timeout)
+
+-- ----------------------------------------------------------------------------- 
+-- Get the current response timeout in ms. 
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_timeout() return word
+
+-- ----------------------------------------------------------------------------- 
+-- Set the return signal rate limit check value in units of MCPS (million counts
+-- per second). "This represents the amplitude of the signal reflected from the
+-- target and detected by the device"; setting this limit presumably determines
+-- the minimum measurement necessary for the sensor to report a valid reading.
+-- Setting a lower limit increases the potential range of the sensor but also
+-- seems to increase the likelihood of getting an inaccurate reading because of
+-- unwanted reflections from objects other than the intended target.
+-- The rate limit is given in 100 * MCPS and must be < 51_200. Reason for
+-- using 100 * MCPS is that we do not need to use float but instead use dword.
+-- Defaults to 25 (= 0.25 MCPS) as initialized by the ST API and this library.
+-- Returns TRUE when succesful.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_set_signal_rate_limit(word in rate_limit) return bit
+
+-- ----------------------------------------------------------------------------- 
+-- Get the return signal rate limit check value in 100 * MCPS
+-- The rate limit is returned in 100 * MCPS. Reason for using 100 * MCPS is 
+-- that we do not need to use float but instead use dword.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_signal_rate_limit() return word
+
+-- -----------------------------------------------------------------------------
+-- Set the measurement timing budget in microseconds, which is the time allowed
+-- for one measurement; the ST API and this library take care of splitting the
+-- timing budget among the sub-steps in the ranging sequence. A longer timing
+-- budget allows for more accurate measurements. Increasing the budget by a
+-- factor of N decreases the range measurement standard deviation by a factor
+-- of sqrt(N). Defaults to about 33 milliseconds; the minimum is 20 ms.
+-- based on VL53L0X_set_measurement_timing_budget_micro_seconds().
+-- Returns TRUE when succesfull.
+-- -----------------------------------------------------------------------------
+function vl53l0x_set_measurement_timing_budget(dword in budget_us) return bit
+
+-- -----------------------------------------------------------------------------
+-- Get the measurement timing budget in microseconds. Based on 
+-- VL53L0X_get_measurement_timing_budget_micro_seconds().
+-- -----------------------------------------------------------------------------
+function vl53l0x_get_measurement_timing_budget() return dword
+
+-- ----------------------------------------------------------------------------- 
+-- Set the VCSEL (vertical cavity surface emitting laser) pulse period for the
+-- given period type (pre-range or final range) to the given value in PCLKs.
+-- Longer periods seem to increase the potential range of the sensor.
+-- Valid values of period_pcklks are (even numbers only):
+-- -) VL53L0X_VCSEL_PERIOD_PRE_RANGE:  12 to 18 (initialized default: 14)
+-- -) VL53L0X_VCSEL_PERIOD_FINAL_RANGE: 8 to 14 (initialized default: 10)
+-- Based on VL53L0X_set_vcsel_pulse_period().
+-- Returns TRUE when succesful.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_set_vcsel_pulse_period(byte in type, byte in period_pclks) return bit
+
+-- -----------------------------------------------------------------------------
+-- Get the VCSEL pulse period in PCLKs for the given period type. Based on 
+-- VL53L0X_get_vcsel_pulse_period().
+-- -----------------------------------------------------------------------------
+function vl53l0x_get_vcsel_pulse_period(byte in type) return byte
+
+-- -----------------------------------------------------------------------------
+-- Start continuous ranging measurements. If period_ms (optional) is 0 or not
+-- given, continuous back-to-back mode is used (the sensor takes measurements as
+-- often as possible); otherwise, continuous timed mode is used, with the given
+-- inter-measurement period in milliseconds determining how often the sensor
+-- takes a measurement. Based on VL53L0X_StartMeasurement().
+-- -----------------------------------------------------------------------------
+procedure vl53l0x_start_continuous(dword in period_ms)
+
+-- -----------------------------------------------------------------------------
+-- Stop continuous measurements. Based on VL53L0X_StopMeasurement().
+-- -----------------------------------------------------------------------------
+procedure vl53l0x_stop_continuous()
+
+-- -----------------------------------------------------------------------------
+-- Returns a range reading in millimeters when continuous mode is active
+-- (readRangeSingleMillimeters() also calls this function after starting a
+-- single-shot range measurement).
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_continuous_millimeters() return word 
+
+-- -----------------------------------------------------------------------------
+-- Performs a single-shot range measurement and returns the reading in
+-- millimeters. Based on VL53L0X_PerformSingleRangingMeasurement().
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_single_millimeters() return word
+
+-- ----------------------------------------------------------------------------- 
+-- Returns TRUE if a timeout occured in one of the read functions or in case of
+-- timeout on the IIC bus if the IIC timeout is defined. Value is cleared after
+-- a call to this function. 
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_timeout_occured() return bit
+
+-- -----------------------------------------------------------------------------
+-- ---------------------------- Implementation ---------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Register addresses from API vl53l0x_device.h (ordered as listed there).
+const byte _VL53L0X_SYSRANGE_START                              = 0x00
+const byte _VL53L0X_SYSTEM_THRESH_HIGH                          = 0x0C
+const byte _VL53L0X_SYSTEM_THRESH_LOW                           = 0x0E
+const byte _VL53L0X_SYSTEM_SEQUENCE_CONFIG                      = 0x01
+const byte _VL53L0X_SYSTEM_RANGE_CONFIG                         = 0x09
+const byte _VL53L0X_SYSTEM_INTERMEASUREMENT_PERIOD              = 0x04
+const byte _VL53L0X_SYSTEM_INTERRUPT_CONFIG_GPIO                = 0x0A
+const byte _VL53L0X_GPIO_HV_MUX_ACTIVE_HIGH                     = 0x84
+const byte _VL53L0X_SYSTEM_INTERRUPT_CLEAR                      = 0x0B
+const byte _VL53L0X_RESULT_INTERRUPT_STATUS                     = 0x13
+const byte _VL53L0X_RESULT_RANGE_STATUS                         = 0x14
+const byte _VL53L0X_RESULT_CORE_AMBIENT_WINDOW_EVENTS_RTN       = 0xBC
+const byte _VL53L0X_RESULT_CORE_RANGING_TOTAL_EVENTS_RTN        = 0xC0
+const byte _VL53L0X_RESULT_CORE_AMBIENT_WINDOW_EVENTS_REF       = 0xD0
+const byte _VL53L0X_RESULT_CORE_RANGING_TOTAL_EVENTS_REF        = 0xD4
+const byte _VL53L0X_RESULT_PEAK_SIGNAL_RATE_REF                 = 0xB6
+const byte _VL53L0X_ALGO_PART_TO_PART_RANGE_OFFSET_MM           = 0x28
+const byte _VL53L0X_I2C_SLAVE_DEVICE_ADDRESS                    = 0x8A
+const byte _VL53L0X_MSRC_CONFIG_CONTROL                         = 0x60
+const byte _VL53L0X_PRE_RANGE_CONFIG_MIN_SNR                    = 0x27
+const byte _VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_LOW            = 0x56
+const byte _VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_HIGH           = 0x57
+const byte _VL53L0X_PRE_RANGE_MIN_COUNT_RATE_RTN_LIMIT          = 0x64
+const byte _VL53L0X_FINAL_RANGE_CONFIG_MIN_SNR                  = 0x67
+const byte _VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_LOW          = 0x47
+const byte _VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_HIGH         = 0x48
+const byte _VL53L0X_FINAL_RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT = 0x44
+const byte _VL53L0X_PRE_RANGE_CONFIG_SIGMA_THRESH_HI            = 0x61
+const byte _VL53L0X_PRE_RANGE_CONFIG_SIGMA_THRESH_LO            = 0x62
+const byte _VL53L0X_PRE_RANGE_CONFIG_VCSEL_PERIOD               = 0x50
+const byte _VL53L0X_PRE_RANGE_CONFIG_TIMEOUT_MACROP_HI          = 0x51
+const byte _VL53L0X_PRE_RANGE_CONFIG_TIMEOUT_MACROP_LO          = 0x52
+const byte _VL53L0X_SYSTEM_HISTOGRAM_BIN                        = 0x81
+const byte _VL53L0X_HISTOGRAM_CONFIG_INITIAL_PHASE_SELECT       = 0x33
+const byte _VL53L0X_HISTOGRAM_CONFIG_READOUT_CTRL               = 0x55
+const byte _VL53L0X_FINAL_RANGE_CONFIG_VCSEL_PERIOD             = 0x70
+const byte _VL53L0X_FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI        = 0x71
+const byte _VL53L0X_FINAL_RANGE_CONFIG_TIMEOUT_MACROP_LO        = 0x72
+const byte _VL53L0X_CROSSTALK_COMPENSATION_PEAK_RATE_MCPS       = 0x20
+const byte _VL53L0X_MSRC_CONFIG_TIMEOUT_MACROP                  = 0x46
+const byte _VL53L0X_SOFT_RESET_GO2_SOFT_RESET_N                 = 0xBF
+const byte _VL53L0X_IDENTIFICATION_MODEL_ID                     = 0xC0
+const byte _VL53L0X_IDENTIFICATION_REVISION_ID                  = 0xC2
+const byte _VL53L0X_OSC_CALIBRATE_VAL                           = 0xF8
+const byte _VL53L0X_GLOBAL_CONFIG_VCSEL_WIDTH                   = 0x32
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_0            = 0xB0
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_1            = 0xB1
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_2            = 0xB2
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_3            = 0xB3
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_4            = 0xB4
+const byte _VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_5            = 0xB5
+const byte _VL53L0X_GLOBAL_CONFIG_REF_EN_START_SELECT           = 0xB6
+const byte _VL53L0X_DYNAMIC_SPAD_NUM_REQUESTED_REF_SPAD         = 0x4E
+const byte _VL53L0X_DYNAMIC_SPAD_REF_EN_START_OFFSET            = 0x4F
+const byte _VL53L0X_POWER_MANAGEMENT_GO1_POWER_FORCE            = 0x80
+const byte _VL53L0X_VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV           = 0x89
+const byte _VL53L0X_ALGO_PHASECAL_LIM                           = 0x30
+const byte _VL53L0X_ALGO_PHASECAL_CONFIG_TIMEOUT                = 0x30
+
+
+-- Module ID can be found at register _VL53L0X_IDENTIFICATION_MODEL_ID.    
+const byte _VL53L0X_MODULE_ID = 0xEE
+
+-- Response timeout value in steps of 1 ms. The maximum timeout depends on 
+-- some of the parameters given, e.g. when using vl53l0x_start_continuous().
+-- So the user can change the value.
+const word _VL53L0X_DEFAULT_RESPONSE_TIMEOUT = 250;  250 ms timeout.
+
+-- Default tuning settings used at initialization.
+-- Format is: Register, Data, Register, Data, etc...
+const byte _VL53L0X_TUNING_SETTINGS[] = 
+{
+   0xFF, 0x01, 0x00, 0x00, 0xFF, 0x00, 0x09, 0x00, 0x10, 0x00, 0x11, 0x00,
+   0x24, 0x01, 0x25, 0xFF, 0x75, 0x00, 0xFF, 0x01, 0x4E, 0x2C, 0x48, 0x00,
+   0x30, 0x20, 0xFF, 0x00, 0x30, 0x09, 0x54, 0x00, 0x31, 0x04, 0x32, 0x03,
+   0x40, 0x83, 0x46, 0x25, 0x60, 0x00, 0x27, 0x00, 0x50, 0x06, 0x51, 0x00,
+   0x52, 0x96, 0x56, 0x08, 0x57, 0x30, 0x61, 0x00, 0x62, 0x00, 0x64, 0x00,
+   0x65, 0x00, 0x66, 0xA0, 0xFF, 0x01, 0x22, 0x32, 0x47, 0x14, 0x49, 0xFF,
+   0x4A, 0x00, 0xFF, 0x00, 0x7A, 0x0A, 0x7B, 0x00, 0x78, 0x21, 0xFF, 0x01,
+   0x23, 0x34, 0x42, 0x00, 0x44, 0xFF, 0x45, 0x26, 0x46, 0x05, 0x40, 0x40,
+   0x0E, 0x06, 0x20, 0x1A, 0x43, 0x40, 0xFF, 0x00, 0x34, 0x03, 0x35, 0x44,
+   0xFF, 0x01, 0x31, 0x04, 0x4B, 0x09, 0x4C, 0x05, 0x4D, 0x04, 0xFF, 0x00,
+   0x44, 0x00, 0x45, 0x20, 0x47, 0x08, 0x48, 0x28, 0x67, 0x00, 0x70, 0x04,
+   0x71, 0x01, 0x72, 0xFE, 0x76, 0x00, 0x77, 0x00, 0xFF, 0x01, 0x0D, 0x01,
+   0xFF, 0x00, 0x80, 0x01, 0x01, 0xF8, 0xFF, 0x01, 0x8E, 0x01, 0x00, 0x01,
+   0xFF, 0x00, 0x80, 0x00
+}
+
+--------------------- Private type definitions ---------------------------------
+
+record _vl53l0x_sequence_step_enables is   
+   bit tcc, msrc, dss, pre_range, final_range
+end record
+ 
+record _vl53l0x_sequence_step_timeouts is
+   byte pre_range_vcsel_period_pclks, final_range_vcsel_period_pclks
+   word msrc_dss_tcc_mclks, pre_range_mclks, final_range_mclks
+   dword msrc_dss_tcc_us, pre_range_us, final_range_us
+end record
+
+-------------------------- Private variables -----------------------------------
+var _vl53l0x_sequence_step_enables _vl53l0x_enables
+var _vl53l0x_sequence_step_timeouts _vl53l0x_timeouts
+
+-- Measurement timing budget.
+var dword _vl53l0x_measurement_timing_budget_us
+
+var byte _vl53l0x_iic_address = VL53L0X_IIC_DEFAULT_ADDRESS 
+
+-- Variable read by init and used when starting measurement; is StopVariable 
+-- field of VL53L0X_DevData_t structure in API.
+var byte _vl53l0x_stop_variable
+
+-- Buffer for holding the SPAD map.
+var byte _vl53l0x_reference_spad_map[6]
+
+-- Timeout value. Can be changed by the user. Value is in steps of 1 ms.
+var word _vl53l0x_response_timeout
+
+-- Keep track of occurence of timeout.
+var bit _vl53l0x_did_timeout
+
+--------------------- Private function prototypes ------------------------------
+function _vl53l0x_get_spad_info(byte out counter, bit out type_is_aperture) 
+         return bit
+procedure _vl53l0x_get_sequence_step_enables()
+procedure _vl53l0x_get_sequence_step_timeouts()
+function _vl53l0x_decode_timeout(word in reg_val) return word
+function _vl53l0x_encode_timeout(dword in timeout_mclks) return word
+function _vl53l0x_timeout_mclks_to_microseconds(word in timeout_period_mclks, 
+         byte in vcsel_period_pclks) return dword 
+function _vl53l0x_timeout_microseconds_to_mclks(dword in timeout_period_us, 
+         byte in vcsel_period_pclks) return dword
+function _vl53l0x_perform_single_ref_calibration(byte in vhv_init_byte) return bit 
+function _vl53l0x_decode_vcsel_period(byte in register_value) return byte
+function _vl53l0x_encode_vcsel_period(byte in period_pclks) return byte
+function _vl53l0x_calc_period(byte in vcsel_period_pclks) return dword 
+function _vl53l0x_read_data_byte(byte in register) return byte
+procedure _vl53l0x_write_data_byte(byte in register, byte in data) 
+function _vl53l0x_read_data_word(byte in register) return word
+procedure _vl53l0x_write_data_word(byte in register, word in data) 
+function _vl53l0x_read_data_dword(byte in register) return dword
+procedure _vl53l0x_write_data_dword(byte in register, dword in data) 
+procedure _vl53l0x_read_spad_map() 
+procedure _vl53l0x_write_spad_map()
+
+-- -------------------- Public procedures and functions ------------------------
+
+-- ----------------------------------------------------------------------------- 
+-- Set the IIC address of the VL53L0X to the given address.
+-- The default after power up is: VL53L0X_IIC_DEFAULT_ADDRESS
+-- ----------------------------------------------------------------------------- 
+procedure vl53l0x_set_iic_address(byte in address) is
+   
+   _vl53l0x_write_data_byte(_VL53L0X_I2C_SLAVE_DEVICE_ADDRESS, address >> 1)
+   _vl53l0x_iic_address = address
+
+end procedure
+
+-- ----------------------------------------------------------------------------- 
+-- Get the IIC address of the VL53L0X module.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_iic_address() return byte is
+   
+   return _vl53l0x_iic_address
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Check presence of correct module. Returns TRUE when valid.
+-- -----------------------------------------------------------------------------
+function vl53l0x_valid_module() return bit is 
+   
+   return (_vl53l0x_read_data_byte(_VL53L0X_IDENTIFICATION_MODEL_ID) == 
+             _VL53L0X_MODULE_ID)
+
+end function
+
+-- -----------------------------------------------------------------------------
+-- Initialize sensor using sequence based on VL53L0X_DataInit(),
+-- VL53L0X_StaticInit(), and VL53L0X_PerformRefCalibration().
+-- This function does not perform reference SPAD calibration
+-- (VL53L0X_PerformRefSpadManagement()), since the API user manual says that it
+-- is performed by ST on the bare modules. It seems like that should work well
+-- enough unless a cover glass is added. We use the 2V8 mode since at power up 
+-- the module is in 1V8 mode. At initialization the module ID is checked.
+-- Returns TRUE if initialization was succesful.
+-- ----------------------------------------------------------------------------
+function vl53l0x_init() return bit is
+
+   var byte data, index
+   var byte spad_count, first_spad_to_enable, spads_enabled
+   var bit spad_type_is_aperture
+
+   -- Check presense of correct module.
+   if !vl53l0x_valid_module() then
+     return FALSE
+   end if 
+
+   _vl53l0x_response_timeout = _VL53L0X_DEFAULT_RESPONSE_TIMEOUT
+   _vl53l0x_did_timeout = FALSE
+
+   -- VL53L0X_DataInit() begin
+   -- Switch to 2V8 mode.
+   data = _vl53l0x_read_data_byte(_VL53L0X_VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV) 
+   _vl53l0x_write_data_byte(_VL53L0X_VHV_CONFIG_PAD_SCL_SDA__EXTSUP_HV, data | 0x01)
+
+   -- Set I2C standard mode.
+   _vl53l0x_write_data_byte(0x88, 0x00);
+   _vl53l0x_write_data_byte(0x80, 0x01);
+   _vl53l0x_write_data_byte(0xFF, 0x01);
+   _vl53l0x_write_data_byte(0x00, 0x00);
+   _vl53l0x_stop_variable = _vl53l0x_read_data_byte(0x91);
+   _vl53l0x_write_data_byte(0x00, 0x01);
+   _vl53l0x_write_data_byte(0xFF, 0x00);
+   _vl53l0x_write_data_byte(0x80, 0x00);
+
+   -- Disable SIGNAL_RATE_MSRC (bit 1) and SIGNAL_RATE_PRE_RANGE (bit 4) limit checks.
+   data = _vl53l0x_read_data_byte(_VL53L0X_MSRC_CONFIG_CONTROL)
+   _vl53l0x_write_data_byte(_VL53L0X_MSRC_CONFIG_CONTROL, data | 0x12)
+
+   -- Set final range signal rate limit to 0.25 MCPS (million counts per second).
+   -- Note: The Arduio Library did not use the returnvalue.
+   if !vl53l0x_set_signal_rate_limit(25) then
+      return FALSE
+   end if 
+
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0xFF)
+   -- VL53L0X_DataInit() end
+
+   -- VL53L0X_StaticInit() begin
+
+   if !_vl53l0x_get_spad_info(spad_count, spad_type_is_aperture) then
+      return FALSE
+   end if
+
+   -- The SPAD map (RefGoodSpadMap) is read by VL53L0X_get_info_from_device()
+   -- in the API, but the same data seems to be more easily readable from
+   -- GLOBAL_CONFIG_SPAD_ENABLES_REF_0 through _6, so read it from there.
+   _vl53l0x_read_spad_map()
+
+   -- VL53L0X_set_reference_spads() begin (assume NVM values are valid).
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(_VL53L0X_DYNAMIC_SPAD_REF_EN_START_OFFSET, 0x00)
+   _vl53l0x_write_data_byte(_VL53L0X_DYNAMIC_SPAD_NUM_REQUESTED_REF_SPAD, 0x2C)
+   _vl53l0x_write_data_byte(0xFF, 0x00)
+   _vl53l0x_write_data_byte(_VL53L0X_GLOBAL_CONFIG_REF_EN_START_SELECT, 0xB4)
+
+   if spad_type_is_aperture then
+      first_spad_to_enable = 12
+   else
+      first_spad_to_enable = 0
+   end if 
+   spads_enabled = 0
+
+   for 48 using index loop
+      if (index < first_spad_to_enable) | (spads_enabled == spad_count) then
+         -- This bit is lower than the first one that should be enabled, or
+         -- (reference_spad_count) bits have already been enabled, so zero this
+         -- bit.
+         _vl53l0x_reference_spad_map[index / 8] =
+             _vl53l0x_reference_spad_map[index / 8] & !(1 << (index % 8));
+      elsif ((_vl53l0x_reference_spad_map[index / 8] >> (index % 8)) & 0x1) 
+            != 0 then
+         spads_enabled = spads_enabled + 1
+      end if       
+   end loop
+   _vl53l0x_write_spad_map()
+   -- VL53L0X_set_reference_spads() end
+
+   -- VL53L0X_load_tuning_settings() begin
+   -- DefaultTuningSettings from vl53l0x_tuning.h
+   index = 0
+   while (index < count(_VL53L0X_TUNING_SETTINGS)) loop
+      _vl53l0x_write_data_byte(_VL53L0X_TUNING_SETTINGS[index], 
+                               _VL53L0X_TUNING_SETTINGS[index +1])
+      index = index + 2
+   end loop
+   -- VL53L0X_load_tuning_settings() end
+
+   -- "Set interrupt config to new sample ready"
+   -- VL53L0X_SetGpioConfig() begin
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_INTERRUPT_CONFIG_GPIO, 0x04)
+   data = _vl53l0x_read_data_byte(_VL53L0X_GPIO_HV_MUX_ACTIVE_HIGH)
+   _vl53l0x_write_data_byte(_VL53L0X_GPIO_HV_MUX_ACTIVE_HIGH, data & !0x10) -- active low
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_INTERRUPT_CLEAR, 0x01)
+   -- VL53L0X_SetGpioConfig() end 
+ 
+   _vl53l0x_measurement_timing_budget_us = vl53l0x_get_measurement_timing_budget()
+
+   -- "Disable MSRC and TCC by default"
+   -- MSRC = Minimum Signal Rate Check
+   -- TCC = Target CentreCheck
+   -- VL53L0X_SetSequenceStepEnable() begin
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0xE8);
+   -- VL53L0X_SetSequenceStepEnable() end
+
+   -- "Recalculate timing budget"
+   -- Note: In the Arduino library the return value is not checked.
+   if !vl53l0x_set_measurement_timing_budget(_vl53l0x_measurement_timing_budget_us) then
+      return FALSE
+   end if 
+   -- VL53L0X_StaticInit() end
+
+   -- VL53L0X_PerformRefCalibration() begin (VL53L0X_perform_ref_calibration())
+   -- VL53L0X_perform_vhv_calibration() begin
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0x01)
+   if !_vl53l0x_perform_single_ref_calibration(0x40) then
+      return FALSE
+   end if 
+   -- VL53L0X_perform_vhv_calibration() end
+
+   -- VL53L0X_perform_phase_calibration() begin
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0x02)
+   if !_vl53l0x_perform_single_ref_calibration(0x00) then
+      return FALSE
+   end if 
+   -- VL53L0X_perform_phase_calibration() end
+
+   -- "restore the previous Sequence Config"
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0xE8)
+   -- VL53L0X_PerformRefCalibration() end
+ 
+   return TRUE
+
+end function
+
+-- ----------------------------------------------------------------------------- 
+-- Set the response timeout. The response of the VL53L0X depends on the settings
+-- that are used. The timeout given is in ms. Timeout must be > 0 and < 10_000.
+-- Default after initialization is 250 ms.
+-- ----------------------------------------------------------------------------- 
+procedure vl53l0x_set_timeout(word in timeout) is
+
+   if (timeout > 0) & (timeout < 10_000) then
+      _vl53l0x_response_timeout = timeout
+   end if 
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------- 
+-- Get the current response timeout in ms. 
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_timeout() return word is
+
+   return _vl53l0x_response_timeout
+
+end function
+
+-- ----------------------------------------------------------------------------- 
+-- Set the return signal rate limit check value in units of MCPS (million counts
+-- per second). "This represents the amplitude of the signal reflected from the
+-- target and detected by the device"; setting this limit presumably determines
+-- the minimum measurement necessary for the sensor to report a valid reading.
+-- Setting a lower limit increases the potential range of the sensor but also
+-- seems to increase the likelihood of getting an inaccurate reading because of
+-- unwanted reflections from objects other than the intended target.
+-- The rate limit is given in 100 * MCPS and must be < 51_200. Reason for
+-- using 100 * MCPS is that we do not need to use float but instead use word.
+-- Defaults to 25 (= 0.25 MCPS) as initialized by the ST API and this library.
+-- Returns TRUE when succesful.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_set_signal_rate_limit(word in rate_limit) return bit is
+
+   var dword calculation
+   
+   if (rate_limit < 51_200) then 
+      -- Q9.7 fixed point format (9 integer bits, 7 fractional bits).
+      calculation = (dword(rate_limit) * 128) / 100
+      _vl53l0x_write_data_word(_VL53L0X_FINAL_RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT, 
+                              word(calculation))
+      return TRUE
+   else
+      return FALSE
+   end if
+
+end function
+
+-- ----------------------------------------------------------------------------- 
+-- Get the return signal rate limit check value in 100 * MCPS
+-- The rate limit is returned in 100 * MCPS. Reason for using 100 * MCPS is 
+-- that we do not need to use float but instead use word.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_get_signal_rate_limit() return word is
+
+   var word data
+   var dword calculation
+
+   data = _vl53l0x_read_data_word(_VL53L0X_FINAL_RANGE_CONFIG_MIN_COUNT_RATE_RTN_LIMIT)
+   calculation = (dword(data) * 100) / 128
+
+   return word(calculation)
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Set the measurement timing budget in microseconds, which is the time allowed
+-- for one measurement; the ST API and this library take care of splitting the
+-- timing budget among the sub-steps in the ranging sequence. A longer timing
+-- budget allows for more accurate measurements. Increasing the budget by a
+-- factor of N decreases the range measurement standard deviation by a factor
+-- of sqrt(N). Defaults to about 33 milliseconds; the minimum is 20 ms.
+-- based on VL53L0X_set_measurement_timing_budget_micro_seconds()
+-- Returns TRUE when succesfull.
+-- -----------------------------------------------------------------------------
+function vl53l0x_set_measurement_timing_budget(dword in budget_us) return bit is
+
+   const dword START_OVERHEAD       = 1910
+   const dword END_OVERHEAD         = 960
+   const dword MSRC_OVERHEAD        = 660
+   const dword TCC_OVERHEAD         = 590
+   const dword DSS_OVERHEAD         = 690
+   const dword PRE_RANGE_OVERHEAD   = 660
+   const dword FINAL_RANGE_OVERHEAD = 550
+
+   var dword used_budget_us, final_range_timeout_us, final_range_timeout_mclks
+
+   -- "Start and end overhead times always present"
+   used_budget_us = start_overhead + end_overhead
+   _vl53l0x_get_sequence_step_enables()
+   _vl53l0x_get_sequence_step_timeouts()
+
+   if (_vl53l0x_enables.tcc) then
+      used_budget_us = used_budget_us + (_vl53l0x_timeouts.msrc_dss_tcc_us + TCC_OVERHEAD)
+   end if 
+
+   if (_vl53l0x_enables.dss) then
+      used_budget_us = used_budget_us +  (2 * (_vl53l0x_timeouts.msrc_dss_tcc_us + DSS_OVERHEAD))
+   elsif (_vl53l0x_enables.msrc) then
+      used_budget_us = used_budget_us + (_vl53l0x_timeouts.msrc_dss_tcc_us + MSRC_OVERHEAD)
+   end if 
+
+   if (_vl53l0x_enables.pre_range) then
+      used_budget_us = used_budget_us + (_vl53l0x_timeouts.pre_range_us + PRE_RANGE_OVERHEAD)
+   end if
+
+   if (_vl53l0x_enables.final_range) then 
+      -- Arduino code: 
+      used_budget_us = used_budget_us + FINAL_RANGE_OVERHEAD
+      -- Would have expected this but results in a FALSE return. 
+      -- used_budget_us = used_budget_us + (_vl53l0x_timeouts.final_range_us + FINAL_RANGE_OVERHEAD)
+
+      -- "Note that the final range timeout is determined by the timing
+      -- budget and the sum of all other timeouts within the sequence.
+      -- If there is no room for the final range timeout, then an error
+      -- will be set. Otherwise the remaining time will be applied to
+      -- the final range."
+
+      if (used_budget_us > budget_us) then 
+         -- "Requested timeout too big."
+         return FALSE
+      end if 
+
+      final_range_timeout_us = budget_us - used_budget_us
+
+      -- set_sequence_step_timeout() begin
+      -- (SequenceStepId == VL53L0X_SEQUENCESTEP_FINAL_RANGE)
+
+      -- "For the final range timeout, the pre-range timeout
+      --  must be added. To do this both final and pre-range
+      --  timeouts must be expressed in macro periods MClks
+      --  because they have different vcsel periods."
+
+      final_range_timeout_mclks = _vl53l0x_timeout_microseconds_to_mclks(
+                                  final_range_timeout_us,
+                                  _vl53l0x_timeouts.final_range_vcsel_period_pclks)
+
+      if _vl53l0x_enables.pre_range then
+         final_range_timeout_mclks = final_range_timeout_mclks +
+                                     _vl53l0x_timeouts.pre_range_mclks
+      end if 
+
+      _vl53l0x_write_data_word(_VL53L0X_FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI,
+         _vl53l0x_encode_timeout(final_range_timeout_mclks))
+      -- set_sequence_step_timeout() end
+
+       _vl53l0x_measurement_timing_budget_us = budget_us; // store for internal reuse
+   end if 
+
+   return TRUE
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Get the measurement timing budget in microseconds. Based on 
+-- VL53L0X_get_measurement_timing_budget_micro_seconds().
+-- -----------------------------------------------------------------------------
+function vl53l0x_get_measurement_timing_budget() return dword is
+
+   const dword START_OVERHEAD       = 1910
+   const dword END_OVERHEAD         = 960
+   const dword MSRC_OVERHEAD        = 660
+   const dword TCC_OVERHEAD         = 590
+   const dword DSS_OVERHEAD         = 690
+   const dword PRE_RANGE_OVERHEAD   = 660
+   const dword FINAL_RANGE_OVERHEAD = 550
+
+   var dword budget_us
+
+   -- "Start and end overhead times always present"
+   budget_us = start_overhead + end_overhead
+   _vl53l0x_get_sequence_step_enables()
+   _vl53l0x_get_sequence_step_timeouts()
+
+
+   if (_vl53l0x_enables.tcc) then
+      budget_us = budget_us + (_vl53l0x_timeouts.msrc_dss_tcc_us + TCC_OVERHEAD)
+   end if 
+
+   if (_vl53l0x_enables.dss) then
+      budget_us = budget_us +  (2 * (_vl53l0x_timeouts.msrc_dss_tcc_us + DSS_OVERHEAD))
+   elsif (_vl53l0x_enables.msrc) then
+      budget_us = budget_us + (_vl53l0x_timeouts.msrc_dss_tcc_us + MSRC_OVERHEAD)
+   end if 
+
+   if (_vl53l0x_enables.pre_range) then
+      budget_us = budget_us + (_vl53l0x_timeouts.pre_range_us + PRE_RANGE_OVERHEAD)
+   end if
+
+   if (_vl53l0x_enables.final_range) then 
+      budget_us = budget_us + (_vl53l0x_timeouts.final_range_us + FINAL_RANGE_OVERHEAD)
+   end if 
+
+   _vl53l0x_measurement_timing_budget_us = budget_us -- Store for internal reuse. 
+
+   return budget_us
+
+end function 
+
+
+-- ----------------------------------------------------------------------------- 
+-- Set the VCSEL (vertical cavity surface emitting laser) pulse period for the
+-- given period type (pre-range or final range) to the given value in PCLKs.
+-- Longer periods seem to increase the potential range of the sensor.
+-- Valid values of period_pcklks are (even numbers only):
+-- -) VL53L0X_VCSEL_PERIOD_PRE_RANGE:  12 to 18 (initialized default: 14)
+-- -) VL53L0X_VCSEL_PERIOD_FINAL_RANGE: 8 to 14 (initialized default: 10)
+-- Based on VL53L0X_set_vcsel_pulse_period().
+-- Returns TRUE when succesful.
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_set_vcsel_pulse_period(byte in type, byte in period_pclks) return bit is
+
+   var word new_pre_range_timeout_mclks, new_msrc_timeout_mclks
+   var word new_final_range_timeout_mclks 
+   var byte vcsel_period_reg, sequence_config 
+
+   vcsel_period_reg = _vl53l0x_encode_vcsel_period(period_pclks)
+   _vl53l0x_get_sequence_step_enables()
+   _vl53l0x_get_sequence_step_timeouts()
+
+   -- "Apply specific settings for the requested clock period"
+   -- "Re-calculate and apply timeouts, in macro periods"
+
+   -- "When the VCSEL period for the pre or final range is changed,
+   -- the corresponding timeout must be read from the device using
+   -- the current VCSEL period, then the new VCSEL period can be
+   -- applied. The timeout then must be written back to the device
+   -- using the new VCSEL period.
+   --
+   -- For the MSRC timeout, the same applies - this timeout being
+   -- dependant on the pre-range vcsel period."
+
+
+   if (type == VL53L0X_VCSEL_PERIOD_PRE_RANGE) then 
+      -- "Set phase check limits"
+      case period_pclks of 
+         12: _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_HIGH, 0x18)
+         14: _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_HIGH, 0x30)
+         16: _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_HIGH, 0x40)
+         18: _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_HIGH, 0x50)
+         otherwise return FALSE -- invalid period
+      end case 
+
+      _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VALID_PHASE_LOW, 0x08)
+ 
+      -- apply new VCSEL period
+      _vl53l0x_write_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VCSEL_PERIOD, vcsel_period_reg)
+
+      -- update timeouts
+      -- set_sequence_step_timeout() begin
+      -- (SequenceStepId == VL53L0X_SEQUENCESTEP_PRE_RANGE)
+      new_pre_range_timeout_mclks = word(_vl53l0x_timeout_microseconds_to_mclks(
+                                    _vl53l0x_timeouts.pre_range_us, period_pclks))
+
+      _vl53l0x_write_data_word(_VL53L0X_PRE_RANGE_CONFIG_TIMEOUT_MACROP_HI,
+                               _vl53l0x_encode_timeout(new_pre_range_timeout_mclks))
+      -- set_sequence_step_timeout() end
+
+      -- set_sequence_step_timeout() begin
+      -- (SequenceStepId == _VL53L0X_VL53L0X_SEQUENCESTEP_MSRC)
+
+      new_msrc_timeout_mclks = word(_vl53l0x_timeout_microseconds_to_mclks(
+                                    _vl53l0x_timeouts.msrc_dss_tcc_us, period_pclks))
+      if (new_msrc_timeout_mclks > 256) then
+         new_msrc_timeout_mclks = 255
+      else 
+        new_msrc_timeout_mclks = new_msrc_timeout_mclks - 1
+      end if
+      _vl53l0x_write_data_byte(_VL53L0X_MSRC_CONFIG_TIMEOUT_MACROP,
+                               byte(new_msrc_timeout_mclks))
+      -- set_sequence_step_timeout() end
+ 
+   elsif (type == VL53L0X_VCSEL_PERIOD_FINAL_RANGE) then
+ 
+      case period_pclks of
+
+         8:
+         block
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_HIGH, 0x10)
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_LOW,  0x08)
+            _vl53l0x_write_data_byte(_VL53L0X_GLOBAL_CONFIG_VCSEL_WIDTH, 0x02)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_CONFIG_TIMEOUT, 0x0C)
+            _vl53l0x_write_data_byte(0xFF, 0x01)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_LIM, 0x30)
+            _vl53l0x_write_data_byte(0xFF, 0x00)
+        end block
+
+         10:
+         block
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_HIGH, 0x28)
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_LOW,  0x08)
+            _vl53l0x_write_data_byte(_VL53L0X_GLOBAL_CONFIG_VCSEL_WIDTH, 0x03)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_CONFIG_TIMEOUT, 0x09)
+            _vl53l0x_write_data_byte(0xFF, 0x01)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_LIM, 0x20)
+            _vl53l0x_write_data_byte(0xFF, 0x00)
+         end block
+
+         12:
+         block
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_HIGH, 0x38)
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_LOW,  0x08)
+            _vl53l0x_write_data_byte(_VL53L0X_GLOBAL_CONFIG_VCSEL_WIDTH, 0x03)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_CONFIG_TIMEOUT, 0x08)
+            _vl53l0x_write_data_byte(0xFF, 0x01)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_LIM, 0x20)
+            _vl53l0x_write_data_byte(0xFF, 0x00)
+         end block
+
+         14:
+         block
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_HIGH, 0x48)
+            _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VALID_PHASE_LOW,  0x08)
+            _vl53l0x_write_data_byte(_VL53L0X_GLOBAL_CONFIG_VCSEL_WIDTH, 0x03)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_CONFIG_TIMEOUT, 0x07)
+            _vl53l0x_write_data_byte(0xFF, 0x01)
+            _vl53l0x_write_data_byte(_VL53L0X_ALGO_PHASECAL_LIM, 0x20)
+            _vl53l0x_write_data_byte(0xFF, 0x00);
+         end block
+
+         otherwise return FALSE -- invalid period
+
+      end case
+
+      -- apply new VCSEL period
+      _vl53l0x_write_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VCSEL_PERIOD, vcsel_period_reg)
+
+      -- update timeouts
+      -- set_sequence_step_timeout() begin
+      -- (SequenceStepId == _VL53L0X_VL53L0X_SEQUENCESTEP_FINAL_RANGE)
+
+      -- "For the final range timeout, the pre-range timeout
+      --  must be added. To do this both final and pre-range
+      --  timeouts must be expressed in macro periods MClks
+      --  because they have different vcsel periods."
+
+      -- TODO: Check why casting to word was required.
+      new_final_range_timeout_mclks = word(_vl53l0x_timeout_microseconds_to_mclks(
+                                      _vl53l0x_timeouts.final_range_us, period_pclks))
+
+      if _vl53l0x_enables.pre_range then
+         new_final_range_timeout_mclks = new_final_range_timeout_mclks +
+                                         _vl53l0x_timeouts.pre_range_mclks
+      end if 
+      _vl53l0x_write_data_word(_VL53L0X_FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI,
+          _vl53l0x_encode_timeout(new_final_range_timeout_mclks))
+      -- set_sequence_step_timeout end
+ 
+   else 
+      -- invalid type
+      return FALSE 
+
+   end if 
+
+   -- "Finally, the timing budget must be re-applied"
+   -- Note: Return value was ignored in the Arduino Library.
+   if !vl53l0x_set_measurement_timing_budget(_vl53l0x_measurement_timing_budget_us) then
+      return FALSE
+   end if 
+
+   -- "Perform the phase calibration. This is needed after changing on vcsel period."
+   -- VL53L0X_perform_phase_calibration() begin
+   sequence_config = _vl53l0x_read_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG)
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, 0x02)
+ 
+   -- Note: Return value ignored by Arduino library.
+   if !_vl53l0x_perform_single_ref_calibration(0) then      
+      return FALSE
+   end if 
+   
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG, sequence_config)
+   -- VL53L0X_perform_phase_calibration() end
+
+  return TRUE
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Get the VCSEL pulse period in PCLKs for the given period type. Based on 
+-- VL53L0X_get_vcsel_pulse_period().
+-- -----------------------------------------------------------------------------
+function vl53l0x_get_vcsel_pulse_period(byte in type) return byte is
+
+   if (type == VL53L0X_VCSEL_PERIOD_PRE_RANGE) then
+      return _vl53l0x_decode_vcsel_period(
+             _vl53l0x_read_data_byte(_VL53L0X_PRE_RANGE_CONFIG_VCSEL_PERIOD))
+   elsif (type == VL53L0X_VCSEL_PERIOD_FINAL_RANGE) then
+      return _vl53l0x_decode_vcsel_period(
+             _vl53l0x_read_data_byte(_VL53L0X_FINAL_RANGE_CONFIG_VCSEL_PERIOD))
+   else 
+     return 255
+   end if 
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Start continuous ranging measurements. If period_ms (optional) is 0 or not
+-- given, continuous back-to-back mode is used (the sensor takes measurements as
+-- often as possible); otherwise, continuous timed mode is used, with the given
+-- inter-measurement period in milliseconds determining how often the sensor
+-- takes a measurement. Based on VL53L0X_StartMeasurement().
+-- -----------------------------------------------------------------------------
+procedure vl53l0x_start_continuous(dword in period_ms) is
+
+   var word osc_calibrate_val
+
+   _vl53l0x_write_data_byte(0x80, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(0x00, 0x00)
+   _vl53l0x_write_data_byte(0x91, _vl53l0x_stop_variable)
+   _vl53l0x_write_data_byte(0x00, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x00)
+   _vl53l0x_write_data_byte(0x80, 0x00)
+
+   if (period_ms != 0) then
+      -- continuous timed mode
+      -- VL53L0X_SetInterMeasurementPeriodMilliSeconds() begin
+
+      osc_calibrate_val = _vl53l0x_read_data_word(_VL53L0X_OSC_CALIBRATE_VAL)
+      if (osc_calibrate_val != 0) then 
+        period_ms = period_ms * dword(osc_calibrate_val)
+      end if 
+
+      _vl53l0x_write_data_dword(_VL53L0X_SYSTEM_INTERMEASUREMENT_PERIOD, period_ms)
+     -- VL53L0X_SetInterMeasurementPeriodMilliSeconds() end
+
+     _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x04) -- VL53L0X_REG_SYSRANGE_MODE_TIMED
+   else
+     -- continuous back-to-back mode
+     _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x02) -- VL53L0X_REG_SYSRANGE_MODE_BACKTOBACK
+   end if 
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Stop continuous measurements. Based on VL53L0X_StopMeasurement().
+-- -----------------------------------------------------------------------------
+procedure vl53l0x_stop_continuous() is
+   
+   _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x01) -- VL53L0X_REG_SYSRANGE_MODE_SINGLESHOT
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(0x00, 0x00)
+   _vl53l0x_write_data_byte(0x91, 0x00)
+   _vl53l0x_write_data_byte(0x00, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x00)
+ 
+end procedure 
+
+
+-- -----------------------------------------------------------------------------
+-- Returns a range reading in millimeters when continuous mode is active
+-- (readRangeSingleMillimeters() also calls this function after starting a
+-- single-shot range measurement).
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_continuous_millimeters() return word is
+
+   var word timeout_counter, range
+
+   timeout_counter = 0
+   while (_vl53l0x_read_data_byte(_VL53L0X_RESULT_INTERRUPT_STATUS) & 0x07) == 0 loop
+      _usec_delay(1_000) -- 1 ms.
+      timeout_counter = timeout_counter + 1
+      if (timeout_counter == _vl53l0x_response_timeout) then
+         _vl53l0x_did_timeout =  TRUE
+         return 65535
+      end if 
+   end loop
+
+   -- assumptions: Linearity Corrective Gain is 1000 (default);
+   -- fractional ranging is not enabled
+   range = _vl53l0x_read_data_word(_VL53L0X_RESULT_RANGE_STATUS + 10)
+
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_INTERRUPT_CLEAR, 0x01);
+
+  return range
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Performs a single-shot range measurement and returns the reading in
+-- millimeters. Based on VL53L0X_PerformSingleRangingMeasurement().
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_single_millimeters() return word is
+
+   var word timeout_counter
+
+   _vl53l0x_write_data_byte(0x80, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(0x00, 0x00)
+   _vl53l0x_write_data_byte(0x91, _vl53l0x_stop_variable)
+   _vl53l0x_write_data_byte(0x00, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x00)
+   _vl53l0x_write_data_byte(0x80, 0x00)
+   _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x01);
+
+   -- "Wait until start bit has been cleared"
+   timeout_counter = 0
+   while (_vl53l0x_read_data_byte(_VL53L0X_SYSRANGE_START) & 0x01) != 0 loop
+      _usec_delay(1_000) -- 1 ms.
+      timeout_counter = timeout_counter + 1
+      if (timeout_counter == _vl53l0x_response_timeout) then
+         _vl53l0x_did_timeout = TRUE
+         return 65535
+      end if 
+   end loop
+
+  return vl53l0x_read_range_continuous_millimeters() 
+
+end function
+
+
+-- ----------------------------------------------------------------------------- 
+-- Returns TRUE if a timeout occured in one of the read functions or in case of
+-- timeout on the IIC bus if the IIC timeout is defined. Value is cleared after
+-- a call to this function. 
+-- ----------------------------------------------------------------------------- 
+function vl53l0x_timeout_occured() return bit is
+
+   var bit temp
+
+   temp = _vl53l0x_did_timeout
+   _vl53l0x_did_timeout = FALSE
+
+   return temp
+
+end function
+
+
+-- ----------------------------------------------------------------------------- 
+-- ----------------- Private functions and procedures --------------------------
+-- ----------------------------------------------------------------------------- 
+
+
+-- -----------------------------------------------------------------------------
+-- Get reference SPAD (single photon avalanche diode) count and type based on
+-- VL53L0X_get_info_from_device(), but only gets reference SPAD count and type.
+-- Returns TRUE if succesful.
+-- -----------------------------------------------------------------------------
+function _vl53l0x_get_spad_info(byte out counter, bit out type_is_aperture) 
+         return bit is
+
+   var word timeout_counter
+   var byte temp 
+
+   _vl53l0x_write_data_byte(0x80, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(0x00, 0x00)
+   _vl53l0x_write_data_byte(0xFF, 0x06)
+   _vl53l0x_write_data_byte(0x83, _vl53l0x_read_data_byte(0x83) | 0x04)
+   _vl53l0x_write_data_byte(0xFF, 0x07)
+   _vl53l0x_write_data_byte(0x81, 0x01)
+   _vl53l0x_write_data_byte(0x80, 0x01)
+   _vl53l0x_write_data_byte(0x94, 0x6B)
+   _vl53l0x_write_data_byte(0x83, 0x00)
+
+   timeout_counter = 0
+   while (_vl53l0x_read_data_byte(0x83) == 0) loop
+      _usec_delay(1_000) -- 1 ms.
+      timeout_counter = timeout_counter + 1
+      if (timeout_counter == _vl53l0x_response_timeout) then
+         _vl53l0x_did_timeout = TRUE
+         return FALSE
+      end if 
+    end loop
+
+   _vl53l0x_write_data_byte(0x83, 0x01)
+   temp = _vl53l0x_read_data_byte(0x92)
+
+   counter = temp & 0x7F
+   type_is_aperture = ((temp >> 7) & 0x01) != 0
+
+   _vl53l0x_write_data_byte(0x81, 0x00)
+   _vl53l0x_write_data_byte(0xFF, 0x06)
+   _vl53l0x_write_data_byte(0x83, _vl53l0x_read_data_byte(0x83)  & !0x04)
+   _vl53l0x_write_data_byte(0xFF, 0x01)
+   _vl53l0x_write_data_byte(0x00, 0x01)
+   _vl53l0x_write_data_byte(0xFF, 0x00)
+   _vl53l0x_write_data_byte(0x80, 0x00)
+
+   return TRUE
+
+end function
+
+
+
+-- -----------------------------------------------------------------------------
+-- Get sequence step enables. Based on VL53L0X_GetSequenceStepEnables()
+-- Data is stord in global variable '_vl53l0x_enables'.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_get_sequence_step_enables() is
+
+   var byte data
+
+   data = _vl53l0x_read_data_byte(_VL53L0X_SYSTEM_SEQUENCE_CONFIG)
+   _vl53l0x_enables.tcc = (data & 0b0001_0000) != 0
+   _vl53l0x_enables.dss = (data & 0b0000_1000) != 0
+   _vl53l0x_enables.msrc = (data & 0b0000_0100) != 0
+   _vl53l0x_enables.pre_range = (data & 0b0100_0000) != 0
+   _vl53l0x_enables.final_range = (data & 0b1000_0000) != 0
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Get sequence step timeouts. Based on get_sequence_step_timeout(), but gets
+-- all timeouts instead of just the requested one, and also stores intermediate 
+-- values.
+-- Data is stored in global variable '_vl53l0x_timeouts' and uses global
+-- variable '_vl53l0x_enables'.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_get_sequence_step_timeouts() is
+
+   _vl53l0x_timeouts.pre_range_vcsel_period_pclks = 
+      vl53l0x_get_vcsel_pulse_period(VL53L0X_VCSEL_PERIOD_PRE_RANGE)
+
+   _vl53l0x_timeouts.msrc_dss_tcc_mclks = 
+      _vl53l0x_read_data_byte(_VL53L0X_MSRC_CONFIG_TIMEOUT_MACROP) + 1
+
+   _vl53l0x_timeouts.msrc_dss_tcc_us = _vl53l0x_timeout_mclks_to_microseconds(
+         _vl53l0x_timeouts.msrc_dss_tcc_mclks, _vl53l0x_timeouts.pre_range_vcsel_period_pclks)
+
+   _vl53l0x_timeouts.pre_range_mclks = _vl53l0x_decode_timeout(
+      _vl53l0x_read_data_word(_VL53L0X_PRE_RANGE_CONFIG_TIMEOUT_MACROP_HI))
+
+   _vl53l0x_timeouts.pre_range_us = (_vl53l0x_timeout_mclks_to_microseconds(
+      _vl53l0x_timeouts.pre_range_mclks, _vl53l0x_timeouts.pre_range_vcsel_period_pclks))
+
+   _vl53l0x_timeouts.final_range_vcsel_period_pclks = 
+      vl53l0x_get_vcsel_pulse_period(VL53L0X_VCSEL_PERIOD_FINAL_RANGE)
+
+   _vl53l0x_timeouts.final_range_mclks = _vl53l0x_decode_timeout(
+       _vl53l0x_read_data_word(_VL53L0X_FINAL_RANGE_CONFIG_TIMEOUT_MACROP_HI))
+
+   if _vl53l0x_enables.pre_range then
+    _vl53l0x_timeouts.final_range_mclks = _vl53l0x_timeouts.final_range_mclks - 
+        _vl53l0x_timeouts.pre_range_mclks
+   end if 
+
+   _vl53l0x_timeouts.final_range_us =
+      _vl53l0x_timeout_mclks_to_microseconds(_vl53l0x_timeouts.final_range_mclks,
+         _vl53l0x_timeouts.final_range_vcsel_period_pclks)
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Decode sequence step timeout in MCLKs from register value. Based on 
+-- VL53L0X_decode_timeout()
+-- Note: the original function returned a dword, but the return value is
+-- always stored in a word.
+-- -----------------------------------------------------------------------------
+function _vl53l0x_decode_timeout(word in reg_val) return word is
+
+   -- Format: "(LSByte * 2^MSByte) + 1"
+   return ((reg_val & 0x00FF) << ((reg_val & 0xFF00) >> 8)) + 1
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Encode sequence step timeout register value from timeout in MCLKs.
+-- based on VL53L0X_encode_timeout().
+-- -----------------------------------------------------------------------------
+function _vl53l0x_encode_timeout(dword in timeout_mclks) return word is
+
+   -- Format: "(LSByte * 2^MSByte) + 1"
+
+   var dword ls_byte = 0
+   var word ms_byte = 0
+
+   if (timeout_mclks > 0) then
+      ls_byte = timeout_mclks - 1
+
+      while (ls_byte & 0xFFFF_FF00) > 0 loop
+         ls_byte = ls_byte >> 1
+         ms_byte = ms_byte + 1
+      end loop
+
+      return (ms_byte << 8) | word(ls_byte & 0xFF)
+
+   else 
+      return 0
+   end if 
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- Convert sequence step timeout from MCLKs to microseconds with given VCSEL 
+-- period in PCLKs based on VL53L0X_calc_timeout_us()
+-- -----------------------------------------------------------------------------
+function _vl53l0x_timeout_mclks_to_microseconds(word in timeout_period_mclks, 
+         byte in vcsel_period_pclks) return dword is
+
+   var dword macro_period_ns = _vl53l0x_calc_period(vcsel_period_pclks)
+
+   return ((dword(timeout_period_mclks) * macro_period_ns) + 500) / 1000
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- Convert sequence step timeout from microseconds to MCLKs with given VCSEL
+-- period in PCLKs based on VL53L0X_calc_timeout_mclks()
+-- -----------------------------------------------------------------------------
+function _vl53l0x_timeout_microseconds_to_mclks(dword in timeout_period_us, 
+         byte in vcsel_period_pclks) return dword is
+
+   var dword macro_period_ns = _vl53l0x_calc_period(vcsel_period_pclks)
+
+   return (((timeout_period_us * 1000) + (macro_period_ns / 2)) / macro_period_ns)
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- based on VL53L0X_perform_single_ref_calibration()
+-- -----------------------------------------------------------------------------
+function _vl53l0x_perform_single_ref_calibration(byte in vhv_init_byte) return bit is 
+
+   var word timeout_counter
+
+   -- VL53L0X_REG_SYSRANGE_MODE_START_STOP
+   _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x01 | vhv_init_byte)
+
+   timeout_counter = 0
+   while (_vl53l0x_read_data_byte(_VL53L0X_RESULT_INTERRUPT_STATUS) & 0x07) == 0 loop
+      _usec_delay(1_000) -- 1 ms.
+      timeout_counter = timeout_counter + 1
+      if (timeout_counter == _vl53l0x_response_timeout) then
+         _vl53l0x_did_timeout= TRUE
+         return FALSE
+      end if 
+    end loop
+
+   _vl53l0x_write_data_byte(_VL53L0X_SYSTEM_INTERRUPT_CLEAR, 0x01)
+   _vl53l0x_write_data_byte(_VL53L0X_SYSRANGE_START, 0x00)
+
+  return TRUE
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- Decode VCSEL (vertical cavity surface emitting laser) pulse period in PCLKs
+-- from register value. Based on VL53L0X_decode_vcsel_period()
+-- -----------------------------------------------------------------------------
+function _vl53l0x_decode_vcsel_period(byte in register_value) return byte is
+   
+   return  ((register_value + 1) << 1)
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- Encode VCSEL pulse period register value from period in PCLKs. Based on 
+-- VL53L0X_encode_vcsel_period().
+-- -----------------------------------------------------------------------------
+function _vl53l0x_encode_vcsel_period(byte in period_pclks) return byte is
+   
+   return  ((period_pclks >> 1) - 1)
+
+end function 
+
+
+-- -----------------------------------------------------------------------------
+-- Calculate period in *nanoseconds* from VCSEL period in PCLKs, based on 
+-- VL53L0X_calc_macro_period_ps(). 
+-- PLL_period_ps = 1655; macro_period_vclks = 2304
+-- -----------------------------------------------------------------------------
+function _vl53l0x_calc_period(byte in vcsel_period_pclks) return dword is
+
+   return (((2304 * dword(vcsel_period_pclks) * 1655) + 500) / 1000)
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Read a byte from the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _vl53l0x_read_data_byte(byte in register) return byte is
+
+   var byte data
+   var bit response
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   i2c_restart()
+   response = response & i2c_transmit_byte(_vl53l0x_iic_address | 0b0000_0001)
+   data = i2c_receive_byte(FALSE) -- Only one byte, so NACK.
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a byte to the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_write_data_byte(byte in register, byte in data) is
+
+   var bit response
+
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   response = response & i2c_transmit_byte(data)
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read a word from the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _vl53l0x_read_data_word(byte in register) return word is
+
+   var word data
+   var byte data_byte[2] at data
+   var bit response
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   i2c_restart()
+   response = response & i2c_transmit_byte(_vl53l0x_iic_address | 0b0000_0001)
+   -- High byte first.
+   data_byte[1] = i2c_receive_byte(TRUE) 
+   data_byte[0] = i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a word to the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_write_data_word(byte in register, word in data) is
+
+   var byte data_byte[2] at data
+   var bit response
+
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   -- High byte first.
+   response = response & i2c_transmit_byte(data_byte[1])
+   response = response & i2c_transmit_byte(data_byte[0])
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read a dword from the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+function _vl53l0x_read_data_dword(byte in register) return dword is
+
+   var dword data
+   var byte data_byte[4] at data
+   var bit response
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   i2c_restart()
+   response = response & i2c_transmit_byte(_vl53l0x_iic_address | 0b0000_0001)
+   -- High byte first.
+   data_byte[3] = i2c_receive_byte(TRUE) 
+   data_byte[2] = i2c_receive_byte(TRUE) 
+   data_byte[1] = i2c_receive_byte(TRUE) 
+   data_byte[0] = i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+   return data
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Write a dword to the given register of the VL53L0X via the IIC interface.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_write_data_dword(byte in register, dword in data) is
+
+   var byte data_byte[4] at data
+   var bit response
+
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(register)
+   -- High byte first.
+   response = response & i2c_transmit_byte(data_byte[3])
+   response = response & i2c_transmit_byte(data_byte[2])
+   response = response & i2c_transmit_byte(data_byte[1])
+   response = response & i2c_transmit_byte(data_byte[0])
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Read the SPAD map of the VL53L0X via the IIC interface.
+-- A separate procedure was created since we need to fill the global spad map.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_read_spad_map() is
+
+   var byte index
+   var bit response
+
+   -- First write register then switch to reading the data. 
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(_VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_0)
+   i2c_restart()
+   response = response & i2c_transmit_byte(_vl53l0x_iic_address | 0b0000_0001)
+   ; Read all but one bytes and ACK.
+   for (count(_vl53l0x_reference_spad_map) - 1) using index loop
+      _vl53l0x_reference_spad_map[index] = i2c_receive_byte(TRUE) 
+   end loop
+   ; Last byte and NACK.
+   _vl53l0x_reference_spad_map[count(_vl53l0x_reference_spad_map) - 1] = 
+      i2c_receive_byte(FALSE) 
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Write the SPAD map to the VL53L0X via the IIC interface.
+-- A separate procedure was created since we need to fill the global spad map.
+-- -----------------------------------------------------------------------------
+procedure _vl53l0x_write_spad_map() is
+
+   var byte index
+   var bit response
+
+   i2c_start()
+   response = i2c_transmit_byte(_vl53l0x_iic_address)
+   response = response & i2c_transmit_byte(_VL53L0X_GLOBAL_CONFIG_SPAD_ENABLES_REF_0)
+   for count(_vl53l0x_reference_spad_map) using index loop
+      response = response & i2c_transmit_byte(_vl53l0x_reference_spad_map[index])
+   end loop
+   i2c_stop()
+
+   if !response then
+      _vl53l0x_did_timeout = TRUE
+   end if 
+
+end procedure
+
+
