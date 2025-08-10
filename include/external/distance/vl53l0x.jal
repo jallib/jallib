@@ -170,6 +170,18 @@ function vl53l0x_read_range_continuous_millimeters() return word
 -- -----------------------------------------------------------------------------
 function vl53l0x_read_range_single_millimeters() return word
 
+-- -----------------------------------------------------------------------------
+-- Returns a range reading in mil when continuous mode is active. Calls
+-- vl53l0x_read_range_continuous_millimeters() and converts it to mils.
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_continuous_mil() return word
+
+-- -----------------------------------------------------------------------------
+-- Performs a single-shot range measurement and returns the reading in mil.
+-- Calls vl53l0x_read_range_single_millimeters() and converts it to mil.
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_single_mil() return word 
+
 -- ----------------------------------------------------------------------------- 
 -- Returns TRUE if a timeout occured in one of the read functions or in case of
 -- timeout on the IIC bus if the IIC timeout is defined. Value is cleared after
@@ -249,7 +261,7 @@ const byte _VL53L0X_MODULE_ID = 0xEE
 -- some of the parameters given, e.g. when using vl53l0x_start_continuous().
 -- So the user can change the value.
 const word _VL53L0X_DEFAULT_RESPONSE_TIMEOUT = 250;  250 ms timeout.
-
+-
 -- Default tuning settings used at initialization.
 -- Format is: Register, Data, Register, Data, etc...
 const byte _VL53L0X_TUNING_SETTINGS[] = 
@@ -269,6 +281,9 @@ const byte _VL53L0X_TUNING_SETTINGS[] =
    0xFF, 0x00, 0x80, 0x01, 0x01, 0xF8, 0xFF, 0x01, 0x8E, 0x01, 0x00, 0x01,
    0xFF, 0x00, 0x80, 0x00
 }
+
+-- Conversion from mm to mil
+const dword _VL53L0X_MM_TO_MIL = 3_937_008 -- Multiplied by 100_000.
 
 --------------------- Private type definitions ---------------------------------
 
@@ -377,13 +392,13 @@ function vl53l0x_init() return bit is
    var byte spad_count, first_spad_to_enable, spads_enabled
    var bit spad_type_is_aperture
 
+   _vl53l0x_response_timeout = _VL53L0X_DEFAULT_RESPONSE_TIMEOUT
+   _vl53l0x_did_timeout = FALSE
+
    -- Check presense of correct module.
    if !vl53l0x_valid_module() then
      return FALSE
    end if 
-
-   _vl53l0x_response_timeout = _VL53L0X_DEFAULT_RESPONSE_TIMEOUT
-   _vl53l0x_did_timeout = FALSE
 
    -- VL53L0X_DataInit() begin
    -- Switch to 2V8 mode.
@@ -1026,6 +1041,42 @@ function vl53l0x_read_range_single_millimeters() return word is
    end loop
 
   return vl53l0x_read_range_continuous_millimeters() 
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Returns a range reading in mil when continuous mode is active. Calls
+-- vl53l0x_read_range_continuous_millimeters() and converts it to mils.
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_continuous_mil() return word is
+
+   var dword calculation
+   var word millimeters
+
+   millimeters = vl53l0x_read_range_continuous_millimeters()
+   ; 1 mm is 39.37008 mil
+   calculation = ((dword(millimeters)) * _VL53L0X_MM_TO_MIL) / 100_000
+
+   return word(calculation)
+
+end function
+
+
+-- -----------------------------------------------------------------------------
+-- Performs a single-shot range measurement and returns the reading in mil.
+-- Calls vl53l0x_read_range_single_millimeters() and converts it to mil.
+-- -----------------------------------------------------------------------------
+function vl53l0x_read_range_single_mil() return word is
+
+   var dword calculation
+   var word millimeters
+
+   millimeters = vl53l0x_read_range_single_millimeters()
+   ; 1 mm is 39.37008 mil
+   calculation = ((dword(millimeters)) * _VL53L0X_MM_TO_MIL) / 100_000
+
+   return word(calculation)
 
 end function
 

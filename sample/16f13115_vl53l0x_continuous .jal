@@ -14,39 +14,45 @@
 --              Although the IC does not operate at 5 Volt, the VL53L0X module 
 --              does operate at 5 Volt and has on-board level shifters including
 --              pull-up registers.
+--              The distance is measured in mm and in mil.
 --
 -- Sources: Based on the vl53l0x-arduino: https://github.com/pololu/vl53l0x-arduino
 --          Datasheet STMicroelectronics  VL53L0X DS11555 - Rev 6
 --
 
-include 16f1825                 
+include 16f13115                 
 
 -- This program uses the internal oscillator at 32 MHz.
-pragma target clock    32_000_000      -- oscillator frequency
-pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
-pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
-pragma target WDT      DISABLED        -- No Watchdog
-pragma target PWRTE    ENABLED         -- Power up timer enabled
-pragma target BROWNOUT DISABLED        -- No brownout reset
-pragma target FCMEN    DISABLED        -- No clock monitoring
-pragma target IESO     DISABLED        -- int/ext osc. switch
-pragma target LVP      ENABLED         -- Low voltage programming
-pragma target MCLR     EXTERNAL        -- Reset external
--- Set the internal clock frequency to 32 MHz.
-OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
-OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+pragma target clock    32_000_000       -- oscillator frequency
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINTOSC_32MHZ   -- select 32 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCFRQ_FRQ = 0b101                      -- Fosc 32 MHz
 
-; Enable weak pull up for all unused pins.
+; Enable weak pull up for all pins.
 WPUA = 0b0011_1111       
-WPUC = 0b0010_1100        
-OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
 
 enable_digital_io()
 _usec_delay(100_000)
 
+; Reassign pins for USART and IIC. 
+include pps
+pps_control_lock(FALSE)                
+RA1PPS = PPS_SCK1 ; IIC SDL to A1.  Pin 6 of 8 pin DIP.
+RA2PPS = PPS_SDA1 ; IIC SDA to A2.  Pin 5 of 8 pin DIP.
+RA4PPS = PPS_TX1  ; USART TX to A4. Pin 3 of 8 pin DIP.
+RX1PPS = RA5PPS   ; USART RX to A5. Pin 2 of 8 pin DIP.
+pps_control_lock(TRUE)                 
+
 ; Setup uart for communication. 
-alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
-alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+alias pin_RX_direction is pin_A5_direction 
+alias pin_TX_direction is pin_A4_direction 
 const serial_hw_baudrate  = 115200  
 include serial_hardware
 serial_hw_init()
@@ -56,10 +62,10 @@ include print
 include delay
 
 -- Define the IIC pins and initiaize the pin direction.
-alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
--- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
-alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
--- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
+alias i2c_scl is pin_A1 
+alias i2c_scl_direction is pin_A1_direction
+alias i2c_sda is pin_A2
+alias i2c_sda_direction is pin_A2_direction
 const word _i2c_bus_speed = 1 -- 100 kHz. It can handle 400 kHz.
 const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
 const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
@@ -67,6 +73,7 @@ include i2c_hardware
 i2c_initialize()
 -- Now include the library.
 include vl53l0x
+
 
 -- Procedures.
 procedure print_iic_address() is
@@ -77,7 +84,7 @@ procedure print_iic_address() is
 
 end procedure
 
-; Print the timeout value.
+; Print the timeout value.. 
 procedure print_timeout() is
 
    print_string(serial, "Timeout occured.\r\n")
@@ -97,6 +104,7 @@ var word distance
 
 print_crlf(serial)
 print_string(serial, "Test program for the VL53L0X Time-of-Flight ranging sensor.\r\n")
+print_string(serial, "Using continuous mode distance is measured in mm and in mil.\r\n")
 
 if defined(NEW_IIC_ADDRESS) then
    -- Set the IIC address to a different address than the default 
@@ -126,7 +134,7 @@ forever loop
    distance = vl53l0x_read_range_continuous_millimeters()
    if vl53l0x_timeout_occured() then
       print_timeout()
-      ; Make it a bit bigger.
+      ; Make timeout a bit bigger.
       vl53l0x_set_timeout(vl53l0x_get_timeout() + 10)
    else
       print_string(serial, "Range is in mm: ")
@@ -138,7 +146,7 @@ forever loop
    distance = vl53l0x_read_range_continuous_mil()
    if vl53l0x_timeout_occured() then
       print_timeout()
-      ; Make it a bit bigger.
+      ; Make timeout a bit bigger.
       vl53l0x_set_timeout(vl53l0x_get_timeout() + 10)
    else
       print_string(serial, "Range in mil: ")
@@ -146,6 +154,5 @@ forever loop
       print_crlf(serial)
    end if 
    print_crlf(serial)
- 
  
 end loop

@@ -63,7 +63,7 @@ alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
 -- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
 alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
 -- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
-const word _i2c_bus_speed = 4 -- 400 kHz. 
+const word _i2c_bus_speed = 1 -- 100 kHz. It can handle 400 kHz.
 const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
 const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
 include i2c_hardware  
@@ -81,6 +81,15 @@ procedure print_iic_address() is
    print_string(serial, "VL53L0X module IIC address is: 0x")
    print_byte_hex(serial, vl53l0x_get_iic_address())
    print_crlf(serial)
+
+end procedure
+
+; Print the timeout value.
+procedure print_timeout() is
+
+   print_string(serial, "Timeout occured.\r\n")
+   print_string(serial, "Use vl53l0x_set_timeout() to increase the timeout value.\r\n")
+   print_string(serial, "Or check your IIC connection.\r\n")
 
 end procedure
 
@@ -114,12 +123,12 @@ if defined(NEW_IIC_ADDRESS) then
 end if 
 
 -- Initialize the VL53L0X library.
-if vl53l0x_init() then
-   print_string(serial, "Initialization succes!\r\n")
-else
-   print_string(serial, "Initialization failed!\r\n")
-end if 
-
+print_string(serial, "Initializing ...\r\n")
+while !vl53l0x_init() loop
+   serial = "."
+   _usec_delay(250_000)
+end loop 
+print_string(serial, "Done!\r\n")
 
 if defined(LONG_RANGE) then
    -- Lower the return signal rate limit (default is 0.25 MCPS) 
@@ -147,16 +156,25 @@ end if
 
 forever  loop 
 
+   ; Start with measurement in mm.
    distance =  vl53l0x_read_range_single_millimeters()
-
    if vl53l0x_timeout_occured() then
-      print_string(serial, "Timeout occured.\r\n")
-      print_string(serial, "Use vl53l0x_set_timeout() to increase the timeout value.\r\n")
-      print_string(serial, "Or check your IIC connection.\r\n")
+      print_timeout()
    else
-      print_string(serial, "Range is (mm): ")
+      print_string(serial, "Range in mm: ")
       print_word_dec(serial, distance)
       print_crlf(serial)
    end if 
+
+   ; Now in mil.
+   distance =  vl53l0x_read_range_single_mil()
+   if vl53l0x_timeout_occured() then
+      print_timeout()
+   else
+      print_string(serial, "Range in mil: ")
+      print_word_dec(serial, distance)
+      print_crlf(serial)
+   end if 
+   print_crlf(serial)
 
 end loop
