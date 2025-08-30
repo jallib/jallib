@@ -1,0 +1,191 @@
+-----------------------------------------------------------------------------
+-- Title: Sample and test program INA3221 Tripple Channel Shunt and Bus Voltage Monitor
+-- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample and program showing how to use the INA3221 Tripple 
+--              Channel Shunt and Bus Votage Monitor
+--              This device is controlled via an IIC interface. The serial 
+--              interface is used to show the result of the measurement. 
+--              There are two ways to use the ina3221 library, with floats or
+--              without floats where it uses word/dword (default). Details are 
+--              given in the ian3221 library. To use floats define:
+--              -) Const INA3221_USE_FLOAT = TRUE
+--
+-- Sources: Datasheet Texas Instruments INA3221 Triple-Channel, High-Side
+--          Measurement, Shunt and Bus Voltage Monitor with I2C- and 
+--          SMBUS-Compatible interface. SBOS576B –MAY 2012–REVISED MARCH 2016
+--
+-- Notes:   Channels are numbered 1..3, but values 0..2 are used.
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+; Enable weak pull up for all unused pins.
+WPUA = 0b0011_1111       
+WPUC = 0b0010_1100        
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+_usec_delay(100_000)
+
+; Setup uart for communication. 
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate  = 115200  
+include serial_hardware
+serial_hw_init()
+alias serial is serial_hw_data
+
+include print
+include delay
+
+-- Define the IIC pins and initiaize the pin direction.
+alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
+-- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
+alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+-- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
+const word _i2c_bus_speed = 4 -- 400 kHz.
+const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
+include i2c_hardware  
+i2c_initialize()
+
+-- Now include the ina3221 library and initialize.
+-- Remove the comment below if you want to use floats instead of word/dword.
+const INA3221_USE_FLOAT = TRUE
+include ina3221
+ina3221_init() 
+
+-- ------------------------------ Variables ---------------------------------
+if defined(INA3221_USE_FLOAT) then
+   var float voltage -- In Volt
+   var float current -- In Ampere
+else
+   var word bus_voltage   -- In mV
+   var dword shunt_voltage -- In uV
+   var dword current      -- In uA
+end if 
+
+var byte channel
+-- ------------------------------ Main program ---------------------------------
+print_string(serial, "Sample program for the INA3221 Tripple Channel Shunt and Bus Votage Monitor.\r\n\n")
+
+-- The default IIC address is set to INA3221_IIC_DEFAULT_ADDRESS which is 
+-- A0 connected to GND which is address 0x40. If A0 is connected to VCC  the 
+-- address can be changed by using:
+-- ina3321_set_iic_address(0x41)
+
+
+forever loop 
+
+   for INA3221_NR_OF_CHANNELS using channel loop
+      if defined(INA3221_USE_FLOAT) then
+         -- Version using floats.
+
+         -- Get bus voltage.
+         voltage = ina3221_get_bus_voltage(channel)
+         -- Using the timeout function is optional.
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The bus voltage on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (V): ")
+            print_float(serial, voltage)
+            print_crlf(serial)
+         end if 
+
+         -- Get shunt voltage.
+         voltage = ina3221_get_shunt_voltage(channel)
+         -- Using the timeout function is optional.
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The shunt voltage on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (V): ")
+            print_float(serial, voltage)
+            print_crlf(serial)
+         end if 
+
+         -- Get Current.
+         current = ina3221_get_current(channel)
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The current on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (A): ")
+            print_float(serial, current)
+            print_crlf(serial)
+         end if 
+
+      else  
+         -- Version using word/dword, combined with float.
+
+         -- Get bus voltage.
+         bus_voltage = ina3221_get_bus_voltage(channel)
+         -- Using the timeout function is optional.
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The bus voltage on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (mV):  ")
+            print_word_dec(serial, bus_voltage)
+            print_crlf(serial)
+         end if 
+
+         -- Get shunt voltage.
+         shunt_voltage = ina3221_get_shunt_voltage(channel)
+         -- Using the timeout function is optional.
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The shunt voltage on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (uV):  ")
+            print_dword_dec(serial, shunt_voltage)
+            print_crlf(serial)
+         end if 
+
+          -- Get Current.
+         current = ina3221_get_current(channel)
+         if ina3221_timeout_occured() then
+            print_string(serial, "IIC bus timeout occured.\r\n ")
+         else
+            print_string(serial, "The current on channel ")
+            print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
+            print_string(serial, " is (uA):  ")
+            print_dword_dec(serial, current)
+            print_crlf(serial)
+         end if 
+    
+      end if 
+
+   end loop
+      print_crlf(serial)
+
+   _usec_delay(1_000_000)
+
+end loop
