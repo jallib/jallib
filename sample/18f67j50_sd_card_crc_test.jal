@@ -1,0 +1,288 @@
+-- Title: SD Card CRC Library Verification Test
+-- Author: Matthew Schinkel, Copyright (c) 2025, all rights reserved.
+-- Adapted-by: 
+-- Compiler: >=2.5r6
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Library verification test that validates
+-- the sd_card_crc.jal library produces correct CRC7 and CRC16 results. This test does
+-- NOT use an actual SD card - it only verifies that the CRC library functions work
+-- correctly by testing known data vectors and comparing results against expected values.
+--
+-- Sources: JALlib CRC library
+--
+-- Notes: This sample uses the internal oscillator with PLL active at 48MHz.
+--        Requires serial hardware library and sd_card_crc library from JALlib.
+--        This is a verification test only - no SD card hardware is required.
+--
+
+include 18f67j50                      -- target PICmicro
+--
+-- This program uses the internal oscillator with PLL active.
+pragma target clock 48_000_000      -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT_PLL       -- internal oscillator
+pragma target PLLDIV   P2                        -- 8 MHz -> 4 MHz
+pragma target CPUDIV   P1                        -- Fosc divisor
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- int/ext osc. switch
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- use PLL
+--
+enable_digital_io()                 -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
+
+include delay
+
+-- ok, now setup serial;@jallib section serial
+const serial_hw_baudrate = 9600
+include serial_hardware
+serial_hw_init()
+
+include print                       -- output library
+print_string(serial_hw_data, "Serial Port Initialized.")
+
+
+-- Include CRC library
+include sd_card_crc
+
+-- =============================================================================
+-- Global Variables
+-- =============================================================================
+
+-- Test data arrays
+var byte test_data_short[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}
+
+-- SD card command test data
+var byte cmd0_data[5] = {0x40, 0x00, 0x00, 0x00, 0x00}  -- CMD0
+var byte cmd8_data[5] = {0x48, 0x00, 0x00, 0x01, 0xAA}  -- CMD8
+
+-- Test result counters
+var word tests_passed = 0
+var word tests_failed = 0
+var word total_tests = 0
+
+-- =============================================================================
+-- CRC7 Test Procedures
+-- =============================================================================
+
+-- Test CRC7 calculation with known vectors
+procedure test_crc7_vectors(volatile byte out device) is
+   var byte crc7_result
+   var byte expected
+   var bit test_passed
+   
+   print_string(device, "=== CRC7 Vector Tests ===")
+   print_crlf(device)
+   
+   -- Test CMD0 (GO_IDLE_STATE)
+   crc7_result = crc7_sd_calculate(cmd0_data, 5)
+   expected = 0x95
+   test_passed = (crc7_result == expected)
+   print_string(device, "CMD0: 0x")
+   print_byte_hex(device, crc7_result)
+   print_string(device, " (expected 0x")
+   print_byte_hex(device, expected)
+   print_string(device, ") ")
+   if test_passed then
+      print_string(device, "PASS")
+      tests_passed = tests_passed + 1
+   else
+      print_string(device, "FAIL")
+      tests_failed = tests_failed + 1
+   end if
+   total_tests = total_tests + 1
+   print_crlf(device)
+   
+   -- Test CMD8 (SEND_IF_COND)
+   crc7_result = crc7_sd_calculate(cmd8_data, 5)
+   expected = 0x87
+   test_passed = (crc7_result == expected)
+   print_string(device, "CMD8: 0x")
+   print_byte_hex(device, crc7_result)
+   print_string(device, " (expected 0x")
+   print_byte_hex(device, expected)
+   print_string(device, ") ")
+   if test_passed then
+      print_string(device, "PASS")
+      tests_passed = tests_passed + 1
+   else
+      print_string(device, "FAIL")
+      tests_failed = tests_failed + 1
+   end if
+   total_tests = total_tests + 1
+   print_crlf(device)
+   
+   print_crlf(device)
+end procedure
+
+-- Test CRC7 method consistency (lookup vs bitwise)
+procedure test_crc7_consistency(volatile byte out device) is
+   var byte crc7_lookup
+   var byte crc7_bitwise
+   var bit test_passed
+   
+   print_string(device, "=== CRC7 Method Consistency ===")
+   print_crlf(device)
+   
+   -- Test with short data
+   crc7_lookup = crc7_sd_calculate(test_data_short, 8)
+   crc7_bitwise = crc7_sd_calculate_bitwise(test_data_short, 8)
+   test_passed = (crc7_lookup == crc7_bitwise)
+   print_string(device, "Short data: Lookup=0x")
+   print_byte_hex(device, crc7_lookup)
+   print_string(device, ", Bitwise=0x")
+   print_byte_hex(device, crc7_bitwise)
+   print_string(device, " ")
+   if test_passed then
+      print_string(device, "PASS")
+      tests_passed = tests_passed + 1
+   else
+      print_string(device, "FAIL")
+      tests_failed = tests_failed + 1
+   end if
+   total_tests = total_tests + 1
+   print_crlf(device)
+   
+   print_crlf(device)
+end procedure
+
+-- =============================================================================
+-- CRC16 Test Procedures
+-- =============================================================================
+
+-- Test CRC16 calculation with known vectors
+procedure test_crc16_vectors(volatile byte out device) is
+   var word crc16_result
+   var word expected
+   var bit test_passed
+   
+   print_string(device, "=== CRC16 Vector Tests ===")
+   print_crlf(device)
+   
+   -- Test with short data
+   crc16_result = crc16_sd_calculate(test_data_short, 8)
+   expected = crc16_sd_calculate_bitwise(test_data_short, 8)  -- Use bitwise as reference
+   test_passed = (crc16_result == expected)
+   print_string(device, "Short data: 0x")
+   print_word_hex(device, crc16_result)
+   print_string(device, " (expected 0x")
+   print_word_hex(device, expected)
+   print_string(device, ") ")
+   if test_passed then
+      print_string(device, "PASS")
+      tests_passed = tests_passed + 1
+   else
+      print_string(device, "FAIL")
+      tests_failed = tests_failed + 1
+   end if
+   total_tests = total_tests + 1
+   print_crlf(device)
+   
+   print_crlf(device)
+end procedure
+
+-- Test CRC16 method consistency
+procedure test_crc16_consistency(volatile byte out device) is
+   var word crc16_lookup
+   var word crc16_bitwise
+   var bit test_passed
+   
+   print_string(device, "=== CRC16 Method Consistency ===")
+   print_crlf(device)
+   
+   -- Test with short data
+   crc16_lookup = crc16_sd_calculate(test_data_short, 8)
+   crc16_bitwise = crc16_sd_calculate_bitwise(test_data_short, 8)
+   test_passed = (crc16_lookup == crc16_bitwise)
+   print_string(device, "Short data: Lookup=0x")
+   print_word_hex(device, crc16_lookup)
+   print_string(device, ", Bitwise=0x")
+   print_word_hex(device, crc16_bitwise)
+   print_string(device, " ")
+   if test_passed then
+      print_string(device, "PASS")
+      tests_passed = tests_passed + 1
+   else
+      print_string(device, "FAIL")
+      tests_failed = tests_failed + 1
+   end if
+   total_tests = total_tests + 1
+   print_crlf(device)
+   
+   print_crlf(device)
+end procedure
+
+-- =============================================================================
+-- Main CRC test
+-- =============================================================================
+
+procedure main() is
+   -- Print test suite header
+   print_string(serial_hw_data, "JAL CRC Library Test Suite")
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data, "=========================")
+   print_crlf(serial_hw_data)
+   print_crlf(serial_hw_data)
+
+   -- Initialize CRC library
+   crc_init()
+
+   -- Run all test categories
+   test_crc7_vectors(serial_hw_data)
+   test_crc7_consistency(serial_hw_data)
+   test_crc16_vectors(serial_hw_data)
+   test_crc16_consistency(serial_hw_data)
+
+   -- Print final results
+   print_string(serial_hw_data, "=== Test Summary ===")
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data, "Total tests: ")
+   print_word_dec(serial_hw_data, total_tests)
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data, "Passed: ")
+   print_word_dec(serial_hw_data, tests_passed)
+   print_crlf(serial_hw_data)
+   print_string(serial_hw_data, "Failed: ")
+   print_word_dec(serial_hw_data, tests_failed)
+   print_crlf(serial_hw_data)
+
+   if tests_failed == 0 then
+      print_string(serial_hw_data, "ALL TESTS PASSED!")
+   else
+      print_string(serial_hw_data, "SOME TESTS FAILED!")
+   end if
+   print_crlf(serial_hw_data)
+   print_crlf(serial_hw_data)
+end procedure
+
+-- Run the comprehensive CRC test
+main()
+
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, "##DONE##")
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, "#")
+
+-- let's build our loop
+var byte char	-- will store received char
+var word counter = 10
+alias  led       is pin_g2          -- alias for pin with LED
+pin_g2_direction = OUTPUT
+forever loop                                                       
+   serial_hw_data = "."	   ; and output a dot to the serial port
+   led = ON
+   _usec_delay(100_000)
+   led = OFF
+   _usec_delay(400_000)
+end loop

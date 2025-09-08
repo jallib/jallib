@@ -1,6 +1,6 @@
 -- Title: Library for communicating with SD memory cards
 -- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2022, all rights reserved.
--- Adapted-by: Rob Jansen
+-- Adapted-by: Rob Jansen + Matthew Schinkel
 -- Compiler: 2.5r6
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
@@ -48,6 +48,11 @@ end if
 const word SD_BYTE_PER_SECTOR = 512
 
 include print
+
+-- Conditional CRC support for backwards compatibility
+if defined(USE_CRC) then
+   include sd_card_crc
+end if
 
 -- defaulting to MSSP1 if none of following aliases are previously defined
 if !defined(spi_master_set_mode) then
@@ -140,6 +145,9 @@ const byte SD_COMMAND_TIME_OUT        = 4
 const byte SD_COMMAND_NOT_SUPPORTED   = 5
 const byte SD_READ_ERROR              = 6
 const byte SD_WRITE_ERROR             = 7
+const byte SD_CRC_ERROR               = 8
+const byte SD_COMMAND_CRC_ERROR       = 9
+const byte SD_DATA_CRC_ERROR          = 10
 
 -- Read/write constants
 const byte SD_READ = 0
@@ -178,6 +186,7 @@ procedure sd_get_number_of_sectors() -- procedure prototype
 
 -- prototype the init procedure.
 procedure sd_init()
+
 
 
 
@@ -279,6 +288,21 @@ procedure sd_print_error(volatile byte out device) is
          print_string(device,"SD_WRITE_ERROR")
          print_crlf(device)
       end if
+
+      if (sd_error_details & (word(1) << SD_CRC_ERROR)) > 0 then
+         print_string(device,"SD_CRC_ERROR")
+         print_crlf(device)
+      end if
+
+      if (sd_error_details & (word(1) << SD_COMMAND_CRC_ERROR)) > 0 then
+         print_string(device,"SD_COMMAND_CRC_ERROR")
+         print_crlf(device)
+      end if
+
+      if (sd_error_details & (word(1) << SD_DATA_CRC_ERROR)) > 0 then
+         print_string(device,"SD_DATA_CRC_ERROR")
+         print_crlf(device)
+      end if
    end if
 end procedure
 
@@ -366,14 +390,40 @@ procedure send_command(byte in command,dword in data, byte out response) is
    
    sd_toggle()
 
-   -- send a valid CRC byte only for set idle command
-   -- right bit must always be 1 (stop bit)
-   if command == SD_GO_IDLE_STATE then
-      x = 0x95
-   elsif command == SD_SEND_IF_COND then
-      x = 0x87
+   if defined(USE_CRC) then
+      -- Enhanced CRC functionality
+      var byte crc7_value
+      
+      -- Calculate proper CRC7 for the command
+      -- For CMD0 and CMD8, use special hardcoded values as per SD specification
+      if command == SD_GO_IDLE_STATE then
+         crc7_value = crc7_sd_cmd0()  -- CMD0 CRC7
+      elsif command == SD_SEND_IF_COND then
+         crc7_value = crc7_sd_cmd8()  -- CMD8 CRC7
+      else
+         -- For other commands, calculate CRC7
+         crc7_value = crc7_sd_command(command, data)
+         
+         -- Check for CRC calculation errors
+         if crc_has_error == TRUE then
+            sd_error_details = sd_error_details | (word(1) << SD_COMMAND_CRC_ERROR)
+            sd_has_error = 1
+            crc7_value = 0xFF  -- Use invalid CRC on error
+         end if
+      end if
+      
+      x = crc7_value
    else
-      x = 0xFF
+      -- Original library behavior for backwards compatibility
+      -- send a valid CRC byte only for set idle command
+      -- right bit must always be 1 (stop bit)
+      if command == SD_GO_IDLE_STATE then
+         x = 0x95
+      elsif command == SD_SEND_IF_COND then
+         x = 0x87
+      else
+         x = 0xFF
+      end if
    end if
 
    command = command | 64          -- left bits must be 01 (start bits)
@@ -386,7 +436,7 @@ procedure send_command(byte in command,dword in data, byte out response) is
    spi_master = parameters[1]   -- send command parameters
    spi_master = parameters[0]   -- send command parameters
 
-   -- CRC data byte, crc disabled in this lib, but required for SD_GO_IDLE_STATE & SD_SEND_IF_COND commands.
+   -- Send CRC7 value (calculated or hardcoded)
    spi_master = x
 
    -- Get a response from the card after each command
@@ -418,7 +468,8 @@ function sd_ready() return byte is
 
       -- check for timeout
       if step == 100 then
-         sd_error = SD_TIMED_OUT
+         sd_error_details = sd_error_details | (word(1) << SD_TIMED_OUT)
+         sd_has_error = 1
          return 0
       end if
       step = step + 1
@@ -487,14 +538,16 @@ function sd_is_inserted() return bit is
       sd_disable  -- disable the sd card
       count1 = count1 + 1    -- increment count
       if count1 == 100 then
-         sd_error = SD_INIT_FAILURE
+         sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
+         sd_has_error = 1
          return
       end if
    end loop
 
    if response == 0xFF then
-      sd_error = SD_DEVICE_NOT_FOUND
-      sd_error = SD_INIT_FAILURE
+      sd_error_details = sd_error_details | (word(1) << SD_DEVICE_NOT_FOUND)
+      sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
+      sd_has_error = 1
       sd_number_of_sectors = 0
       sd_has_init = 0
 
@@ -526,6 +579,11 @@ end function
 procedure sd_init() is
    var byte response = 0 -- sd_card command response
 
+   if defined(USE_CRC) then
+      -- Initialize CRC lookup tables for faster calculation
+      crc_init()
+   end if
+   
    sd_has_init = 1
    if !sd_is_inserted() then
       return
@@ -547,7 +605,8 @@ procedure sd_init() is
       sd_enable()  -- enable the sd card
 
       if !sd_ready() == 0 then            -- wait till sd card is ready
-         sd_error = SD_INIT_FAILURE
+         sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
+         sd_has_error = 1
          return
       end if
 
@@ -596,7 +655,8 @@ procedure sd_init() is
 
 
          if !sd_ready() == 0 then            -- wait till sd card is ready
-            sd_error = SD_TIMED_OUT
+            sd_error_details = sd_error_details | (word(1) << SD_TIMED_OUT)
+            sd_has_error = 1
          end if
 
          sd_disable  -- disable the sd card
@@ -691,8 +751,10 @@ function sd_data_byte'get() return byte is
    if sd_byte_count == SD_BYTE_PER_SECTOR then          -- end of sector read
       sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector number
-      x = spi_master                     -- get junk crc data, crc is disabled
-      x = spi_master                     -- get junk crc data, crc is disabled
+      
+      -- Read CRC16 for data block (discard for individual byte reads)
+      x = spi_master                     -- get CRC16 high byte
+      x = spi_master                     -- get CRC16 low byte
    end if
 
    return data_byte
@@ -764,8 +826,8 @@ procedure sd_data_byte'put(byte in data_byte) is
       sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector count
 
-      spi_master = 0xFF  -- send junk crc, crc is disabled
-      spi_master = 0xFF  -- send junk crc, crc is disabled
+      spi_master = 0xFF  -- send CRC16 high byte (not calculated for individual bytes)
+      spi_master = 0xFF  -- send CRC16 low byte (not calculated for individual bytes)
 
       x = spi_master   -- wait for a response
       while x == 0 loop
@@ -798,8 +860,8 @@ procedure sd_write_to_sector_end(byte in input_byte) is
       sd_byte_count = 0
       sd_sector_count = sd_sector_count + 1 -- increment sector count
 
-      spi_master = 0xFF  -- send junk crc, crc is disabled
-      spi_master = 0xFF  -- send junk crc, crc is disabled
+      spi_master = 0xFF  -- send CRC16 high byte (not calculated for individual bytes)
+      spi_master = 0xFF  -- send CRC16 low byte (not calculated for individual bytes)
 
       x = spi_master   -- wait for a response
       while x == 0 loop
@@ -1428,8 +1490,49 @@ procedure sd_read_sector() is
    end if
 
    sd_sector_count = sd_sector_count + 1 -- increment sector number
-   x = spi_master                     -- get junk crc data, crc is disabled
-   x = spi_master                     -- get junk crc data, crc is disabled
+   
+   if defined(USE_CRC) then
+      -- Enhanced CRC16 verification
+      var word received_crc
+      var word calculated_crc
+      var byte crc_high
+      var byte crc_low
+      var bit crc_valid
+      
+      crc_high = spi_master              -- get CRC16 high byte
+      crc_low = spi_master               -- get CRC16 low byte
+      received_crc = (word(crc_high) << 8) | word(crc_low)
+      
+      -- Calculate CRC16 for the received data
+      -- First calculate CRC for low 256 bytes
+      calculated_crc = crc16_sd_calculate(sd_sector_buffer_low, 256)
+      -- Then continue CRC calculation with high 256 bytes
+      var word i
+      for 256 using i loop
+         calculated_crc = crc16_sd_calculate_byte(calculated_crc, sd_sector_buffer_high[i])
+      end loop
+      
+      -- Verify CRC and handle errors
+      crc_valid = (calculated_crc == received_crc)
+      
+      if crc_valid == FALSE then
+         -- CRC error detected
+         if crc_has_error == TRUE then
+            -- CRC library error
+            sd_error_details = sd_error_details | (word(1) << SD_CRC_ERROR)
+            sd_has_error = 1
+         else
+            -- Data CRC mismatch
+            sd_error_details = sd_error_details | (word(1) << SD_DATA_CRC_ERROR)
+            sd_has_error = 1
+         end if
+      end if
+   else
+      -- Original library behavior - just discard CRC bytes
+      var byte crc_discard
+      crc_discard = spi_master           -- get CRC16 high byte
+      crc_discard = spi_master           -- get CRC16 low byte
+   end if
 
    ;sd_byte_count = sd_byte_count + 2       -- increment byte_count
 
@@ -1488,8 +1591,10 @@ procedure sd_read_sector_with_callback(word in chunk_size) is
 
    if sd_byte_count == 512 then
       sd_sector_count = sd_sector_count + 1 -- increment sector number
-      x = spi_master                     -- get junk crc data, crc is disabled
-      x = spi_master                     -- get junk crc data, crc is disabled
+      
+      -- Read CRC16 for data block (discard for individual byte reads)
+      x = spi_master                     -- get CRC16 high byte
+      x = spi_master                     -- get CRC16 low byte
 
       ;sd_byte_count = sd_byte_count + 2       -- increment byte_count
 
@@ -2058,8 +2163,40 @@ procedure sd_write_sector() is
 
    sd_sector_count = sd_sector_count + 1 -- increment sector count
 
-   spi_master = 0xFF  -- send junk crc, crc is disabled
-   spi_master = 0xFF  -- send junk crc, crc is disabled
+   if defined(USE_CRC) then
+      -- Enhanced CRC16 calculation and sending
+      var word calculated_crc
+      var byte crc_high
+      var byte crc_low
+      
+      -- Calculate CRC for the entire 512-byte sector
+      -- First calculate CRC for low 256 bytes
+      calculated_crc = crc16_sd_calculate(sd_sector_buffer_low, 256)
+      -- Then continue CRC calculation with high 256 bytes
+      var word i
+      for 256 using i loop
+         calculated_crc = crc16_sd_calculate_byte(calculated_crc, sd_sector_buffer_high[i])
+      end loop
+      
+      -- Check for CRC calculation errors
+      if crc_has_error == TRUE then
+         sd_error_details = sd_error_details | (word(1) << SD_CRC_ERROR)
+         sd_has_error = 1
+         -- Send invalid CRC on error
+         spi_master = 0xFF  -- send CRC16 high byte
+         spi_master = 0xFF  -- send CRC16 low byte
+      else
+         crc_high = byte((calculated_crc >> 8) & 0xFF)
+         crc_low = byte(calculated_crc & 0xFF)
+         
+         spi_master = crc_high  -- send CRC16 high byte
+         spi_master = crc_low   -- send CRC16 low byte
+      end if
+   else
+      -- Original library behavior - send 0xFF for CRC
+      spi_master = 0xFF  -- send CRC16 high byte (not calculated for individual bytes)
+      spi_master = 0xFF  -- send CRC16 low byte (not calculated for individual bytes)
+   end if
 
    x = spi_master   -- wait for a response
    while x == 0 loop
@@ -2103,8 +2240,8 @@ procedure sd_write_sector_with_callback(word in chunk_size) is
    if sd_byte_count == 512 then
       sd_sector_count = sd_sector_count + 1 -- increment sector count
 
-      spi_master = 0xFF  -- send junk crc, crc is disabled
-      spi_master = 0xFF  -- send junk crc, crc is disabled
+      spi_master = 0xFF  -- send CRC16 high byte (not calculated for individual bytes)
+      spi_master = 0xFF  -- send CRC16 low byte (not calculated for individual bytes)
 
       x = spi_master   -- wait for a response
       while x == 0 loop
@@ -2204,7 +2341,8 @@ procedure sd_get_number_of_sectors() is
    var word step = 0
    while spi_master != 0xFE loop      -- wait till data is ready to read
       if step == 10000 then
-         sd_error = SD_COMMAND_TIME_OUT
+         sd_error_details = sd_error_details | (word(1) << SD_COMMAND_TIME_OUT)
+         sd_has_error = 1
          return
       end if
       step = step + 1
@@ -2266,3 +2404,5 @@ procedure sd_get_number_of_sectors() is
 
    end if
 end procedure
+
+ 
