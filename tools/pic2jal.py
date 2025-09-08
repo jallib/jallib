@@ -90,8 +90,8 @@ from concurrent import futures
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "2.1"       # script version
-compilerversion = "2.5r8"   # latest JalV2 compiler version
+scriptversion = "2.2"       # script version
+compilerversion = "2.5r9"   # latest JalV2 compiler version
 
 # Additional file specifications
 # paths may have to be adapted to local environment
@@ -501,7 +501,7 @@ instruction_set_def = { "cpu_p16f1_v1"  : 1,
                         "pic18"         : 6,
                         "egg"           : 7}
 
-# 2025-02-07: The following is a temporary fix for the PIC16F1713 and PIC16F1716 due to an error in MPLABX
+# 2025-02-07: The following is a temporary fix for the PIC16(L)F1713 and PIC16(L)F1716 due to an error in MPLABX
 pic16f1713_6_pps_fix_def = {"NCOOUT": 0x03,
                             "CLC1OUT": 0x04,
                             "CLC2OUT": 0x05,
@@ -2185,9 +2185,9 @@ def list_pps_out_consts(fp, root, picname):
                 if pinpatt is None:
                     pinpatt = "0"
                 if pinpatt == "0":
- #               if (pinpatt := vpin.get("ppsval")) is None:
                     # No value found. First check if we need to apply the pps fix for 16f1713/16f1716.
-                    if (picname in ("16f1713", "16f1716")) and (pinfunc in pic16f1713_6_pps_fix_def):
+                    if ((picname in ("16f1713", "16f1716", "16lf1713", "16lf1716")) and
+                        (pinfunc in pic16f1713_6_pps_fix_def)):
                         pinpatt = pic16f1713_6_pps_fix_def[pinfunc]
                         # Same code as below but since it is temporary we duplicate it for now.
                         if pinpatt in ppsoutdict:
@@ -3688,7 +3688,7 @@ def generate_devicefiles(selection):
     devs = []  # start list of PIC xml files (filespecs)
     with open(os.path.join(dstdir, "chipdef_jallib.jal"), "w") as fp:  # common include for device files
         list_chipdef_header(fp)  # create header of chipdef file
-        for file in os.listdir(xmldir):
+        for file in sorted(os.listdir(xmldir)):
             picname = os.path.splitext(file)[0][3:].lower()  # obtain picname from filename
             if fnmatch.fnmatch(picname, selection):  # selection by user wildcard
                 if (picdata := devspec.get(picname.upper())):  # some properties of this PIC

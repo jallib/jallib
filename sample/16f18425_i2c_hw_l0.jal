@@ -1,0 +1,115 @@
+-- ----------------------------------------------------------------------------
+-- Title: Sample program for i2c_hardware.jal.
+-- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
+-- Adapted-by: 
+-- Compiler: 2.5r9
+-- 
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+-- 
+-- Description: Level 0 i2c test program. Interact with a 24lc256 i2c eeprom using
+--              the i2c primitives and i2c hardware.
+--  
+-- Sources: Based on the sample program of Joep Suijs.
+--  
+--
+include 16f18425                    -- target PICmicro
+--
+-- This program uses the internal oscillator at 16 MHz.
+pragma target clock   16_000_000    -- oscillator frequency
+pragma target OSC      OFF          -- internal oscillator
+pragma target RSTOSC   HFINT32      -- select 32 MHz
+pragma target CLKOUTEN DISABLED     -- no clock output
+pragma target WDT      DISABLED     -- watchdog
+pragma target BROWNOUT DISABLED     -- no brownout reset
+pragma target FCMEN    DISABLED     -- no clock monitoring
+pragma target CSWEN    ENABLED      -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED      -- low voltage programming
+pragma target MCLR     EXTERNAL     -- external reset
+
+OSCCON1_NDIV = 0b0001               -- Fosc 16 MHz
+
+enable_digital_io()                 -- Don't forget this otherwise I2C will not work.
+
+-- Assign the pins. This must always be done to let it work even for
+-- the default pin assignment.
+include pps
+pps_control_lock(FALSE)
+pps_control_lock(FALSE)
+-- USART pin assignments (default).
+RC4PPS = PPS_TX1  -- USART transmit
+RX1PPS  = PPS_RC5 -- USART receive
+-- IIC 2 bi-direactional pin assignments (default).
+RC0PPS = PPS_SCK1     -- Output I2C 2 clock for EEPROM
+RC1PPS = PPS_SDA1     -- Output I2C 2 data for EEPROM
+SSP1CLKPPS  = PPS_RC0 -- Input  I2C 2 clock for EEPROM
+SSP1DATPPS  = PPS_RC1 -- Input  I2C 2 data for EEPROM
+pps_control_lock(TRUE)
+
+-- I2C io definition, using I2C hardware.
+alias i2c_scl_direction  is pin_c0_direction -- pin 10 for 14 pin DIP.
+alias i2c_sda_direction  is pin_c1_direction -- pin 9 for 14 pin DIP.
+
+-- USART setup.
+alias pin_TX_direction is pin_C4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+include print
+include delay
+
+-- EEPROM address. Change when needed.
+const byte EEPROM_DEVICE_ADDRESS = 0xAE 
+
+include i2c_hardware
+i2c_initialize()
+
+-- we're alive
+print_string(serial_hw_data, "Test.\r\n")
+
+var bit r
+var byte i
+
+forever loop
+
+   -- read first 3 bytes from an 24lc256 eeprom and output these to the serial port
+   -- then, increment the last one (write one byte).
+   i2c_start()
+
+   -- i2c address for write (for memory address, within eeprom)
+   r =     i2c_transmit_byte(EEPROM_DEVICE_ADDRESS) 
+   r = r & i2c_transmit_byte(0x00) -- memory address high byte
+   r = r & i2c_transmit_byte(0x00) -- memory address low  byte
+   
+   i2c_restart()
+   -- i2c address for read (of memory from eeprom)
+   r = r & i2c_transmit_byte(EEPROM_DEVICE_ADDRESS | 0x01)
+   
+   i = i2c_receive_byte(TRUE)
+   print_byte_hex(serial_hw_data, i);
+   serial_hw_data = " "
+   
+   i = i2c_receive_byte(TRUE)
+   print_byte_hex(serial_hw_data, i);
+   serial_hw_data = " "
+   
+   i = i2c_receive_byte(FALSE)
+   print_byte_hex(serial_hw_data, i);
+   serial_hw_data = " "
+   
+   i2c_stop()
+
+   -- write part (relies on var i, we just read!)
+   i2c_start()
+   -- i2c address for write (for memory address, within eeprom)
+   r =     i2c_transmit_byte(EEPROM_DEVICE_ADDRESS) 
+   r = r & i2c_transmit_byte(0x00) -- memory address high byte
+   r = r & i2c_transmit_byte(0x02) -- memory address low  byte
+   r = r & i2c_transmit_byte(i+1)  -- data byte
+   i2c_stop()
+   
+   print_crlf(serial_hw_data)
+   
+   delay_100ms(10)
+
+end loop

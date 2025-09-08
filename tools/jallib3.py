@@ -1,13 +1,11 @@
 #!/usr/bin/python
-from __future__ import print_function
 #
 # Title: jallib main wrapper script
 #
-# Author: Sebastien Lelong, Copyright (c) 2008..2023, all rights reserved.
+# Author: Sebastien Lelong, Copyright (c) 2008..2025, all rights reserved.
 #
 # Adapted-by: Rob Hamerling, Rob Jansen
 #
-# Compiler:
 #
 # This file is part of jallib (https://github.com/jallib/jallib)
 # Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -116,8 +114,8 @@ def get_full_board_path(sample_dir,board=""):
 
 
 def find_includes(jalfile):
-    content = open(jalfile).read()
-    return re.findall("^\s*include\s+(\w+)\s*",content,re.MULTILINE)
+    content = open(jalfile, errors= 'ignore').read()
+    return re.findall("^\\s*include\\s+(\\w+)\\s*",content,re.MULTILINE)
 
 
 def split_repos(repos):
@@ -268,11 +266,11 @@ def do_compile(args,exitonerror=True,clean=False,stdout=None,stderr=None):
 def content_not_empty(val):
     return val.strip() != ''
 def compiler_version(val):
-    return re.match("^(>|<|>=|<=|=)?\d+(\.\d+\w*)+\s+$",val)
+    return re.match("^(>|<|>=|<=|=)?\\d+(\\.\\d+\\w*)+\\s+$",val)
 
-JALLIB = """^-- This file is part of jallib\s+\(https://github.com/jallib/jallib\)"""
-LICENSE = """^-- Released under the BSD license\s+\(http://www.opensource.org/licenses/bsd-license.php\)"""
-LICENSE2 = """^-- Released under the ZLIB license\s+\(http://www.opensource.org/licenses/zlib-license.html\)"""
+JALLIB = """^-- This file is part of jallib\\s+\\(https://github.com/jallib/jallib\\)"""
+LICENSE = """^-- Released under the BSD license\\s+\\(http://www.opensource.org/licenses/bsd-license.php\\)"""
+LICENSE2 = """^-- Released under the ZLIB license\\s+\\(http://www.opensource.org/licenses/zlib-license.html\\)"""
 
 # exceptions while checking case
 ALLOWED_MIXED_CASE = """.*(pin|port|_shadow|_flush).*"""
@@ -306,7 +304,7 @@ def extract_header(content):
 def validate_field(data,field,predicate,mandatory,multiline=False):
 
     errors = []
-    syntax = "^-- %s:\s*(.*)" % field
+    syntax = "^-- %s:\\s*(.*)" % field
 
     def single_line_content(line):
         return "".join(re.sub(syntax,lambda x:x.group(1),line))
@@ -314,7 +312,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
         c = single_line_content(line)
         for i,l in data[data.index((num,line)) + 1:]:
             # Check no comment gap
-            if not re.match("^--\s",l):
+            if not re.match("^--\\s",l):
                 errors.append("%d: cannot extract content, line is not starting with comment: %s" % (i,repr(l)))
                 return ""
             # No other field within content
@@ -325,7 +323,7 @@ def validate_field(data,field,predicate,mandatory,multiline=False):
             if l.strip() == '--':
                 # got end of block
                 break
-            c += re.sub("^--\s","",l)
+            c += re.sub("^--\\s","",l)
         else:
             errors.append("Cannot find end of field content %s" % field)
         return c
@@ -393,7 +391,7 @@ def validate_lower_case(content):
     errors = []
     # tokenize content, searching for infamous CamelCase words
     # Also search Capitalized ones...
-    tokenizer = re.compile("\w+")
+    tokenizer = re.compile("\\w+")
     caps = re.compile("[A-Z]")
     freetext = re.compile('(("|\').*("|\'))')
     mixed = re.compile(ALLOWED_MIXED_CASE,re.IGNORECASE)
@@ -446,7 +444,7 @@ def validate_procfunc_defs(content):
     errors = []
     # no () in definition
     func_proc = re.compile("^(procedure|function)")
-    no_spaces = re.compile(".*\s+\(.*is")
+    no_spaces = re.compile(".*\\s+\\(.*is")
     for i,line in content:
         # don't even check both (), not needed
         if func_proc.match(line) and not "(" in line:
@@ -469,7 +467,7 @@ def validate(filename):
     errors.extend(errs)
     warnings.extend(warns)
     # also extract line number (enumerate from 0, count from 1)
-    content = [(i + 1,l) for i,l in enumerate(open(filename, encoding='ISO-8859-1').readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename, errors= 'ignore').readlines())]
     errors.extend(validate_header(content))
     # remaining content has no more header
     errs = validate_code(content)
@@ -541,7 +539,7 @@ def merge_board_testfile(boardcontent,testcontent):
     board = parse_sections(boardcontent)
     # replace sections in testcontent
     testcontent = os.linesep.join(testcontent)
-    toreplace = [m for m in re.finditer("((--)+)|(;+)\s*@jallib use (.*)",testcontent,re.MULTILINE) if m.groups()[-1]]
+    toreplace = [m for m in re.finditer("((--)+)|(;+)\\s*@jallib use (.*)",testcontent,re.MULTILINE) if m.groups()[-1]]
     newcontent = ""
     start = 0
     for m in toreplace:
@@ -567,8 +565,8 @@ def normalize_linefeed(content):
 
 def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     # try to find which linefeed is used
-    board = open(boardfile).read().splitlines()
-    test = open(testfile).read().splitlines()
+    board = open(boardfile, errors= 'ignore').read().splitlines()
+    test = open(testfile, errors= 'ignore').read().splitlines()
     # keep test's headers, but enrich them with info about how files were merged
     # headers need index (enumerate() on content)
     # extract_header will change content in place, ie. will remove
@@ -587,7 +585,7 @@ def generate_one_sample(boardfile,testfile,outfile,deleteiffailed=True):
     test = [l for i,l in test]
     merged = merge_board_testfile(board,test)
     # wb: write binary format, no ASCII/chars interpretation
-    with open(outfile,"wb") as fout:
+    with open(outfile,"wb", errors= 'ignore') as fout:
         fout.write(header)
         fout.write(merged)
 
@@ -614,13 +612,13 @@ def find_test_files(testdir):
     return testfiles
 
 def preferred_board(board):
-    with open(board) as fin:
+    with open(board, errors= 'ignore') as fin:
         data = fin.read()
     # well, should not consider comment but... should not occur, right ? :)
     return "@jallib preferred" in data
 
 def is_test_autoable(test):
-    with open(test) as fin:
+    with open(test, errors= 'ignore') as fin:
         data = fin.read()
     return not "@jallib skip-auto" in data
 
@@ -740,11 +738,11 @@ def reindent_file(filename,withchar,howmany):
     Default jallib standard is 3-spaces indentation
     '''
     indentchars = howmany * withchar
-    with open(filename) as fin:
+    with open(filename, errors= 'ignore') as fin:
         data = fin.read()
     lines = re.split("\n|\r\n",data)
     # End the file with a linefeed
-    if re.match("[\S]+", lines[-1]):
+    if re.match("[\\S]+", lines[-1]):
         lines.append(os.linesep)
 
     line_number = 0
@@ -796,7 +794,7 @@ def reindent_file(filename,withchar,howmany):
             do_postinc = False
 
         # unindent code to apply new
-        code = re.sub("^\s*","",code)
+        code = re.sub("^\\s*","",code)
         if do_postinc:
             content.append(indentchars * level + code + comchars + comment)
             level += 1
@@ -820,7 +818,7 @@ def reindent_file(filename,withchar,howmany):
         print("--> Reached end of file, but indent level is not zero (it should be!), reindent cancelled!")
         return
     # ok, now we can save the content back to the file
-    with open(filename, "w") as fout:
+    with open(filename, "w", errors= 'ignore') as fout:
         fout.write('\n'.join(content))
 
 def do_reindent(args):
@@ -868,14 +866,14 @@ def do_reindent(args):
 
 def unittest(filename,verbose=False):
     oracle = {'success' : None, 'failure' : None, 'notrun' : None}
-    with open(filename) as fin:
+    with open(filename, errors= 'ignore') as fin:
         content = fin.read().splitlines()
     fnout = filename + ".stdout"
     fnerr = filename + ".stderr"
     try:
         try:
-            fout = open(fnout,"w")
-            ferr = open(fnerr,"w")
+            fout = open(fnout,"w", errors= 'ignore')
+            ferr = open(fnerr,"w", errors= 'ignore')
             status = do_compile([filename],exitonerror=False,clean=False,stdout=fout,stderr=ferr)
             fout.close()
             ferr.close()
@@ -902,8 +900,8 @@ def unittest(filename,verbose=False):
             oracle['failure'] = 1
 
     finally:
-        fout = open(fnout)
-        ferr = open(fnerr)
+        fout = open(fnout, errors= 'ignore')
+        ferr = open(fnerr, errors= 'ignore')
 
         clean_compiler_products(filename)
 
@@ -920,7 +918,7 @@ def unittest(filename,verbose=False):
     return oracle
 
 def get_testcases(filename):
-    with open(filename) as fin:
+    with open(filename, errors= 'ignore') as fin:
         content = fine.read().splitlines()
     restags = parse_tags(content,"section","testcase")
     return restags
@@ -940,7 +938,7 @@ def parse_unittest(filename,run_testcases=[]):
             continue
         wholetest = merge_board_testfile(pseudoboard,testcontent)
         fileno,filename = tempfile.mkstemp(prefix="jallib_",suffix="_%s.jal" % testname)
-        fileobj = os.fdopen(fileno,"w")
+        fileobj = os.fdopen(fileno,"w", errors= 'ignore')
         fileobj.write(wholetest)
         fileobj.close()
         test_filenames.append(filename)
@@ -1043,7 +1041,7 @@ def do_jalapi(args):
             if v == '-':
                 outfile = sys.stdout
             else:
-                outfile = open(v,"w")
+                outfile = open(v,"w", errors= 'ignore')
         else:
             print("Wrong option %s" % o, file=sys.stderr)
 
@@ -1098,7 +1096,7 @@ def jalapi_extract(jalfile,sampledir,svnbaseurl,locallinks):
 
 def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
     # search samples using this file
-    libname = re.sub("\.jal$","",os.path.basename(jalfile))
+    libname = re.sub("\\.jal$","",os.path.basename(jalfile))
     def use_lib(dir,sample):
         return libname in find_includes(os.path.join(dir,sample))
     samples = list(get_jal_filenames(sampledir,predicate=use_lib).values())
@@ -1122,7 +1120,7 @@ def jalapi_extract_samples(jalfile,sampledir,svnbaseurl,locallinks):
 def jalapi_extract_doc(filename):
     # deals with header
     # jsg wants line number...
-    content = [(i + 1,l) for i,l in enumerate(open(filename).readlines())]
+    content = [(i + 1,l) for i,l in enumerate(open(filename, errors= 'ignore').readlines())]
     header = extract_header(content)
     dhead = {}
     for field_dict in FIELDS:
@@ -1135,10 +1133,10 @@ def jalapi_extract_doc(filename):
     # and global variables/constant
     # get comment above
     content.reverse()
-    proc = re.compile("^procedure\s+(.*)\s+is")
-    func = re.compile("^function\s+(.*)\s+is")
+    proc = re.compile("^procedure\\s+(.*)\\s+is")
+    func = re.compile("^function\\s+(.*)\\s+is")
     var_const = re.compile("^(var|const)")
-    include = re.compile("^include\s+(\w+)")
+    include = re.compile("^include\\s+(\\w+)")
     dfunc = {}
     dproc = {}
     dvarconst = {}
@@ -1167,14 +1165,14 @@ def jalapi_extract_comments(i,origline,content):
     # this regex is used to detect the end of comments,
     # and remove the comment chars, but also to clean
     # long-dash lines.
-    stillcomment = re.compile("^--\s*-*")
+    stillcomment = re.compile("^--\\s*-*")
     for _,line in content:
         if not stillcomment.match(line) or line.strip() == "":
             break
         doc.append(stillcomment.sub("",line))
 
     # clean potential comments following declaration
-    comm = re.compile("--\s?(.*)")
+    comm = re.compile("--\\s?(.*)")
     followdoc = ""
     if comm.findall(origline):
         followdoc = comm.findall(origline)[-1]
@@ -1196,7 +1194,7 @@ def jalapi_extract_comments(i,origline,content):
 def jalapi_generate(infos,tmpl_file,sampledir,locallinks):
 
     # prepare template
-    tmplsrc = "".join(open(tmpl_file).readlines())
+    tmplsrc = "".join(open(tmpl_file, errors= 'ignore').readlines())
     klass = Cheetah.Template.Template.compile(tmplsrc)
     tmpl = klass()
     tmpl.locallinks = locallinks
@@ -1257,37 +1255,37 @@ def do_list(_trash):
 VALID_IDENTIFIER = "a-z0-9_"
 COMMENT_RE = re.compile("((--)|;).*")
 
-VAR_RE = re.compile("var\s+(volatile\s*)?([%s\*]+)\s+([%s]+)(\s*\[.*\])?\s*=?" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
-CONST_RE = re.compile("const\s+([%s]+\s+)?([%s]+)\s*(\[.*\])?\s*=" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
-ALIAS_RE = re.compile("alias\s+([%s]+)\s+is\s+([%s]+)" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
-PROC_RE = re.compile("procedure\s+([%s]+)\s*\((.*)\)\s+is" % VALID_IDENTIFIER,re.IGNORECASE) # FIX: signature can be on multine
-PSEU_RE = re.compile("(procedure|function)\s+([%s]+)'(put|get)\s*(\(.*\))?\s*(return\s*.*)?\s+is" % VALID_IDENTIFIER,re.IGNORECASE)
-FUNC_RE = re.compile("function\s+([%s]+)\s*\((.*)\)\s+return\s+([%s]+)\s+is" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
-SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\s+(in|out|in out)\s+([%s]+),?" % VALID_IDENTIFIER,re.IGNORECASE)
-INCL_RE = re.compile("include\s+([%s]+)" % VALID_IDENTIFIER)
+VAR_RE = re.compile("var\\s+(volatile\\s*)?([%s\\*]+)\\s+([%s]+)(\\s*\\[.*\\])?\\s*=?" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+CONST_RE = re.compile("const\\s+([%s]+\\s+)?([%s]+)\\s*(\\[.*\\])?\\s*=" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+ALIAS_RE = re.compile("alias\\s+([%s]+)\\s+is\\s+([%s]+)" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+PROC_RE = re.compile("procedure\\s+([%s]+)\\s*\\((.*)\\)\\s+is" % VALID_IDENTIFIER,re.IGNORECASE) # FIX: signature can be on multine
+PSEU_RE = re.compile("(procedure|function)\\s+([%s]+)'(put|get)\\s*(\\(.*\\))?\\s*(return\\s*.*)?\\s+is" % VALID_IDENTIFIER,re.IGNORECASE)
+FUNC_RE = re.compile("function\\s+([%s]+)\\s*\\((.*)\\)\\s+return\\s+([%s]+)\\s+is" % (VALID_IDENTIFIER,VALID_IDENTIFIER),re.IGNORECASE)
+SIGN_RE = re.compile("(bit|byte|sbyte|word|sword|dword|sdword)\\s+(in|out|in out)\\s+([%s]+),?" % VALID_IDENTIFIER,re.IGNORECASE)
+INCL_RE = re.compile("include\\s+([%s]+)" % VALID_IDENTIFIER)
 
 # in addition to func/proc, this will make detection out of global scope
 # thus not considered in API description (we only want real global var/const/...)
-BLOCK_RE = re.compile("(.*\s+)?block",re.IGNORECASE)
-CASE_RE = re.compile("case\s+.*\s+of",re.IGNORECASE)
-FOR_RE = re.compile("for\s*.*\s+loop",re.IGNORECASE)
-FOREVER_RE = re.compile("forever\s+loop",re.IGNORECASE)
-IF_RE = re.compile("if\s*.*(\s+then)?",re.IGNORECASE)
+BLOCK_RE = re.compile("(.*\\s+)?block",re.IGNORECASE)
+CASE_RE = re.compile("case\\s+.*\\s+of",re.IGNORECASE)
+FOR_RE = re.compile("for\\s*.*\\s+loop",re.IGNORECASE)
+FOREVER_RE = re.compile("forever\\s+loop",re.IGNORECASE)
+IF_RE = re.compile("if\\s*.*(\\s+then)?",re.IGNORECASE)
 REPEAT_RE = re.compile("repeat",re.IGNORECASE)
-WHILE_RE = re.compile("while\s*.*(\s+loop)?",re.IGNORECASE)
+WHILE_RE = re.compile("while\\s*.*(\\s+loop)?",re.IGNORECASE)
 level_up = [BLOCK_RE,CASE_RE,FOR_RE,FOREVER_RE,IF_RE,REPEAT_RE,WHILE_RE,PROC_RE,FUNC_RE,PSEU_RE]
 #
-END_PROC = re.compile("end\s+procedure",re.IGNORECASE)
-END_FUNC = re.compile("end\s+function",re.IGNORECASE)
-END_FOR = re.compile("end\s+loop",re.IGNORECASE)
-END_BLOCK = re.compile("end\s+block",re.IGNORECASE)
-END_CASE = re.compile("end\s+case",re.IGNORECASE)
-END_IF = re.compile("end\s+if",re.IGNORECASE)
-END_REPEAT = re.compile("until\s+.*",re.IGNORECASE)
+END_PROC = re.compile("end\\s+procedure",re.IGNORECASE)
+END_FUNC = re.compile("end\\s+function",re.IGNORECASE)
+END_FOR = re.compile("end\\s+loop",re.IGNORECASE)
+END_BLOCK = re.compile("end\\s+block",re.IGNORECASE)
+END_CASE = re.compile("end\\s+case",re.IGNORECASE)
+END_IF = re.compile("end\\s+if",re.IGNORECASE)
+END_REPEAT = re.compile("until\\s+.*",re.IGNORECASE)
 level_down = [END_PROC,END_FUNC,END_FOR,END_BLOCK,END_CASE,END_IF,END_REPEAT]
 # inline structure
-INLINE_WHILE_RE = re.compile("while\s*.*\s+end\s+loop",re.IGNORECASE)
-INLINE_IF_RE = re.compile("if\s*.*\s+then\s+.*\s+end\s+if",re.IGNORECASE)
+INLINE_WHILE_RE = re.compile("while\\s*.*\\s+end\\s+loop",re.IGNORECASE)
+INLINE_IF_RE = re.compile("if\\s*.*\\s+then\\s+.*\\s+end\\s+if",re.IGNORECASE)
 level_keep = [INLINE_WHILE_RE,INLINE_IF_RE]
 
 class APIParsingError(Exception): pass
@@ -1366,7 +1364,7 @@ def api_parse(filenames,filelist=[]):
         if filename == "-":
             lines = sys.stdin.readlines()
         else:
-            lines = open(filename).readlines()
+            lines = open(filename, errors= 'ignore').readlines()
 
         basefn = os.path.basename(filename)
         apis[basefn] = api_parse_content(lines,strict=False)
@@ -1428,9 +1426,9 @@ def do_api(args):
         elif o == '-k':
             outpickl = True
         elif o == '-o':
-            outfile = open(v,"w")
+            outfile = open(v,"w", errors= 'ignore')
         elif o == '-l':
-            filelist = [f.strip() for f in open(v).readlines()]
+            filelist = [f.strip() for f in open(v, errors= 'ignore').readlines()]
         else:
             print("Wrong option %s" % o, file=sys.stderr)
 
@@ -1589,12 +1587,12 @@ def do_monitor(args):
 
         fnout = filename + ".stdout"
         fnerr = filename + ".stderr"
-        fout = open(fnout,"w")
-        ferr = open(fnerr,"w")
+        fout = open(fnout,"w", errors= 'ignore')
+        ferr = open(fnerr,"w", errors= 'ignore')
         try:
             status = do_compile(args,exitonerror=False,clean=False,stdout=fout,stderr=ferr)
-            output = open(fnout).read()
-            errput = open(fnerr).read()
+            output = open(fnout, errors= 'ignore').read()
+            errput = open(fnerr, errors= 'ignore').read()
             try:
                 dout = parse_compiler_output(output,compiler=compiler,filename=filename)
                 douts.append(dout)

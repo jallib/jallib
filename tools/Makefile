@@ -8,16 +8,14 @@
 #
 
 
-all : clean test
+all : dev
 
 WEEKLYBUILDCODENAME=bee
-VERSION=dev
 SAMPLIR_DIR=../sample
 TEST_DIR=../test
 INCLUDE_DIR=../include
 JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686
 JALV2_VERSION := `${JALV2_BIN} 2> /dev/null | sed "s\#.*jal \(.*\) (.*\#\1\#"`
-
 
 clean :
 	# clean what jal produces
@@ -38,9 +36,6 @@ clean :
 	# clean distrib dir
 	-rm -fr distrib
 		
-test :
-	# run testsuite
-
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
@@ -76,6 +71,33 @@ vimdoc:
 
 matrix:
 	./jallib_matrix_generate.sh ../
+
+generate-docs:
+	# doc
+	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | tr -d '\r'` ; \
+	do \
+		libfile=`basename $$f`; \
+		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
+		python2.7 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+	done
+	# doc menu...
+	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
+	# manually include device files doc, as it's not generated from a lib
+	echo "<a href='https://github.com/jallib/jallib' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	# generate html from lib included in the release, and specifcy to create local links to samples (-l option)
+	for htmlfile in `ls distrib/jallib-${VERSION}/doc/html/*.html | egrep -v menu\.html\|welcome\.html\|index\.html\|devicefiles\.html | sort  `; \
+	do \
+		htmlfile=`basename $$htmlfile`; \
+		libname=`echo $$htmlfile | sed "s#\.html##"`; \
+		echo "<a href='$$htmlfile' target='lib_desc'>$$libname</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html; \
+	done
+	echo "</body></html>" >> distrib/jallib-${VERSION}/doc/html/menu.html
+	cp distrib/jallib-export/doc/html/welcome.html distrib/jallib-${VERSION}/doc/html/
+	cp distrib/jallib-export/doc/html/index.html distrib/jallib-${VERSION}/doc/html/
+	# doc for all_devices
+	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
+	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
 
 export:
 	# prepare distrib dir
@@ -128,40 +150,14 @@ prepare:
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
+
 	# also add dependencies
 	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
-	# doc
-	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | tr -d '\r'` ; \
-	do \
-		libfile=`basename $$f`; \
-		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python2.7 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
-	done
 
+ifneq ($(GENERATE_DOCS),false)
+	$(MAKE) generate-docs
+endif
 
-	# one-page doc
-#THIS NEEDS TO BE FIXED:
-#	python2.7 jallib.py jalapi -s -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/jallib_onepage.html distrib/jallib-libnodevice/
-
-
-	# doc menu...
-	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
-	# manually include device files doc, as it's not generated from a lib
-	echo "<a href='https://github.com/jallib/jallib' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	# generate html from lib included in the release, and specifcy to create local links to samples (-l option)
-	for htmlfile in `ls distrib/jallib-${VERSION}/doc/html/*.html | egrep -v menu\.html\|welcome\.html\|index\.html\|devicefiles\.html | sort  `; \
-	do \
-		htmlfile=`basename $$htmlfile`; \
-		libname=`echo $$htmlfile | sed "s#\.html##"`; \
-		echo "<a href='$$htmlfile' target='lib_desc'>$$libname</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html; \
-	done
-	echo "</body></html>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	cp distrib/jallib-export/doc/html/welcome.html distrib/jallib-${VERSION}/doc/html/
-	cp distrib/jallib-export/doc/html/index.html distrib/jallib-${VERSION}/doc/html/
-	# doc for all_devices
-	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
-	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
 	# license, readme, install, ...
 	# 	jallib
 	cp distrib/jallib-export/LICENSE.bsd distrib/jallib-${VERSION}/
@@ -181,7 +177,10 @@ prepare:
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-all_devices-${VERSION}/
 	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
 
-jallib-pack: pdfbooks
+prepare-quick:
+	$(MAKE) prepare GENERATE_DOCS=false
+
+jallib-pack-base:
 	# now include compiler binaries
 	# guess compiler version
 	mkdir -p distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
@@ -191,16 +190,20 @@ jallib-pack: pdfbooks
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/
 	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
 	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
-	# include PDF books
-	#   generated
-	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
-	#   static
+	# include static docs
 	cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f doc/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
+
+jallib-pack: pdfbooks jallib-pack-base
+	# include PDF books (generated)
+	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
 	echo DONE: jallib pack ready
+
+jallib-pack-quick: jallib-pack-base
+	echo DONE: jallib pack ready - quick version
 
 archive:
 	# ZIPs don't contain a base directory
@@ -209,9 +212,9 @@ archive:
 	cd distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && zip -r jallib-pack-${JALV2_VERSION}-${VERSION}.zip . && mv jallib-pack-${JALV2_VERSION}-${VERSION}.zip ..
 
 check:
-	sh check_package.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686
-	sh check_package.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686
-	sh check_package.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
 
 bee-archive:
 	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
@@ -221,17 +224,30 @@ bee-archive:
 	##cd distrib && tar czfv jallib-pack-`cat jallib-pack-${VERSION}/VERSION`.tar.gz jallib-pack-${VERSION}
 	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat VERSION`.zip . && mv jallib-pack-`cat VERSION`.zip ..
 
-bee-upload:
-	# TODO: Googlecode uploads have been deactivated. Implementation needed: upload to drive for instance.
-	# Remember: this target is automatically called by builbot when generating weekly buils. While implementing this,
-	# code must be generic enough (paths, execs, environment) so it'll execute correctly on target server
-
 bee-check:
-	sh check_package.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
 
-release: clean export prepare jallib-pack archive check
+check-quick:
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686 test-one
+	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686 test-one
+	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686 test-one
 
-bee: clean export prepare jallib-pack bee-archive bee-check bee-upload
+maketest: 
+	# for testing the makefile
+	$(MAKE) VERSION=maketest clean export prepare-quick jallib-pack-quick archive check-quick
+
+bee: 
+	# weekly build
+	$(MAKE) VERSION=bee clean export prepare jallib-pack bee-archive bee-check
+
+dev: 
+	$(MAKE) VERSION=dev clean export prepare jallib-pack bee-archive bee-check
+
+beta: 
+	$(MAKE) VERSION=beta clean export prepare jallib-pack archive check
+
+release: 
+	$(MAKE) VERSION=release clean export prepare jallib-pack archive check
 
 pdfbooks:
 	# Tutorial book in pdf and html.

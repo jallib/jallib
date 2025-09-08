@@ -1,0 +1,151 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample and test program for the VL53L0X Time-of-Flight ranging sensor
+-- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Sample and program showing how to use the VL53L0X Time-of-Flight 
+--              ranging sensor using continuous mode.
+--              This device is controlled via an IIC interface. The serial 
+--              interface is used to show the result of the measurement. 
+--              Although the IC does not operate at 5 Volt, the VL53L0X module 
+--              does operate at 5 Volt and has on-board level shifters including
+--              pull-up registers.
+--
+-- Sources: Based on the vl53l0x-arduino: https://github.com/pololu/vl53l0x-arduino
+--          Datasheet STMicroelectronics  VL53L0X DS11555 - Rev 6
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- Low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+
+; Enable weak pull up for all unused pins.
+WPUA = 0b0011_1111       
+WPUC = 0b0010_1100        
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+_usec_delay(100_000)
+
+; Setup uart for communication. 
+alias pin_RX_direction is pin_RX_RC5_direction -- Pin 5 of 14 pin DIP.
+alias pin_TX_direction is pin_TX_RC4_direction -- Pin 6 of 14 pin DIP.
+const serial_hw_baudrate  = 115200  
+include serial_hardware
+serial_hw_init()
+alias serial is serial_hw_data
+
+include print
+include delay
+
+-- Define the IIC pins and initiaize the pin direction.
+alias i2c_scl is pin_C0 -- Pin 10 for 14 pin DIP
+-- alias pin_scl_direction is pin_C0_direction. Note: Not needed for this PIC.
+alias i2c_sda is pin_C1 -- Pin 9 for 14 pin DIP.
+-- alias pin_sda_direction is pin_C1_direction. Note: Not needed for this PIC.
+const word _i2c_bus_speed = 1 -- 100 kHz. It can handle 400 kHz.
+const bit  _i2c_level = TRUE  -- i2c levels (not SMB)
+const word I2C_HARDWARE_TIMEOUT = 10_000 -- At least 10 ms to prevent hang-up.
+include i2c_hardware  
+i2c_initialize()
+-- Now include the library.
+include vl53l0x
+
+-- Procedures.
+procedure print_iic_address() is
+   
+   print_string(serial, "VL53L0X module IIC address is: 0x")
+   print_byte_hex(serial, vl53l0x_get_iic_address())
+   print_crlf(serial)
+
+end procedure
+
+; Print the timeout value.
+procedure print_timeout() is
+
+   print_string(serial, "Timeout occured.\r\n")
+   print_string(serial, "Retry with at timeout value of: ")
+   print_word_dec(serial, vl53l0x_get_timeout())
+   print_string(serial, " ms.\r\n")
+
+end procedure
+
+-- Variables.
+var word distance
+
+-- If needed, change IIC address:
+--- const NEW_IIC_ADDRESS = TRUE
+
+-- ------------------------------ Main program ---------------------------------
+
+print_crlf(serial)
+print_string(serial, "Test program for the VL53L0X Time-of-Flight ranging sensor.\r\n")
+
+if defined(NEW_IIC_ADDRESS) then
+   -- Set the IIC address to a different address than the default 
+   -- address VL53L0X_IIC_DEFAULT_ADDRESS.
+   print_iic_address()
+   -- Change address.
+   vl53l0x_set_iic_address(0x54)
+   -- Show the current IIC address.
+   print_iic_address()
+end if 
+
+-- Initialize the VL53L0X library.
+print_string(serial, "Initializing ...\r\n")
+while !vl53l0x_init() loop
+   serial = "."
+   _usec_delay(250_000)
+end loop 
+print_string(serial, "Done!\r\n")
+
+-- Use continuous mode and sample every 100 ms. Note that when a large value is 
+-- used, it may be needed to increase the default timeout value.
+vl53l0x_start_continuous(100)
+
+forever loop 
+
+   ; Start with measurement in mm.
+   distance = vl53l0x_read_range_continuous_millimeters()
+   if vl53l0x_timeout_occured() then
+      print_timeout()
+      ; Make it a bit bigger.
+      vl53l0x_set_timeout(vl53l0x_get_timeout() + 10)
+   else
+      print_string(serial, "Range is in mm: ")
+      print_word_dec(serial, distance)
+      print_crlf(serial)
+   end if 
+
+   ; Now in mil.
+   distance = vl53l0x_read_range_continuous_mil()
+   if vl53l0x_timeout_occured() then
+      print_timeout()
+      ; Make it a bit bigger.
+      vl53l0x_set_timeout(vl53l0x_get_timeout() + 10)
+   else
+      print_string(serial, "Range in mil: ")
+      print_word_dec(serial, distance)
+      print_crlf(serial)
+   end if 
+   print_crlf(serial)
+ 
+ 
+end loop
