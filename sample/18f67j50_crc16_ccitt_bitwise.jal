@@ -1,0 +1,208 @@
+-- Title: CRC16-CCITT Bitwise Implementation Sample
+-- Author: Matthew Schinkel
+-- Compiler: >=2.4r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demonstrates CRC16-CCITT bitwise implementation library usage.
+-- This sample uses the bitwise algorithm implementation for CRC16-CCITT calculations.
+--
+-- CRC16-CCITT Implementation Details:
+-- Polynomial: 0x1021 (x¹⁶ + x¹² + x⁵ + 1)
+-- Initial Value: 0x0000
+-- Final XOR: 0x0000 (none)
+-- Test Data: "1234" = [0x31, 0x32, 0x33, 0x34]
+-- Expected CRC Value: 0xD789 (verified by JAL sample)
+--
+-- Performance: Bitwise implementation - slower than lookup table but uses less memory
+-- Use Case: When memory is limited or when you need the reference implementation
+--
+
+include 18f67j50                      -- target PICmicro
+--
+-- This program uses the internal oscillator with PLL active.
+pragma target clock 48_000_000      -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT_PLL       -- internal oscillator
+pragma target PLLDIV   P2                        -- 8 MHz -> 4 MHz
+pragma target CPUDIV   P1                        -- Fosc divisor
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- int/ext osc. switch
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- use PLL
+--
+enable_digital_io()                 -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
+ 
+--
+include delay                        -- delay functions
+include crc16_ccitt_bitwise
+
+-- Print library
+const PRINT_MAX_VAR_SIZE = 6
+include print
+
+-- Hardware serial configuration
+const serial_hw_baudrate  = 9600
+include serial_hardware
+serial_hw_init()
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+-- Test data
+const byte test_data[4] = {0x31, 0x32, 0x33, 0x34}  -- "1234"
+const word expected_crc = 0xD789
+
+-- Variables
+var word calculated_crc
+var byte i
+
+-- Main program
+
+-- Debug: Sample starting
+var byte startup_msg[] = "DEBUG: Sample starting..."
+print_string(serial_data, startup_msg)
+print_crlf(serial_data)
+
+-- Print header
+var byte header_msg[] = "***CRC16-CCITT Sample Started***"
+print_string(serial_data, header_msg)
+print_crlf(serial_data)
+
+var byte test_msg[] = "Testing CRC16-CCITT with standard implementation..."
+print_string(serial_data, test_msg)
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+-- Debug: Show test data
+var byte debug1_msg[] = "DEBUG: Test data = "
+print_string(serial_data, debug1_msg)
+var byte j
+for 4 using j loop
+    print_byte_hex(serial_data, test_data[j])
+    print_string(serial_data, " ")
+end loop
+print_crlf(serial_data)
+
+-- Debug: Show expected CRC
+var byte debug2_msg[] = "DEBUG: Expected CRC = 0x"
+print_string(serial_data, debug2_msg)
+print_word_hex(serial_data, expected_crc)
+print_crlf(serial_data)
+
+-- Test 1: Array calculation
+var byte test1_msg[] = "Test 1: Array calculation"
+print_string(serial_data, test1_msg)
+print_crlf(serial_data)
+
+-- Debug: Before calculation
+var byte debug3_msg[] = "DEBUG: Starting array calculation..."
+print_string(serial_data, debug3_msg)
+print_crlf(serial_data)
+
+calculated_crc = crc16_calculate_array_bytes(test_data, 4)
+
+-- Debug: After calculation
+var byte debug4_msg[] = "DEBUG: Array calculation complete"
+print_string(serial_data, debug4_msg)
+print_crlf(serial_data)
+
+var byte calc_msg[] = "Calculated CRC16: 0x"
+print_string(serial_data, calc_msg)
+print_word_hex(serial_data, calculated_crc)
+print_crlf(serial_data)
+
+var byte exp_msg[] = "Expected CRC16: 0x"
+print_string(serial_data, exp_msg)
+print_word_hex(serial_data, expected_crc)
+print_crlf(serial_data)
+
+if calculated_crc == expected_crc then
+    var byte pass_msg[] = "Test 1 PASSED - CRC matches expected value"
+    print_string(serial_data, pass_msg)
+else
+    var byte fail_msg[] = "Test 1 FAILED - CRC does not match expected value"
+    print_string(serial_data, fail_msg)
+end if
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+-- Test 2: Incremental calculation
+var byte test2_msg[] = "Test 2: Incremental calculation"
+print_string(serial_data, test2_msg)
+print_crlf(serial_data)
+
+-- Debug: Before incremental calculation
+var byte debug5_msg[] = "DEBUG: Starting incremental calculation..."
+print_string(serial_data, debug5_msg)
+print_crlf(serial_data)
+
+crc16_start(4)
+
+-- Debug: Show each byte being processed
+for 4 using i loop
+    var byte debug6_msg[] = "DEBUG: Processing byte "
+    print_string(serial_data, debug6_msg)
+    print_byte_hex(serial_data, test_data[i])
+    print_crlf(serial_data)
+    crc16_calculate_bytes(test_data[i])
+end loop
+
+calculated_crc = crc16_get_result()
+
+-- Debug: After incremental calculation
+var byte debug7_msg[] = "DEBUG: Incremental calculation complete"
+print_string(serial_data, debug7_msg)
+print_crlf(serial_data)
+
+var byte calc2_msg[] = "Calculated CRC16: 0x"
+print_string(serial_data, calc2_msg)
+print_word_hex(serial_data, calculated_crc)
+print_crlf(serial_data)
+
+if calculated_crc == expected_crc then
+    var byte pass2_msg[] = "Test 2 PASSED - Incremental CRC matches expected value"
+    print_string(serial_data, pass2_msg)
+else
+    var byte fail2_msg[] = "Test 2 FAILED - Incremental CRC does not match expected value"
+    print_string(serial_data, fail2_msg)
+end if
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+-- Test 3: Verify function
+var byte test3_msg[] = "Test 3: Verify function"
+print_string(serial_data, test3_msg)
+print_crlf(serial_data)
+
+crc16_verify(calculated_crc, expected_crc)
+if crc16_error_occurred() then
+    var byte fail3_msg[] = "Test 3 FAILED - Verify function detected error"
+    print_string(serial_data, fail3_msg)
+else
+    var byte pass3_msg[] = "Test 3 PASSED - Verify function works correctly"
+    print_string(serial_data, pass3_msg)
+end if
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+var byte complete_msg[] = "***CRC16-CCITT Sample Complete***"
+print_string(serial_data, complete_msg)
+print_crlf(serial_data)
+
+
+
+var byte done_msg[] = "##DONE##"
+print_string(serial_data, done_msg)
+print_crlf(serial_data)

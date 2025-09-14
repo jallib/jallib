@@ -1,0 +1,699 @@
+-- Title: Enhanced SD Card Sample with CRC Error Handling (Bitwise Implementation)
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009, all rights reserved.
+-- Compiler: >=2.4r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the BSD license (http://www.opensource.org/licenses/bsd-license.php)
+--
+-- Description: Enhanced SD card sample with comprehensive CRC error handling
+--              and retry mechanisms for robust SD card communication.
+--              Uses CRC16-CCITT bitwise implementation for CRC calculations.
+--
+-- Sources:
+-- SanDisk Secure Digital Card - http://www.cs.ucr.edu/~amitra/sdcard/ProdManualSDCardv1.9.pdf
+-- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
+--
+-- This file has been enhanced with CRC error handling and retry mechanisms.
+--
+
+include 18f67j50                      -- target PICmicro
+--
+-- This program uses the internal oscillator with PLL active.
+pragma target clock 48_000_000      -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT_PLL       -- internal oscillator
+pragma target PLLDIV   P2                        -- 8 MHz -> 4 MHz
+pragma target CPUDIV   P1                        -- Fosc divisor
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- int/ext osc. switch
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- use PLL
+--
+enable_digital_io()                 -- make all pins digital I/O
+_usec_delay (100_000) -- wait for power to stablilize
+
+include delay
+
+const PRINT_MAX_VAR_SIZE = 6
+include print
+
+-- setup uart for communication
+const serial_hw_baudrate  = 9600   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- some aliases so it is easy to change from serial hw to serial sw.
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+--
+var byte sample_started[] = "***Jallib Sample Started***"
+print_string(serial_data,sample_started)
+print_crlf(serial_data)
+
+-- setup SPI library
+include spi_master_hw         -- includes the spi library
+-- define spi inputs/outputs
+pin_sdi_direction = input    -- spi input
+pin_sdo_direction = output   -- spi output
+pin_sck_direction = output   -- spi clock
+--
+spi_init(SPI_MODE_11,SPI_RATE_FOSC_4) -- init spi, choose mode and speed
+alias spi_master is spi_master_hw
+alias spi_master_exchange is spi_master_hw_exchange
+
+-- setup the sd card pins
+alias sd_chip_select is pin_SS
+alias sd_chip_select_direction is pin_SS_direction
+sd_chip_select = high
+sd_chip_select_direction = output
+--
+-- setup the sd card library
+alias sd_force_spi_mode is spi_master_hw_set_mode_11 -- always set spi mode to 1,1
+const bit SD_USE_CRC = TRUE  -- Set to FALSE to disable CRC validation
+-- CRITICAL: Do not change or remove these settings - they are optimized for performance
+const bit SD_READ_EXTRA_SPEED = TRUE
+const bit SD_WRITE_EXTRA_SPEED = TRUE
+include sd_card              -- include the sd card ide hard disk library
+
+-- Include stopwatch for timing measurements
+const STOPWATCH_VAR_SIZE = 4
+const STOPWATCH_MIN_VALUE = STOPWATCH_MS
+const STOPWATCH_USE_TIMER = 1
+include stopwatch  -- include enhanced error handling library
+
+-- =============================================================================
+-- Enhanced SD Card Operations
+-- =============================================================================
+
+-- =============================================================================
+-- Main Program
+-- =============================================================================
+
+-- Initialize SD card with error handling
+print_string(serial_data, "Initializing SD card...")
+print_crlf(serial_data)
+sd_init()
+
+if sd_has_error == TRUE then
+   print_string(serial_data, "ERROR - SD CARD INITIALIZATION FAILED")
+   print_crlf(serial_data)
+   sd_check_crc_errors()
+else
+   if sd_card_type == SD_STANDARD_CAPACITY then
+      print_string(serial_data, "Standard capacity ")
+   elsif sd_card_type == SD_HIGH_CAPACITY then
+      print_string(serial_data, "High capacity ")
+   end if
+   print_string(serial_data, "SD card successfully loaded!")
+   print_crlf(serial_data)
+end if
+
+------------------------------------------------------------
+-- START of PROGRAM
+------------------------------------------------------------
+_usec_delay(100_000)                  -- wait for power to settle
+
+-- procedure for sending 80 "-----------------" via serial port (now in library)
+
+-- Send something to the serial port
+sd_seperator()             -- send "----" via serial port
+print_string(serial_data,"ENHANCED SD CARD SAMPLE WITH CRC ERROR HANDLING")
+print_crlf(serial_data)
+
+-- variables for the sample
+var word step1
+var byte volatile data
+
+-- Shared variables for examples
+var dword data_errors = 0
+var dword total_tests = 0
+var bit data_match = FALSE
+
+-- Example enable/disable flags
+const bit ENABLE_EXAMPLE_1 = FALSE  -- 512-byte pattern data test
+const bit ENABLE_EXAMPLE_2 = FALSE  -- Alphabet cycling test
+const bit ENABLE_EXAMPLE_3 = TRUE   -- 2-sector write/read test
+const word TEST_CYCLES = 2          -- Number of write/read cycles for Example #3
+
+sd_seperator()            -- seperate the examples with "----"
+
+-- Report SD size in GiB to avoid overflow on large cards
+print_string(serial_data,"SD Card Size (GiB): ")
+var dword __sectors = sd_number_of_sectors
+var dword __gib = __sectors / 2_097_152   -- 2,097,152 sectors of 512B per GiB
+print_dword_dec(serial_data,__gib)
+print_crlf(serial_data)
+
+-- Report SD card type
+print_string(serial_data, "SD Card Type: ")
+if sd_card_type == SD_HIGH_CAPACITY then
+   print_string(serial_data, "SDHC/SDXC (High Capacity)")
+else
+   print_string(serial_data, "SDSC (Standard Capacity)")
+end if
+print_crlf(serial_data)
+
+sd_seperator()            -- seperate the examples with "----"
+
+
+--------------------------------------------------------------------------------
+-- EXAMPLE #1: 512-byte Pattern Data Test with CRC Validation
+--------------------------------------------------------------------------------
+if ENABLE_EXAMPLE_1 then
+print_string(serial_data, "EXAMPLE #1: 512-byte pattern data test - CRC ENABLED")
+print_crlf(serial_data)
+print_string(serial_data, "Creating 512-byte constant array with predictable pattern...")
+print_crlf(serial_data)
+
+-- Create a 512-byte pattern directly in the sector buffer
+-- Using a predictable but varied pattern that's easy to verify
+var word i
+var byte pattern_value = 0x5A  -- Starting pattern value
+
+print_string(serial_data, "Setting starting sector to 20...")
+print_crlf(serial_data)
+
+-- Set the starting sector
+sd_write_sector_address(20)  -- Writes to sector 20, then sd_sector_select becomes 0 for next operation
+print_string(serial_data, "Current sector is now: ")
+print_dword_dec(serial_data, sd_sector_select)
+print_crlf(serial_data)
+
+print_string(serial_data, "Writing 512-byte data to current sector...")
+print_crlf(serial_data)
+
+-- Initialize and start stopwatch for timing
+stopwatch_init()
+stopwatch_start()
+
+-- Fill the sector buffer with a predictable but varied pattern
+for 512 using i loop
+   sd_sector_buffer[i] = pattern_value
+   pattern_value = pattern_value + 1
+   if pattern_value == 0 then
+      pattern_value = 0x5A  -- Reset to avoid 0x00
+   end if
+end loop
+
+-- Write the sector with retry mechanism
+sd_retry_operation(sd_sector_select, 4)
+total_tests = total_tests + 1
+
+if sd_has_error == FALSE then
+   print_string(serial_data, "SUCCESS")
+   print_crlf(serial_data)
+   
+   -- Add small delay between write and read operations
+   _usec_delay(100_000) -- 100ms delay
+   
+   print_string(serial_data, "Reading back 512-byte data from sector ")
+   print_dword_dec(serial_data, sd_sector_select)
+   print_string(serial_data, "...")
+   print_crlf(serial_data)
+   
+   -- Read the sector back directly
+   sd_read_sector_address(sd_sector_select)
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      print_string(serial_data, "SUCCESS")
+      print_crlf(serial_data)
+      
+      -- Validate the data matches exactly by recreating the pattern
+      var bit data_valid = TRUE
+      var byte expected_value = 0x5A  -- Starting pattern value
+      
+      for 512 using i loop
+         if sd_sector_buffer[i] != expected_value then
+            data_valid = FALSE
+         end if
+         expected_value = expected_value + 1
+         if expected_value == 0 then
+            expected_value = 0x5A  -- Reset to avoid 0x00
+         end if
+      end loop
+      
+      if data_valid == TRUE then
+         print_string(serial_data, "SUCCESS - All 512 bytes verified correctly")
+         print_crlf(serial_data)
+         print_string(serial_data, "CRC validation passed - Data integrity confirmed!")
+         print_crlf(serial_data)
+      else
+         print_string(serial_data, "FAIL - Data mismatch detected in 512-byte test")
+         print_crlf(serial_data)
+         data_errors = data_errors + 1
+      end if
+   else
+      print_string(serial_data, "FAIL - Read operation failed")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+else
+   print_string(serial_data, "FAIL - Write operation failed")
+   print_crlf(serial_data)
+   data_errors = data_errors + 1
+end if
+
+-- Stop stopwatch and display timing results
+stopwatch_stop()
+
+print_crlf(serial_data)
+print_string(serial_data, "=== 512-BYTE PATTERN DATA TEST RESULTS ===")
+print_crlf(serial_data)
+print_string(serial_data, "Test completed with CRC validation")
+print_crlf(serial_data)
+
+-- Display timing information
+print_string(serial_data, "Example #1 execution time: ")
+print_dword_dec(serial_data, stopwatch)
+print_string(serial_data, " ms")
+print_crlf(serial_data)
+print_string(serial_data, "Instruction cycles: ")
+print_dword_dec(serial_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+end if  -- ENABLE_EXAMPLE_1
+
+sd_seperator()                                  -- seperate the examples with "----"
+_usec_delay(500_000)                         -- a small delay
+
+--------------------------------------------------------------------------------
+-- EXAMPLE #2: Enhanced alphabet cycling test with CRC error handling
+--------------------------------------------------------------------------------
+if ENABLE_EXAMPLE_2 then
+if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
+   print_string(serial_data,"EXAMPLE #2: Alphabet cycling test (2 cycles A-Z) - CRC ENABLED")
+else
+   print_string(serial_data,"EXAMPLE #2: Alphabet cycling test (2 cycles A-Z) - CRC DISABLED")
+end if
+print_crlf(serial_data)
+
+-- Variables for alphabet cycling test
+var byte current_letter = "A"
+var byte test_cycle = 0
+var byte max_cycles = 2
+var bit data_match = TRUE
+
+print_string(serial_data, "Starting alphabet cycling test...")
+print_crlf(serial_data)
+if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
+   print_string(serial_data, "Testing 2 cycles of letters A through Z (CRC enabled)")
+else
+   print_string(serial_data, "Testing 2 cycles of letters A through Z (CRC disabled)")
+end if
+print_crlf(serial_data)
+
+print_string(serial_data, "Setting starting sector to 21...")
+print_crlf(serial_data)
+
+-- Set the starting sector
+sd_write_sector_address(21)  -- Writes to sector 21, then sd_sector_select becomes 1 for next operation
+print_string(serial_data, "Current sector is now: ")
+print_dword_dec(serial_data, sd_sector_select)
+print_crlf(serial_data)
+print_crlf(serial_data)
+
+-- Initialize and start stopwatch for timing
+stopwatch_init()
+stopwatch_start()
+
+-- Main test loop - 2 cycles
+for max_cycles using test_cycle loop
+   -- Fill sector buffer with current letter
+   for 512 using step1 loop
+      sd_sector_buffer[step1] = current_letter
+   end loop
+   
+   -- Write sector with retry mechanism
+   print_string(serial_data, "Cycle ")
+   print_byte_dec(serial_data, test_cycle + 1)
+   print_string(serial_data, "/2 - Writing letter '")
+   serial_write(current_letter)
+   print_string(serial_data, "' to sector ")
+   print_dword_dec(serial_data, sd_sector_select)
+   print_string(serial_data, "... ")
+   
+   sd_retry_operation(sd_sector_select, 4)
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      -- Add small delay between write and read operations
+      _usec_delay(100_000) -- 100ms delay
+      
+      -- Read back sector with retry mechanism
+      print_string(serial_data, "Reading back from sector ")
+      print_dword_dec(serial_data, sd_sector_select)
+      print_string(serial_data, "... ")
+      sd_read_sector_address(sd_sector_select)
+      total_tests = total_tests + 1
+      
+      if sd_has_error == FALSE then
+         -- Display first byte of received data for verification
+         print_string(serial_data, "Received: ")
+         print_byte_hex(serial_data, sd_sector_buffer[0])
+         print_crlf(serial_data)
+         
+         -- Verify all data matches the expected letter
+         data_match = TRUE
+         for 512 using step1 loop
+            if sd_sector_buffer[step1] != current_letter then
+               data_match = FALSE
+            end if
+         end loop
+         
+         if data_match == TRUE then
+            print_string(serial_data, "SUCCESS - Data verified")
+            print_crlf(serial_data)
+         else
+            print_string(serial_data, "FAIL - Data mismatch detected")
+            print_crlf(serial_data)
+            data_errors = data_errors + 1
+         end if
+      else
+         print_string(serial_data, "FAIL - Read operation failed")
+         print_crlf(serial_data)
+         data_errors = data_errors + 1
+      end if
+   else
+      print_string(serial_data, "FAIL - Write operation failed")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+   
+   -- Move to next letter in alphabet
+   current_letter = current_letter + 1
+   if current_letter > "Z" then
+      current_letter = "A"  -- Wrap back to 'A' after 'Z'
+   end if
+   
+   -- Note: sd_sector_select is automatically incremented by the library after each operation
+   print_string(serial_data, "Next sector will be: ")
+   print_dword_dec(serial_data, sd_sector_select)
+   print_crlf(serial_data)
+   
+   -- Small delay between cycles
+   _usec_delay(100_000)
+end loop
+
+-- Display test results
+print_crlf(serial_data)
+print_string(serial_data, "=== ALPHABET CYCLING TEST RESULTS ===")
+print_crlf(serial_data)
+print_string(serial_data, "Total operations: ")
+print_dword_dec(serial_data, total_tests)
+print_crlf(serial_data)
+print_string(serial_data, "Data verification errors: ")
+print_dword_dec(serial_data, data_errors)
+print_crlf(serial_data)
+
+if data_errors == 0 then
+   print_string(serial_data, "ALL TESTS PASSED - Data integrity verified!")
+else
+   print_string(serial_data, "SOME TESTS FAILED - Data integrity issues detected")
+end if
+print_crlf(serial_data)
+
+-- Stop stopwatch and display timing results
+stopwatch_stop()
+
+-- Display timing information
+print_string(serial_data, "Example #2 execution time: ")
+print_dword_dec(serial_data, stopwatch)
+print_string(serial_data, " ms")
+print_crlf(serial_data)
+print_string(serial_data, "Instruction cycles: ")
+print_dword_dec(serial_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+end if  -- ENABLE_EXAMPLE_2
+
+sd_seperator()                                  -- seperate the examples with "----"
+_usec_delay(500_000)                         -- a small delay
+
+--------------------------------------------------------------------------------
+-- EXAMPLE #3: Looped A/B pattern test with CRC error handling
+--------------------------------------------------------------------------------
+if ENABLE_EXAMPLE_3 then
+if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
+   print_string(serial_data,"EXAMPLE #3: Looped A/B pattern test - CRC ENABLED")
+else
+   print_string(serial_data,"EXAMPLE #3: Looped A/B pattern test - CRC DISABLED")
+end if
+print_crlf(serial_data)
+
+print_string(serial_data, "Starting A/B pattern test...")
+print_crlf(serial_data)
+if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
+   print_string(serial_data, "Testing A/B pattern write/read (CRC enabled)")
+else
+   print_string(serial_data, "Testing A/B pattern write/read (CRC disabled)")
+end if
+print_crlf(serial_data)
+
+
+-- Initialize and start stopwatch for timing
+stopwatch_init()
+stopwatch_start()
+
+-- Variables for A/B pattern test
+
+-- Variables for looped A/B pattern test
+var word cycle_count = 0
+
+print_string(serial_data, "Starting ")
+print_word_dec(serial_data, TEST_CYCLES)
+print_string(serial_data, " write cycles...")
+print_crlf(serial_data)
+
+-- Phase 1: Write A and B patterns TEST_CYCLES times
+for TEST_CYCLES using cycle_count loop
+   -- Write 'A' to sector 23
+   for 512 using step1 loop
+      sd_sector_buffer[step1] = "A"
+   end loop
+   sd_retry_operation(23, 4)  -- Type 4: Write sector buffer
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      -- Success - no output for each cycle to avoid spam
+   else
+      print_string(serial_data, "Write A cycle ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, " FAILED")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+   
+   -- Write 'B' to sector 24
+   for 512 using step1 loop
+      sd_sector_buffer[step1] = "B"
+   end loop
+   sd_retry_operation(24, 4)  -- Type 4: Write sector buffer
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      -- Success - no output for each cycle to avoid spam
+   else
+      print_string(serial_data, "Write B cycle ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, " FAILED")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+   
+   -- Progress indicator every 10 cycles
+   if (cycle_count + 1) % 10 == 0 then
+      print_string(serial_data, "Write progress: ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, "/")
+      print_word_dec(serial_data, TEST_CYCLES)
+      print_crlf(serial_data)
+   end if
+end loop
+
+print_string(serial_data, "Write phase complete. Starting ")
+print_word_dec(serial_data, TEST_CYCLES)
+print_string(serial_data, " read cycles...")
+print_crlf(serial_data)
+
+-- Add small delay between write and read phases
+_usec_delay(100_000) -- 100ms delay
+
+-- Phase 2: Read back A and B patterns TEST_CYCLES times
+for TEST_CYCLES using cycle_count loop
+   -- Read 'A' from sector 23
+   sd_retry_operation(23, 3)  -- Type 3: Read sector buffer
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      -- Verify all data matches 'A'
+      data_match = TRUE
+      for 512 using step1 loop
+         if sd_sector_buffer[step1] != "A" then
+            data_match = FALSE
+         end if
+      end loop
+      
+      if data_match == FALSE then
+         print_string(serial_data, "Read A cycle ")
+         print_word_dec(serial_data, cycle_count + 1)
+         print_string(serial_data, " DATA MISMATCH")
+         print_crlf(serial_data)
+         data_errors = data_errors + 1
+      end if
+   else
+      print_string(serial_data, "Read A cycle ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, " FAILED")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+   
+   -- Read 'B' from sector 24
+   sd_retry_operation(24, 3)  -- Type 3: Read sector buffer
+   total_tests = total_tests + 1
+   
+   if sd_has_error == FALSE then
+      -- Verify all data matches 'B'
+      data_match = TRUE
+      for 512 using step1 loop
+         if sd_sector_buffer[step1] != "B" then
+            data_match = FALSE
+         end if
+      end loop
+      
+      if data_match == FALSE then
+         print_string(serial_data, "Read B cycle ")
+         print_word_dec(serial_data, cycle_count + 1)
+         print_string(serial_data, " DATA MISMATCH")
+         print_crlf(serial_data)
+         data_errors = data_errors + 1
+      end if
+   else
+      print_string(serial_data, "Read B cycle ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, " FAILED")
+      print_crlf(serial_data)
+      data_errors = data_errors + 1
+   end if
+   
+   -- Progress indicator every 10 cycles
+   if (cycle_count + 1) % 10 == 0 then
+      print_string(serial_data, "Read progress: ")
+      print_word_dec(serial_data, cycle_count + 1)
+      print_string(serial_data, "/")
+      print_word_dec(serial_data, TEST_CYCLES)
+      print_crlf(serial_data)
+   end if
+end loop
+
+-- Display test results
+print_crlf(serial_data)
+print_string(serial_data, "=== LOOPED A/B PATTERN TEST RESULTS ===")
+print_crlf(serial_data)
+print_string(serial_data, "Test cycles completed: ")
+print_word_dec(serial_data, TEST_CYCLES)
+print_crlf(serial_data)
+print_string(serial_data, "Total operations: ")
+print_dword_dec(serial_data, total_tests)
+print_crlf(serial_data)
+print_string(serial_data, "Data verification errors: ")
+print_dword_dec(serial_data, data_errors)
+print_crlf(serial_data)
+
+if data_errors == 0 then
+   print_string(serial_data, "ALL TESTS PASSED - Data integrity verified!")
+else
+   print_string(serial_data, "SOME TESTS FAILED - Data integrity issues detected")
+end if
+print_crlf(serial_data)
+
+-- Stop stopwatch and display timing results
+stopwatch_stop()
+
+-- Display timing information
+print_string(serial_data, "Example #3 execution time: ")
+print_dword_dec(serial_data, stopwatch)
+print_string(serial_data, " ms")
+print_crlf(serial_data)
+print_string(serial_data, "Instruction cycles: ")
+print_dword_dec(serial_data, stopwatch_cycles)
+print_crlf(serial_data)
+
+-- Calculate and display average time per cycle
+var dword average_time_per_cycle = 0
+var dword average_cycles_per_cycle = 0
+
+-- Calculate average time per cycle (total time / number of cycles)
+average_time_per_cycle = stopwatch / TEST_CYCLES
+print_string(serial_data, "Average time per cycle: ")
+print_dword_dec(serial_data, average_time_per_cycle)
+print_string(serial_data, " ms")
+print_crlf(serial_data)
+
+-- Calculate average instruction cycles per cycle
+average_cycles_per_cycle = stopwatch_cycles / TEST_CYCLES
+print_string(serial_data, "Average instruction cycles per cycle: ")
+print_dword_dec(serial_data, average_cycles_per_cycle)
+print_crlf(serial_data)
+
+-- Calculate bytes per second
+var dword total_bytes_transferred = 0
+var dword bytes_per_second = 0
+var dword total_seconds = 0
+
+-- Calculate total bytes transferred (4 operations per cycle: write A, write B, read A, read B)
+-- Each operation transfers 512 bytes
+total_bytes_transferred = TEST_CYCLES * 4  -- cycles * operations_per_cycle
+total_bytes_transferred = total_bytes_transferred * 512  -- multiply by bytes_per_operation
+total_seconds = stopwatch / 1000  -- Convert milliseconds to seconds
+bytes_per_second = total_bytes_transferred / total_seconds
+
+print_string(serial_data, "Total bytes transferred: ")
+print_dword_dec(serial_data, total_bytes_transferred)
+print_crlf(serial_data)
+print_string(serial_data, "Data transfer rate: ")
+print_dword_dec(serial_data, bytes_per_second)
+print_string(serial_data, " bytes/second")
+print_crlf(serial_data)
+
+-- Calculate sectors per second
+var dword total_sectors_transferred = 0
+var dword sectors_per_second = 0
+
+-- Calculate total sectors transferred (4 operations per cycle: write A, write B, read A, read B)
+-- Each operation transfers 1 sector (512 bytes)
+total_sectors_transferred = TEST_CYCLES * 4  -- cycles * operations_per_cycle
+sectors_per_second = total_sectors_transferred / total_seconds
+
+print_string(serial_data, "Total sectors transferred: ")
+print_dword_dec(serial_data, total_sectors_transferred)
+print_crlf(serial_data)
+print_string(serial_data, "Sector transfer rate: ")
+print_dword_dec(serial_data, sectors_per_second)
+print_string(serial_data, " sectors/second")
+print_crlf(serial_data)
+
+end if  -- ENABLE_EXAMPLE_3
+
+sd_seperator()                                  -- seperate the examples with "----"
+_usec_delay(500_000)                         -- a small delay
+
+--------------------------------------------------------------------------------
+-- Final Statistics
+--------------------------------------------------------------------------------
+sd_print_enhanced_statistics()
+
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, "##DONE##")
+print_crlf(serial_hw_data)
+print_string(serial_hw_data, "#")

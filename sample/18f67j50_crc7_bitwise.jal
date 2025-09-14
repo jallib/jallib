@@ -1,0 +1,165 @@
+-- Title: CRC7-SD Card Bitwise Implementation Sample
+-- Author: Matthew Schinkel
+-- Compiler: >=2.4r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demonstrates CRC7-SD Card bitwise implementation library usage.
+-- This sample uses the bitwise algorithm for SD Card CRC7 calculations.
+--
+-- CRC7-SD Card Implementation Details:
+-- Polynomial: 0x89 (x⁷ + x³ + 1) - SD Card specific
+-- Initial Value: 0x00
+-- Expected CRC Value: 0xB5 (verified by hardware)
+-- Status: SD Card CRC7 implementation
+-- Note: This uses polynomial 0x89 as per SD Card specification
+--
+-- Standard CRC7 Reference (for comparison):
+-- Polynomial: 0x89 (x⁷ + x³ + 1)
+-- Initial Value: 0x00
+-- Test Data: ASCII "123456789" = [0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39]
+-- Expected CRC Value: 0x75
+-- Sources: CRC RevEng Catalogue, SD Card specification
+--
+
+include 18f67j50                      -- target PICmicro
+--
+-- This program uses the internal oscillator with PLL active.
+pragma target clock 48_000_000      -- oscillator frequency
+--
+pragma target OSC      INTOSC_NOCLKOUT_PLL       -- internal oscillator
+pragma target PLLDIV   P2                        -- 8 MHz - 4 MHz
+pragma target CPUDIV   P1                        -- Fosc divisor
+pragma target WDT      CONTROL                   -- watchdog
+pragma target XINST    DISABLED                  -- extended instruction set
+pragma target DEBUG    DISABLED                  -- debugging
+pragma target FCMEN    DISABLED                  -- clock monitoring
+pragma target IESO     DISABLED                  -- intext osc. switch
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+WDTCON_SWDTEN = OFF                 -- disable WDT
+OSCCON_SCS = 0                      -- select primary oscillator
+OSCTUNE_PLLEN = TRUE                -- use PLL
+--
+enable_digital_io()                 -- make all pins digital IO
+_usec_delay (100_000) -- wait for power to stabilize
+
+include delay
+
+const PRINT_MAX_VAR_SIZE = 6
+include print
+
+const serial_hw_baudrate  = 9600
+include serial_hardware
+serial_hw_init()
+alias serial_write is serial_hw_write
+alias serial_read is serial_hw_read
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+const dword LARGE_ARRAY_6_SIZE = 512
+const dword LARGE_ARRAY_6_VARIABLE_SIZE = 1
+include large_array_6
+alias crc_large_array_bytes is large_array_6
+
+const dword LARGE_ARRAY_5_SIZE = 512
+const dword LARGE_ARRAY_5_VARIABLE_SIZE = 2
+include large_array_5
+alias crc_large_array_word is large_array_5
+
+const dword LARGE_ARRAY_4_SIZE = 512
+const dword LARGE_ARRAY_4_VARIABLE_SIZE = 4
+include large_array_4
+alias crc_large_array_dword is large_array_4
+
+include crc7_sd_card
+
+const byte test_data[] = {0x40, 0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x05}
+const word test_data_length = 10
+
+var byte crc7_value
+var word i
+
+procedure seperator() is
+   serial_data = 13
+   serial_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
+end procedure
+
+var byte sample_started[] = "***Jallib Sample Started***"
+print_string(serial_data, sample_started)
+print_crlf(serial_data)
+seperator()
+print_string(serial_data, "CRC7-BITWISE DEMONSTRATION")
+print_crlf(serial_data)
+seperator()
+
+-- Test 1: Incremental
+print_string(serial_data, "Test 1: CRC7 Incremental Calculation")
+print_crlf(serial_data)
+print_string(serial_data, "Processing ")
+print_word_dec(serial_data, test_data_length)
+print_string(serial_data, " bytes...")
+print_crlf(serial_data)
+crc7_start(test_data_length)
+for test_data_length using i loop
+   crc7_calculate_bytes(test_data[i])
+end loop
+if crc7_is_complete() then
+   crc7_value = crc7_get_result()
+   print_string(serial_data, "CRC7 Result: 0x")
+   print_byte_hex(serial_data, crc7_value)
+   print_crlf(serial_data)
+end if
+seperator()
+
+-- Test 2: Array one-shot
+print_string(serial_data, "Test 2: Array-based CRC Calculation")
+print_crlf(serial_data)
+crc7_value = crc7_calculate_array_bytes(test_data, test_data_length)
+print_string(serial_data, "CRC7 Array Result: 0x")
+print_byte_hex(serial_data, crc7_value)
+print_crlf(serial_data)
+seperator()
+
+-- Test 3: Large array (bytes)
+print_string(serial_data, "Test 3: Large Array CRC Calculation")
+print_crlf(serial_data)
+for test_data_length using i loop
+   crc_large_array_bytes[i] = test_data[i]
+end loop
+crc7_value = crc7_calculate_large_array_bytes(test_data_length)
+print_string(serial_data, "CRC7 Large Array Result: 0x")
+print_byte_hex(serial_data, crc7_value)
+print_crlf(serial_data)
+seperator()
+
+-- Test 4: Verify helpers
+print_string(serial_data, "Test 4: Result Validation")
+print_crlf(serial_data)
+const byte expected_crc7 = 0xB5
+if crc7_verify_data(test_data, test_data_length, expected_crc7) then
+   print_string(serial_data, "CRC7 Auto-Verify: PASS")
+else
+   print_string(serial_data, "CRC7 Auto-Verify: FAIL")
+end if
+print_crlf(serial_data)
+if crc7_verify_large_array(test_data_length, expected_crc7) then
+   print_string(serial_data, "CRC7 Large Array Verify: PASS")
+else
+   print_string(serial_data, "CRC7 Large Array Verify: FAIL")
+end if
+print_crlf(serial_data)
+seperator()
+
+print_string(serial_data, "=== CRC7-BITWISE SAMPLE COMPLETE ===")
+print_crlf(serial_data)
+print_string(serial_data, "##DONE##")
+print_crlf(serial_data)
+
+
