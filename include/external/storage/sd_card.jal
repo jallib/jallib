@@ -22,10 +22,6 @@
 -- http://www.rjhcoding.com/avrc-sd-interface-3.php
 --
 
-if !defined(SD_USE_CRC) then
-   const bit SD_USE_CRC = FALSE
-end if
-
 const word SD_BYTE_PER_SECTOR = 512
 
 include print
@@ -548,12 +544,6 @@ function sd_is_inserted() return bit is
    for 11 loop
       spi_master = 0xFF    -- send clock pulses (0xFF 10 times)
    end loop
-   
-   -- Add extra delay for SD card initialization
-   _usec_delay(10_000)  -- 10ms delay
-
-   -- Slow down SPI for CMD0 command
-   spi_master_set_speed(SPI_RATE_FOSC_16)  -- Use slower speed for CMD0
 
    -- try to contact the sd card
    var byte count1 = 0
@@ -565,22 +555,16 @@ function sd_is_inserted() return bit is
       sd_disable  -- disable the sd card
       count1 = count1 + 1    -- increment count
       if count1 == 100 then
-         print_string(serial_data, "CMD0 Failed after 100 tries")
-         print_crlf(serial_data)
-         sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
-         sd_has_error = 1
+         sd_error = SD_INIT_FAILURE
+
          return
       end if
    end loop
-   
-   -- Restore original SPI speed
-   spi_master_set_speed(SPI_RATE_FOSC_4)  -- Restore faster speed
-   
 
    if response == 0xFF then
-      sd_error_details = sd_error_details | (word(1) << SD_DEVICE_NOT_FOUND)
-      sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
-      sd_has_error = 1
+      sd_error = SD_DEVICE_NOT_FOUND
+      sd_error = SD_INIT_FAILURE
+
       sd_number_of_sectors = 0
       sd_has_init = 0
 
@@ -592,7 +576,7 @@ function sd_is_inserted() return bit is
 
       return 0
    else
-   
+
       if sd_has_init == 0 then
          sd_init()
          ;serial_data = "%"
@@ -611,181 +595,96 @@ end function
 --------------------------------------------------------------------------------
 procedure sd_init() is
    var byte response = 0 -- sd_card command response
-   var word init_step = 0
 
-   print_string(serial_data, "SD Init: Starting initialization...")
-   print_crlf(serial_data)
-
-   if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
+   if defined(USE_CRC) then
       -- Initialize CRC lookup tables for faster calculation
-      print_string(serial_data, "SD Init: Initializing CRC...")
-      print_crlf(serial_data)
       crc_init()
    end if
    
    sd_has_init = 1
-   init_step = 1
-   
-   print_string(serial_data, "SD Init: Checking if card is inserted...")
-   print_crlf(serial_data)
    if !sd_is_inserted() then
-      print_string(serial_data, "SD Init: Card not inserted - FAILED")
-      print_crlf(serial_data)
-      sd_error_details = sd_error_details | (word(1) << SD_DEVICE_NOT_FOUND)
-      sd_has_error = 1
       return
    end if
 
-   print_string(serial_data, "SD Init: Card detected - continuing...")
-   print_crlf(serial_data)
+
    sd_number_of_sectors = 0
-   init_step = 2
 
    -- send SD_SEND_IF_COND command
-   print_string(serial_data, "SD Init: Sending IF_COND command...")
-   print_crlf(serial_data)
    sd_enable()   -- enable the sd card
    send_command(SD_SEND_IF_COND, 0x1AA, response)
-   print_string(serial_data, "SD Init: IF_COND response: ")
-   print_byte_hex(serial_data, response)
-   print_crlf(serial_data)
+   ;print_byte_hex(serial_data,response)
 
    var bit illegal_command at response : SD_ILLEGAL_COMMAND
    if illegal_command == TRUE then -- SD CARD SPEC 1
-      print_string(serial_data, "SD Init: Standard Capacity card detected")
-      print_crlf(serial_data)
+      ;print_string(serial_data, "STANDARD CAPACITY\r\n")
       sd_card_type = SD_STANDARD_CAPACITY
-      init_step = 3
 
       sd_enable()  -- enable the sd card
 
-      print_string(serial_data, "SD Init: Waiting for card ready...")
-      print_crlf(serial_data)
-      if sd_ready() == 0 then            -- wait till sd card is ready
-         print_string(serial_data, "SD Init: Card ready timeout - FAILED")
-         print_crlf(serial_data)
+      if !sd_ready() == 0 then            -- wait till sd card is ready
          sd_error_details = sd_error_details | (word(1) << SD_INIT_FAILURE)
          sd_has_error = 1
          return
       end if
 
-      print_string(serial_data, "SD Init: Card ready - getting sectors...")
-      print_crlf(serial_data)
       sd_disable -- disable the sd card
       sd_get_number_of_sectors()
 
-      print_string(serial_data, "SD Init: Standard capacity card initialized successfully")
-      print_crlf(serial_data)
       return
    else -- SD CARD SPEC 2
-      print_string(serial_data, "SD Init: High Capacity card detected")
-      print_crlf(serial_data)
-      init_step = 4
-      
-      -- Read IF_COND response data
-      print_string(serial_data, "SD Init: Reading IF_COND response data...")
-      print_crlf(serial_data)
+      ;print_byte_hex(serial_data,spi_master)
+      ;print_byte_hex(serial_data,spi_master)
+      ;print_byte_hex(serial_data,spi_master)
+      ;print_byte_hex(serial_data,spi_master)
       response = spi_master
       response = spi_master
       response = spi_master  ;0x01
       response = spi_master  ;0xAA
       sd_disable    -- disable the sd card
 
-      print_string(serial_data, "SD Init: IF_COND data response: ")
-      print_byte_hex(serial_data, response)
-      print_crlf(serial_data)
-
       if response == 0xAA then
-         print_string(serial_data, "SD Init: IF_COND data valid - continuing...")
-         print_crlf(serial_data)
          sd_enable()  -- enable the sd card
-         init_step = 5
 
          -- check if it has completed init
-         print_string(serial_data, "SD Init: Waiting for card initialization...")
-         print_crlf(serial_data)
-         var word init_attempts = 0
          forever loop
             send_command(SD_APP_CMD, 0, response)
             send_command(SD_SD_APP_OP_COND,0x40_00_00_00, response)
             if response == 0 then
                exit loop
             end if
-            init_attempts = init_attempts + 1
-            if init_attempts > 1000 then
-               print_string(serial_data, "SD Init: Initialization timeout - FAILED")
-               print_crlf(serial_data)
-               sd_error_details = sd_error_details | (word(1) << SD_TIMED_OUT)
-               sd_has_error = 1
-               sd_disable
-               return
-            end if
          end loop
 
-         print_string(serial_data, "SD Init: Card initialization complete")
-         print_crlf(serial_data)
-         init_step = 6
-
          -- read OCR here
-         print_string(serial_data, "SD Init: Reading OCR...")
-         print_crlf(serial_data)
          send_command(SD_READ_OCR,0, response)
          if (spi_master & 0x40) > 0 then
             sd_card_type = SD_HIGH_CAPACITY
-            print_string(serial_data, "SD Init: High Capacity card confirmed")
-            print_crlf(serial_data)
+            ;print_string(serial_data, "HIGH CAPACITY\r\n")
          else -- sd card spec 2 standard capacity??
             sd_card_type = SD_STANDARD_CAPACITY
-            print_string(serial_data, "SD Init: Standard Capacity card confirmed")
-            print_crlf(serial_data)
+            ;print_string(serial_data, "STANDARD CAPACITY\r\n")
          end if
          response = spi_master
          response = spi_master
          response = spi_master
 
          -- set block size to 512
-         print_string(serial_data, "SD Init: Setting block size to 512...")
-         print_crlf(serial_data)
          send_command(SD_SET_BLOCKLEN,512, response)
 
-         print_string(serial_data, "SD Init: Waiting for card ready...")
-         print_crlf(serial_data)
-         if sd_ready() == 0 then            -- wait till sd card is ready
-            print_string(serial_data, "SD Init: Card ready timeout - FAILED")
-            print_crlf(serial_data)
+
+         if !sd_ready() == 0 then            -- wait till sd card is ready
             sd_error_details = sd_error_details | (word(1) << SD_TIMED_OUT)
             sd_has_error = 1
          end if
 
          sd_disable  -- disable the sd card
-         init_step = 7
       else
-         print_string(serial_data, "SD Init: IF_COND data invalid - FAILED")
-         print_crlf(serial_data)
          sd_has_error = TRUE
          sd_disable  -- disable the sd card
          sd_get_number_of_sectors()
          return
       end if
    end if
-   
-   print_string(serial_data, "SD Init: Getting card size...")
-   print_crlf(serial_data)
    sd_get_number_of_sectors()
-   
-   -- Report final status
-   print_string(serial_data, "SD Init: Initialization complete - Step ")
-   print_word_hex(serial_data, init_step)
-   print_crlf(serial_data)
-   
-   if sd_has_error then
-      print_string(serial_data, "SD Init: ERRORS DETECTED:")
-      print_crlf(serial_data)
-      sd_print_error(serial_data)
-   else
-      print_string(serial_data, "SD Init: SUCCESS - No errors detected")
-      print_crlf(serial_data)
-   end if
 end procedure
 
 --------------------------------------------------------------------------------
@@ -4525,7 +4424,7 @@ end procedure
 -- Gets sd card size in number of sectors into dword sd_number_of_sectors
 -- Total size in bytes = sd_number_of_sectors * 512
 --------------------------------------------------------------------------------
-procedure sd_get_number_of_sectors() is
+ procedure sd_get_number_of_sectors() is
    sd_enable()  -- enable the sd card
 
    var byte x
@@ -4534,33 +4433,18 @@ procedure sd_get_number_of_sectors() is
    var byte*2 c_size_mult
    var byte _c_size_mult[2] at c_size_mult
 
-   -- Slow down SPI for CSD command (some cards are sensitive to speed)
-   spi_master_set_speed(SPI_RATE_FOSC_16)  -- Use slower speed for CSD command
    send_command(SD_SEND_CSD,0,x)
-   
-   -- Check if CSD command was successful
-   if x != 0 then
-      sd_error_details = sd_error_details | (word(1) << SD_COMMAND_NOT_SUPPORTED)
-      sd_has_error = 1
-      sd_disable()
-      return
-   end if
 
    -- wait till ready
    var word step = 0
-   while (spi_master != 0xFE) & (spi_master != 0x40) & (spi_master != 0x00) loop      -- wait till data is ready to read
+   while spi_master != 0xFE loop      -- wait till data is ready to read
       if step == 10000 then
-         print_string(serial_data, "CSD Data Timeout")
-         print_crlf(serial_data)
-         sd_error_details = sd_error_details | (word(1) << SD_COMMAND_TIME_OUT)
-         sd_has_error = 1
-         sd_disable()
+         sd_error = SD_COMMAND_TIME_OUT
+
          return
       end if
       step = step + 1
    end loop
-   
-   -- If we got here, we have a valid start token (0xFE, 0x40, or 0x00)
 
    if sd_card_type == SD_STANDARD_CAPACITY then
 
@@ -4600,21 +4484,9 @@ procedure sd_get_number_of_sectors() is
          x = spi_master
       end loop
 
-      -- For SDHC/SDXC, c_size is 22 bits (bits 69-48)
-      -- Read the raw bytes first
-      var byte temp_byte1 = spi_master
-      var byte temp_byte2 = spi_master  
-      var byte temp_byte3 = spi_master
-      
-      -- Extract c_size from bits 69-48 (22 bits total)
-      -- For SDHC: c_size is 22 bits starting at bit 48
-      -- The correct bit extraction for SDHC cards
-      _c_size[2] = (temp_byte1 & 0b00111111)
-      _c_size[1] = (temp_byte2 & 0b00111111)  
-      _c_size[0] = (temp_byte3 & 0b00111111)
-      
-      -- Now shift to get the correct 22-bit value
-      c_size = (dword(_c_size[2]) << 16) | (dword(_c_size[1]) << 10) | (dword(_c_size[0]) << 4)
+      _c_size[2] = spi_master & 0b00111111
+      _c_size[1] = spi_master
+      _c_size[0] = spi_master
 
       -- throw data we dont' need
       for 6 loop
@@ -4626,42 +4498,9 @@ procedure sd_get_number_of_sectors() is
       x = spi_master
 
       sd_disable  -- disable the sd card
-      
-      -- Calculate sectors using the standard SDHC formula
       sd_number_of_sectors = (dword(c_size)+1) * 1024
 
-      -- Sanity check: if the calculated size is unreasonably large, 
-      -- it's likely a parsing error. Based on testing, cards showing >10M sectors
-      -- are often misread. Use a more conservative threshold.
-      if sd_number_of_sectors > 10000000 then  -- >10M sectors (>5GB)
-         print_string(serial_data, "SD Size: Detected potentially incorrect size, using fallback calculation")
-         print_crlf(serial_data)
-         
-         -- Based on high sector testing, most cards are actually 4GB
-         -- Use estimates based on c_size value and test results
-         if c_size < 5 then
-            sd_number_of_sectors = 4000000   -- ~2GB = 4M sectors
-            print_string(serial_data, "SD Size: Estimated 2GB card")
-         elsif c_size < 10 then
-            sd_number_of_sectors = 8000000   -- ~4GB = 8M sectors
-            print_string(serial_data, "SD Size: Estimated 4GB card")
-         elsif c_size < 20 then
-            sd_number_of_sectors = 8000000   -- ~4GB = 8M sectors (most common)
-            print_string(serial_data, "SD Size: Estimated 4GB card")
-         elsif c_size < 50 then
-            sd_number_of_sectors = 8000000   -- ~4GB = 8M sectors
-            print_string(serial_data, "SD Size: Estimated 4GB card")
-         else
-            sd_number_of_sectors = 8000000   -- ~4GB = 8M sectors (default for large c_size values)
-            print_string(serial_data, "SD Size: Estimated 4GB card (default)")
    end if
-         print_crlf(serial_data)
-      end if
-
-   end if
-   
-   -- Restore original SPI speed
-   spi_master_set_speed(SPI_RATE_FOSC_4)  -- Restore faster speed
 end procedure
 
 -- =============================================================================
