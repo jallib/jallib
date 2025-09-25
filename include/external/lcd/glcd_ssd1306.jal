@@ -1,8 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for GLCD using the SSD1306 display controller.
--- Author: Rob Jansen, Copyright (c) 2020..2022, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2020..2025, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r6
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -16,37 +16,41 @@
 --          Adafruit_SSD1306 library and some others.         
 --
 -- Notes: This library supports the control of the display via one of two
---        interfaces IIC or 4-wire SPI which depends om the module that is used. 
---        The default is hardware IIC control but this can be overruled using 
---        software IIC control by defining the following constant:
---        -) const SSD1306_SOFTWARE_IIC = TRUE 
---
---        When SPI needs to be used instead of IIC, this can be controlled by
---        using the following constant:
---        -) const SSD1306_SPI_CONTROL = TRUE  
---        By default the SPI hardware is used. This library also implements
---        a software SPI interface. In order to use this define the following:
+--        interfaces IIC or 4-wire SPI which depends on the interface that is 
+--        included by the main program before including this library. 
+--        This library supports control of the module using I2C software, 
+--        I2C hardware, I2C hardware2, SPI hardware and SPI hardware2. 
+--        Next to that the user can select a software SPI interface. In order 
+--        to use this define the following:
 --        -) const SSD1306_SOFTWARE_SPI = TRUE 
 --
 --        The default display pixel size is 128 x 64 but can be changed to
 --        128 x 32 using the following:
 --        -) const SSD1306_Y_32_PIXELS = TRUE 
 --
---        The following pins must be defined by the main program before 
---        including this library. Common pins for using IIC or SPI:
---        -) alias ssd1306_sck             -- For SPI to D0 of SSD1306, 
---        -) alias ssd1306_sck_direction   -- for IIC to sck of SSD1306  
---        -) alias ssd1306_sdo             -- For SPI to D1 of SSD1306,  
---        -) alias ssd1306_sdo_direction   -- for IIC to sda of SSD1306
---        These extra pins are needed when using SPI:
---        -) alias ssd1306_csn             -- For SPI to CS of SSD1306,  
---        -) alias ssd1306_csn_direction   -- not available for IIC   
---        -) alias ssd1306_dc              -- For SPI to CS of SSD1306, 
---        -) alias ssd1306_dc_direction    -- not available for IIC 
+--        The main program must include the required interface library and
+--        initialize it. 
+--        -) For IIC the maximum clock is 400 kHz. 
+--        -) For SPI use SPI_MODE_00 with a maximum clock of 10 MHz.
+--
+--        For IIC, the main program has to define the required IIC pins. 
+--        Nex to that the following SPI pins must be defined by the main
+--        main before including this library. 
+--        Only when using SSD1306_SOFTWARE_SPI:
+--        -) alias ssd1306_sck             -- For SPI to D0 of SSD1306. 
+--        -) alias ssd1306_sck_direction  
+--        -) alias ssd1306_sdo             -- For SPI to D1 of SSD1306.  
+--        -) alias ssd1306_sdo_direction   
+--        Additonal Required pins:
+--        -) alias ssd1306_csn             -- For SPI to CS of SSD1306.  
+--        -) alias ssd1306_csn_direction   
+--        -) alias ssd1306_dc              -- For SPI to CS of SSD1306. 
+--        -) alias ssd1306_dc_direction    
+--
 --        The SPI version of the SSD1306 uses a hardware reset pin for its reset. 
---        This feature can be used by defining the following: pin
---        -) alias ssd1306_res             -- For SPI to RES of SSD1306, 
---        -) alias ssd1306_res_direction   -- not available for IIC  
+--        This optional feature can be used by defining the following: pin
+--        -) alias ssd1306_res             -- For SPI to RES of SSD1306.
+--        -) alias ssd1306_res_direction   
 --        If not defined the RES pin of the module must be connected to another
 --        reset circuit. It is active low.
 -- 
@@ -57,15 +61,29 @@
 --        text only use can be enabled by defining the following:
 --        -) const SSD1306_TEXT_ONLY = TRUE     
 --
+--        When using a bigger (>8 pixels in height) horizontal oriented 
+--        character font, a character buffer is needed with the size of the 
+--        used font, also see FONT_xxxx_BYTE_PER_CHAR in the font library you 
+--        are using. The default size of this buffer is 64 bytes and can be 
+--        reduced to save data space if a smaller font, or no font, is used.
+--        For example the 12x16 horizontal font uses 32 bytes for one character 
+--        and so we can set the character buffer to this size by:
+--        -) const SSD1306_CHAR_BUFFER_SIZE = 32 
+--        If no buffer is used (e.g. for vertical oriented fonts), you can set
+--        the miniumum size to 1, saving data space.
+--
 --        The default IIC address can be overruled by defining it in the main
 --        program. Note that this is not needed since the default is already set
 --        to the default module IIC address of 0b0111_1000:
 --        -) const byte SSD1306_IIC_ADDRESS = <IIC Address>
 --
---        If IIC hardware interface problems occurs this may be fixed by 
---        swtiching to SMB level signals by defining:
---        const bit _i2c_level = FALSE
-
+--        Note: When writing characters not as pixels, horizontal fonts with 
+--              a height smaller than and larger than 8 pixels are supported
+--              with a maximum width of 16 pixels. For vertical fonts only
+--              fonts with a maximum height of 8 pixels are supported.
+--              The default maximum number of bytes per char is set to 64,
+--              as defined by SSD1306_CHAR_BUFFER_SIZE.
+--
 -- -----------------------------------------------------------------------------
 -- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
 -- -----------------------------------------------------------------------------
@@ -215,7 +233,7 @@ if defined(FONT_AUTO_WRAP) then
        _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\tthe default behavior for this GLCD controller"
    end if
 else
-    const bit FONT_AUTO_WRAP = TRUE
+   const bit FONT_AUTO_WRAP = TRUE
 end if
 
 
@@ -271,11 +289,22 @@ const bit _SSD1306_DATA_TRANSMISSION    = 1
 const bit _SSD1306_COMMAND_TRANSMISSION = 0
 
 -- Private procedures.
+function _ssd1306_spi_sw_exchange(byte in data) return byte
 procedure _ssd1306_start_transmission(bit in data_transmission)
 procedure _ssd1306_stop_transmission()
 procedure _ssd1306_write_byte(byte in data)
+procedure _ssd1306_write_one_data_byte(byte in data)
 
+-- When using horizontal fonts we need a buffer to store one character.
 if defined(GLCD_FONT_USAGE) then
+   -- Define the buffer for writing characters using bigger fonts.
+   if !defined(SSD1306_CHAR_BUFFER_SIZE) then
+      -- Reserve for the biggest JAL font currently available,
+      -- which is the 16x32 font using 64 bytes. 
+      const SSD1306_CHAR_BUFFER_SIZE = 64
+   end if 
+   var byte _ssd1306_char_buffer[SSD1306_CHAR_BUFFER_SIZE]
+
    procedure ssd1306_write_char(byte in x, byte in y, byte in char)
    -- Define the glcd alias for this procedure.
    alias glcd_write_char is ssd1306_write_char  
@@ -283,61 +312,32 @@ if defined(GLCD_FONT_USAGE) then
    include glcd_common  
 end if
 
--- ------------------------------- Final implemenation -------------------------
-
--- Define required settings for the SPI or IIC interface, depending on the
--- selection done by the main program.
-if defined(SSD1306_SPI_CONTROL) then
-   -- In case of doing SPI in software we will not include the SPI library but
-   -- replace the used function by the software implementation with the same name.
-   if defined(SSD1306_SOFTWARE_SPI) then  
-      function spi_master_hw_exchange(byte in data) return byte
-   else
-     -- Use the spi_master_hw_exchange function from hardware SPI library.
-     include spi_master_hw
-   end if
-else
-   -- Use IIC control. Set the clock speed to 400kHz which is the absolute 
-   -- maximum for this chip. 
-   if !defined(_i2c_bus_speed) then
-      const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz clock speed) 
-   end if
-   if defined(SSD1306_SOFTWARE_IIC) then 
-      if !defined(i2c_scl) then
-         alias i2c_scl is ssd1306_sck
-      end if
-      if !defined(i2c_sda) then
-         alias i2c_sda is ssd1306_sdo
-      end if
-      if !defined(i2c_scl_direction) then
-         alias i2c_scl_direction is ssd1306_sck_direction
-      end if
-      if !defined(i2c_sda_direction) then
-         alias i2c_sda_direction is ssd1306_sdo_direction
-      end if
-      include i2c_software
-   else
-      -- Hardware IIC. In some device files, the IIC pins are already defined 
-      -- and assigned to a specific hardware pin (see datasheet of your PIC).
-      if !defined(pin_scl_direction) then
-         alias pin_scl_direction  is ssd1306_sck_direction
-      end if
-      if !defined(pin_sda_direction) then
-         alias pin_sda_direction is ssd1306_sdo_direction
-      end if
-      -- I2C level setting. For SMB levels use: const bit _i2c_level = FALSE
-      if !defined(_i2c_level) then 
-         const bit _i2c_level = TRUE -- i2c levels (not SMB)
-      end if
-      include i2c_hardware
-   end if
+-- Check which interface is used and map it to one ssd1306 interface.
+if defined(SSD1306_SOFTWARE_SPI) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is _ssd1306_spi_sw_exchange
+elsif defined(spi_master_hw_exchange) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is spi_master_hw_exchange
+elsif defined(spi_master_hw2_exchange) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is spi_master_hw2_exchange
+elsif defined(i2c_transmit_byte) then
+   alias _ssd1306_interface is i2c_transmit_byte 
+   alias _ssd1306_start is i2c_start
+   alias _ssd1306_stop is i2c_stop
+elsif defined(i2c_transmit_byte2) then
+   alias _ssd1306_interface is i2c_transmit_byte2
+   alias _ssd1306_start is i2c_start2
+   alias _ssd1306_stop is i2c_stop2
 end if 
 
+-- ------------------------------- Final implemenation -------------------------
 
-if defined(SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
+if defined(_SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
 -- SPI interface done in software using same the function name as hardware SPI.
 -- Note: There is no data in used in this SPI variant, only data out.
-  function spi_master_hw_exchange(byte in data) return byte is
+   function _ssd1306_spi_sw_exchange(byte in data) return byte is
 
      var bit data_bit_out at data:7
 
@@ -353,16 +353,17 @@ if defined(SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then
      return data  -- Nothing to return so return the data sent.      
 
   end function
+
 end if 
 
 
--- Initialize the control pins, the IIC or SPI interface and the initialize the 
--- SSD1306 module. When SPI is used and the reset pin is defined then the module 
--- will also be hardware reset.
+-- Initialize the control pins abd the SSD1306. When SPI is used and the reset
+-- pin is defined then the module will also be hardware reset.
 procedure ssd1306_init() is
 
-   if defined(SSD1306_SPI_CONTROL) then
-      -- Initialize SPI pins.
+   if defined(_SSD1306_SPI_CONTROL) then
+
+      -- Initialize common SPI pins.
       ssd1306_sck_direction = output
       ssd1306_sdo_direction = output
       ssd1306_csn_direction = output
@@ -371,13 +372,10 @@ procedure ssd1306_init() is
       ssd1306_dc  = _SSD1306_COMMAND_TRANSMISSION
 
       if defined(SSD1306_SOFTWARE_SPI) then
-         -- SPI done in software, initialize the relevant pins.
+         -- SPI done in software, initialize additonal pins.
          ssd1306_sck = LOW
          ssd1306_sdo = LOW 
-      else 
-         -- SPI done in hardware, slow down clock a bit.
-         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
-      end if
+      end if  
 
       -- Reset the device if a hardware reset pin is present. Only available in
       -- the SPI version of the module.
@@ -390,9 +388,6 @@ procedure ssd1306_init() is
          ssd1306_rst = HIGH     
       end if 
       
-   else
-      -- Use IIC interface, can be hardware IIC or software IIC.
-      i2c_initialize()
    end if 
 
    -- Initialize the module. Most values are reset defaults. See datasheet for 
@@ -407,7 +402,7 @@ procedure ssd1306_init() is
    _ssd1306_write_byte(_SSD1306_COMSCANDEC)
    _ssd1306_write_byte(_SSD1306_MEM_ADDRESS_MODE)
    _ssd1306_write_byte(0x00) -- Horizontal addressing mode.
-   _ssd1306_write_byte(_SSD1306_SET_STARTLINE)
+    _ssd1306_write_byte(_SSD1306_SET_STARTLINE)
    _ssd1306_write_byte(_SSD1306_SET_DISPLAY_OFFSET)
    _ssd1306_write_byte(0x00)
    _ssd1306_write_byte(_SSD1306_SET_CHARGEPUMP)
@@ -559,6 +554,7 @@ end procedure
 -- Not implement in text only mode.
 if defined(SSD1306_TEXT_ONLY) then
    procedure ssd1306_write_pixel(byte in x, byte in y) is
+      -- Not implemented for text only mode. 
    end procedure 
 else
    procedure ssd1306_write_pixel(byte in x, byte in y) is
@@ -818,32 +814,111 @@ if defined(GLCD_FONT_USAGE) then
    procedure ssd1306_write_char(byte in x, byte in y, byte in char) is
 
       var word index
-      var byte offset
-      var byte ch
+      var byte offset, y_offset, buffer_offset
+      var byte ch, mask, bit_count 
 
-      -- Position cursor but map Y-coordindate on pages (lines) not pixels.
-      ssd1306_goto(x, y / glcd_font_current_height_)
-       
-      offset = char - 32 -- Fix for ascii value
+      -- Select the right character from the font table.
+      offset = char - 32 -- Fix for ascii value.
       index = 0
       for offset loop
          index = index + word(glcd_font_current_byte_per_char_)
       end loop
+ 
+      -- The SSD1306 uses vertical writing of pixels. 
+      if (glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL) then
+         -- First perform a range check to prevent buffer overflow.
+         if (glcd_font_current_byte_per_char_ <= SSD1306_CHAR_BUFFER_SIZE) then
+            -- Fill the buffer with the character pixel data.
+             for glcd_font_current_byte_per_char_ using offset loop
+               _ssd1306_char_buffer[offset] = glcd_font_lookup(index)
+               index = index + 1
+            end loop 
+            -- Horizontal orientation means we have to rotate the character
+            -- ninety degrees to the left and keep top left horizontal. 
+            mask = 0 
+            for glcd_font_current_width_ using offset loop
+               -- Preset mask again when used. 
+               if (mask == 0) then
+                  mask = 0b1000_0000 -- Start with left most significant bit.
+               end if 
+               -- Set the starting position buffer pointer.
+               buffer_offset = offset / 8
+               bit_count = 0
+               y_offset = 0
+               ch = 0
+               for glcd_font_current_height_ loop
+                  ch = ch >> 1
+                  if (_ssd1306_char_buffer[buffer_offset] & mask) != 0 then
+                     ch = ch | 0b1000_0000
+                  end if 
+                  bit_count = bit_count + 1
+                  -- If 8 bits are done, write the byte and go to next bit.
+                  if (bit_count == 8) then
+                     -- Invert if needed. 
+                     if (glcd_background_color == GLCD_BLACK) then
+                        ch = ch ^ 0xFF
+                     end if
+                     ssd1306_goto(x + offset, (y / 8) + y_offset)
+                     _ssd1306_write_one_data_byte(ch)
+                     ch = 0
+                     bit_count = 0
+                     y_offset = y_offset + 1
+                  end if 
+                  -- Next byte from buffer for next column. 
+                  if (glcd_font_current_width_ > 8) then
+                     -- Note: Works only for a maximum width of 16!
+                     buffer_offset = buffer_offset + 2
+                  else
+                     buffer_offset = buffer_offset + 1
+                  end if 
+               end loop
+               -- If the height is not a full byte, complete the last part.
+              if ((glcd_font_current_height_ % 8) != 0) then
+;               if (bit_count != 0) then
+                  ch = ch >> (8 - bit_count)
+                  if (glcd_background_color == GLCD_BLACK) then
+                     ch = ch ^ 0xFF
+                  end if
+                  ssd1306_goto(x + offset, (y / 8) + y_offset)
+                  _ssd1306_write_one_data_byte(ch)              
+               end if 
+               -- Next bit.
+               mask = mask >> 1
+            end loop
+            -- We need to restore the x- and y-coordinate for the next write.
+            glcd_char_x_pos = x 
+            glcd_char_y_pos = y
+         end if 
+
+      elsif glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+
+         -- Position cursor but map Y-coordindate on pages (lines) not pixels.
+         ssd1306_goto(x, y / glcd_font_current_height_)
+       
+         offset = char - 32 -- Fix for ascii value
+         index = 0
+         for offset loop
+            index = index + word(glcd_font_current_byte_per_char_)
+         end loop
             
-      _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
-      for glcd_font_current_byte_per_char_ loop
-         ch = glcd_font_lookup(index)
-         if (glcd_background_color == GLCD_BLACK) then
-            ch = ch ^ 0xFF
-         end if
-         _ssd1306_write_byte(ch)
-         index = index + 1
-      end loop
-      -- Add blank space between characters
-      _ssd1306_write_byte(byte(glcd_background_color) ^ 0xFF)
-      _ssd1306_stop_transmission()
+         _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
+         for glcd_font_current_byte_per_char_ loop
+            ch = glcd_font_lookup(index)
+            if (glcd_background_color == GLCD_BLACK) then
+               ch = ch ^ 0xFF
+            end if
+            _ssd1306_write_byte(ch)
+            index = index + 1
+         end loop
+         -- Add blank space between characters
+         _ssd1306_write_byte(byte(glcd_background_color) ^ 0xFF)
+         _ssd1306_stop_transmission()
+
+      end if 
+
 
    end procedure
+
 end if
 
 -- ----------------------------- Advanced functions ---------------------------
@@ -857,6 +932,7 @@ procedure ssd1306_send_command(byte in command) is
    _ssd1306_stop_transmission()     
    
 end procedure
+
 
 -- Send a command to the ssd1306 with a paramater. It is up to the user to 
 -- set the correct command and parameter as described in the datasheet.
@@ -872,21 +948,24 @@ end procedure
 
 -- ----------------------------- Private functions ---------------------------
 
--- Start an IIC or SPI data or command transmission. SPI uses 4 wires.
+-- Start an IIC or SPI data or command transmission. 
 procedure _ssd1306_start_transmission(bit in data_transmission) is
 
-   if defined(SSD1306_SPI_CONTROL) then 
+   if defined(_SSD1306_SPI_CONTROL) then 
       ssd1306_csn = LOW
       ssd1306_dc  = data_transmission
    else
+
       var bit _trash 
-      i2c_start()
-      _trash = i2c_transmit_byte(SSD1306_IIC_ADDRESS)
+
+      _ssd1306_start()
+      _trash = _ssd1306_interface(SSD1306_IIC_ADDRESS)
       if data_transmission then
-         _trash = i2c_transmit_byte(0x40)
+         _trash = _ssd1306_interface(0x40)
       else
-         _trash = i2c_transmit_byte(0x00)
+         _trash = _ssd1306_interface(0x00)
       end if
+
    end if
     
 end procedure
@@ -895,30 +974,31 @@ end procedure
 -- Stop an IIC or SPI transmission.
 procedure _ssd1306_stop_transmission() is
 
-   if defined(SSD1306_SPI_CONTROL) then 
+   if defined(_SSD1306_SPI_CONTROL) then 
       ssd1306_csn = HIGH
-    else
-      i2c_stop()
+   else
+      _ssd1306_stop()
    end if
     
 end procedure
 
 
--- Write a byte to the SSD1306.
+-- Write a byte to the SSD1306. Transmission must have been started.
 procedure _ssd1306_write_byte(byte in data) is
 
-   if defined(SSD1306_SPI_CONTROL) then 
-      var byte _trash
-      _trash = spi_master_hw_exchange(data)
-   else
-      var bit _trash 
-     _trash = i2c_transmit_byte(data)
-   end if
+   var byte _trash
+
+   _trash = _ssd1306_interface(data)
 
 end procedure
 
      
+-- Write one data byte to the SSD1306. Transmission is not active.
+procedure _ssd1306_write_one_data_byte(byte in data) is
 
- 
+   _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
+   _ssd1306_write_byte(data)
+   _ssd1306_stop_transmission()
 
+end procedure
 

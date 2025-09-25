@@ -1,7 +1,7 @@
 -- Title: GLCD SSD1306 demo sample showing text (fonts).
--- Author: Rob Jansen, Copyright (c) 2020..2021, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2020..2025, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r5
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -40,35 +40,58 @@ enable_digital_io()
 -- Wait some time for the hardware to power up.
 _usec_delay(100_000)
 
--- Define the pins. In this case we define only the IIC. 
-alias ssd1306_sck is pin_C0 -- Pin 10 for 14 pin DIP
-alias ssd1306_sck_direction is pin_C0_direction
-alias ssd1306_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
-alias ssd1306_sdo_direction is pin_C1_direction 
-
 -- Since this PIC does not have more than 1024 bytes of data memory we use
--- will write the text only mode.
+-- will write the text only mode. This limits the font options to fonts that
+-- are at most 8 pixels high. 
 const SSD1306_TEXT_ONLY = TRUE
-
--- We use the IIC hardware of this PIC but if we want to be flexible in our
--- pin assignment we can also use a software implementation by defining
--- the following constant.
--- const SSD1306_SOFTWARE_IIC = TRUE
-
--- If hardware IIC interface problems occur try fixing it with this setting:
--- const bit _i2c_level = FALSE  
 
 -- The default display resolution is 128 x 64. When using 128 x 32 define:
 -- const SSD1306_Y_32_PIXELS = TRUE
+
+-- In this sample program you can select between IIC or SPI communication.
+const USE_IIC = TRUE -- When commenting this out, the program will use SPI.
+if defined(USE_IIC) then
+   -- Using IIC, include and initialize IIC.
+   const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz) 
+   const bit _i2c_level = TRUE   -- i2c levels (not SMB)
+   alias i2c_scl is pin_C0
+   alias i2c_scl_direction is pin_C0_direction
+   alias i2c_sda is pin_C1
+   alias i2c_sda_direction is pin_C1_direction 
+   include i2c_hardware
+   i2c_initialize()
+else
+   -- Using SPI.
+   ; Define the required SPI pins.
+   alias ssd1306_sck is pin_c0                      -- To D0 of SSD1306 
+   alias ssd1306_sck_direction is pin_c0_direction  
+   alias ssd1306_sdo is pin_c2                      -- To D1 of SSD1306  
+   alias ssd1306_sdo_direction is pin_c2_direction  
+   alias ssd1306_csn is pin_c3                      -- To CS of SSD1306  
+   alias ssd1306_csn_direction is pin_c3_direction  
+   alias ssd1306_dc is pin_c4                       -- To DC of SSD1306 
+   alias ssd1306_dc_direction is pin_c4_direction    
+   -- The SPI version of the SSD1306 uses a hardware reset pin for its reset. 
+   -- This optional feature can be used by defining the following:
+   alias ssd1306_res is pin_c5                      -- To RES of SSD1306 
+   alias ssd1306_res_direction is pin_c5_direction
+
+   -- You can use software SPI too by setting this constant.
+   -- const SSD1306_SOFTWARE_SPI = TRUE 
+   if !defined(SSD1306_SOFTWARE_SPI) then
+      -- Using SPI hardware and initiallize.
+      include spi_master_hw
+      spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+   end if 
+end if 
 
 include delay
 include print
 
 -- Font libraries.
-include glcd_5x7_font
 include glcd_6x8_font
+include glcd_12x16_font
 include glcd_font
-glcd_font_use(FONT_5X7)
 
 -- Include and initialize the GLCD lib. This will also initialize the IIC
 -- interface.
@@ -76,55 +99,54 @@ include glcd_ssd1306
 ssd1306_init()
 
 var byte x
-var bit use_font_1 = false
-
--- First write the demo text.
-ssd1306_clear_screen()
-glcd_font_use(FONT_6X8)
-ssd1306_goto(22,0)
-print_string(glcd,"JAL SSD1306")
-ssd1306_goto(20,1)
-print_string(glcd,"Library Demo")
-ssd1306_goto(30,4)
-print_string(glcd,"2021-09-09")
-ssd1306_goto(30,5)
-print_string(glcd,"Text only")
-ssd1306_goto(32,6)
-print_string(glcd,"Font 6x8")
-delay_1s(3)
-
--- Gotoxy test. Show all corners.
-glcd_font_use(FONT_6X8)
--- Top left.
-ssd1306_goto(0,0)
-glcd = "8"
--- Top utmost right for this font size.
-ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
-glcd = "8"          -- at 122 .. 127.
--- Bottom left.
-ssd1306_goto(0,7)
-glcd = "8"
--- Bottom utmost right for this font size.
-ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
-glcd = "8"          -- at 122 .. 127.
-delay_1s(3)
 
 forever loop
+
+   -- First write the demo text.
+   ssd1306_clear_screen()
+   glcd_font_use(FONT_6X8)
+   ssd1306_goto(22,0)
+   print_string(glcd,"JAL SSD1306")  
+   ssd1306_goto(20,1)
+   print_string(glcd,"Library Demo")
+   ssd1306_goto(30,4)
+   print_string(glcd,"2025-09-25")
+   ssd1306_goto(30,5)
+   print_string(glcd,"Text only")
+   ssd1306_goto(32,6)
+   print_string(glcd,"Font 6x8")
+   delay_1s(3)
+
+   -- Goto test. Show all corners.
+   glcd_font_use(FONT_6X8)
+   -- Top left.
+   ssd1306_goto(0,0)
+   glcd = "8"
+   -- Top utmost right for this font size.
+   ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
+   glcd = "8"          -- at 122 .. 127.
+   -- Bottom left.
+   ssd1306_goto(0,7)
+   glcd = "8"
+   -- Bottom utmost right for this font size.
+   ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
+   glcd = "8"          -- at 122 .. 127.
+   delay_1s(3)
 
    ssd1306_clear_screen()
    ssd1306_goto(0,0)
    
-   -- switch fonts and inform user
-   use_font_1 = !use_font_1
-   if use_font_1 then
-      glcd_font_use(FONT_5X7)
-      print_string(glcd,"Font 5*7          ")
-      delay_1s(1)
-   else
-      glcd_font_use(FONT_6X8)
-      print_string(glcd,"Font 6*8          ")
-      delay_1s(1)
-   end if
+   -- Show big font
+   glcd_font_use(FONT_12X16)
+   print_string(glcd,"Font 12*16" )
+   delay_1s(3)
+
+   -- Continue with 6X8 font.
+   ssd1306_clear_screen()
+   ssd1306_goto(0,0)
+   glcd_font_use(FONT_6X8)
+   print_string(glcd,"Font 6*8")
+   delay_1s(1)
 
    ssd1306_goto(0,3)
    -- we'll print numbers starting with "0" in inverted format.
