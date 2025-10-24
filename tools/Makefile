@@ -1,5 +1,5 @@
 # Title: Makefile to handle common task
-# Author: Sebastien Lelong, Copyright (c) 2008..2023, all rights reserved.
+# Author: Sebastien Lelong, Copyright (c) 2008..2025, all rights reserved.
 # Adapted by: Rob Jansen
 # 
 # This file is part of jallib (https://github.com/jallib/jallib)
@@ -12,6 +12,7 @@ all : dev
 
 WEEKLYBUILDCODENAME=bee
 SAMPLIR_DIR=../sample
+BLINK_DIR=../sample/blink
 TEST_DIR=../test
 INCLUDE_DIR=../include
 JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686
@@ -25,6 +26,12 @@ clean :
 	find ${SAMPLIR_DIR} -name \*.err -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.obj -exec rm {} \;
 	find ${SAMPLIR_DIR} -name \*.asm -exec rm {} \;
+	find ${BLINK_DIR} -name \*.cod -exec rm {} \;
+	find ${BLINK_DIR} -name \*.lst -exec rm {} \;
+	find ${BLINK_DIR} -name \*.hex -exec rm {} \;
+	find ${BLINK_DIR} -name \*.err -exec rm {} \;
+	find ${BLINK_DIR} -name \*.obj -exec rm {} \;
+	find ${BLINK_DIR} -name \*.asm -exec rm {} \;
 	find ${TEST_DIR} -name \*.cod -exec rm {} \;
 	find ${TEST_DIR} -name \*.lst -exec rm {} \;
 	find ${TEST_DIR} -name \*.hex -exec rm {} \;
@@ -36,14 +43,24 @@ clean :
 	# clean distrib dir
 	-rm -fr distrib
 		
+# Compile all regular samples and blink samples.
 compile:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
 	do \
 		../compiler/jalv2-i686 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
 	done 
+	for f in `find ${BLINK_DIR} -name \*.jal`; \
+	do \
+		../compiler/jalv2-i686 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo problem with $$f && exit 255; ) \
+	done 
 
+# Validate all regular blink samples, device samples and device files.
 jsg:
 	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
+	do \
+		./jallib.py validate $$f ;\
+	done 
+	for f in `find ${BLINK_DIR} -name \*.jal`; \
 	do \
 		./jallib.py validate $$f ;\
 	done 
@@ -66,7 +83,8 @@ vimdoc:
 	do \
 		libfile=`basename $$f`; \
 		vimfile=`echo $$libfile | sed "s#\.jal#.txt#"`; \
-		python2.7 jallib.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
+		python3 jallib3.py jalapi -l -d ../sample -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
+		python3 jallib3.py jalapi -l -d ../sample/blink -t jalapi_vim.tmpl -o ../doc/vim/$$vimfile $$f ;\
 	done
 
 matrix:
@@ -78,7 +96,8 @@ generate-docs:
 	do \
 		libfile=`basename $$f`; \
 		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python2.7 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+		python3 jallib3.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
+		python3 jallib3.py jalapi -l -d distrib/jallib-${VERSION}/sample/blink -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
 	done
 	# doc menu...
 	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
@@ -130,14 +149,21 @@ prepare:
 	do \
 		cp ../jallib-export/$$f . || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
-	# keep sample structure, but only for those in TORELEASE
+	# get device samples from  TORELEASE
 	-cd  distrib/jallib-${VERSION} && mkdir sample
 	cd  distrib/jallib-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f sample/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
-	# same for "project"
+	# get all blink samples from TORELEASE
+	-cd  distrib/jallib-${VERSION} && mkdir sample/blink
+	cd  distrib/jallib-${VERSION} && \
+	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample/blink\/ | tr -d '\r'`; \
+	do \
+		cp ../jallib-export/$$f sample/blink/ || (echo problem with $$f ) \
+	done | grep problem && exit 255 || true
+	# same for "project
 	-cd  distrib/jallib-${VERSION} && mkdir project
 	cd  distrib/jallib-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^project\/ | tr -d '\r'`; \
@@ -146,10 +172,13 @@ prepare:
 	done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+[[:digit:]]\+_blink\.jal' | grep -v canopen`; \
-	do \
-		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
-	done
+	# for all_devices package, separate blink samples...
+	find distrib/jallib-export/sample/blink -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/blink \;
+	# Can be removed since all blink samples are in a separate directory
+	# for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+[[:digit:]]\+_blink\.jal' | grep -v canopen`; \
+	# do \
+	#	cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
+	#done
 
 	# also add dependencies
 	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
@@ -213,8 +242,10 @@ archive:
 
 check:
 	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample/blink ../compiler/jalv2-i686
 	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686
 	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample/blink distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
 
 bee-archive:
 	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
@@ -226,11 +257,14 @@ bee-archive:
 
 bee-check:
 	bash check_package_parallel.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample/blink distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
 
 check-quick:
 	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686 test-one
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample/blink ../compiler/jalv2-i686 test-one
 	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686 test-one
 	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686 test-one
+	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample/blink distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686 test-one
 
 maketest: 
 	# for testing the makefile
