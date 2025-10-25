@@ -131,11 +131,12 @@ prepare:
 		cp ../jallib-export/$$f . || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# keep sample structure, but only for those in TORELEASE
-	-cd  distrib/jallib-${VERSION} && mkdir sample
+	# Create directory structure including subdirectories like sample/blink
+	-cd  distrib/jallib-${VERSION} && mkdir -p sample
 	cd  distrib/jallib-${VERSION} && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^sample\/ | tr -d '\r'`; \
 	do \
-		cp ../jallib-export/$$f sample/ || (echo problem with $$f ) \
+		mkdir -p `dirname $$f`; cp ../jallib-export/$$f $$f || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# same for "project"
 	-cd  distrib/jallib-${VERSION} && mkdir project
@@ -146,13 +147,15 @@ prepare:
 	done
 	# for all_devices package, keep everything...
 	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	for f in `find distrib/jallib-export/sample -type f | grep -e '[[:digit:]]\{2\}[[:alpha:]]\+[[:digit:]]\+_blink\.jal' | grep -v canopen`; \
+	# Search recursively for blink samples including sample/blink subdirectory
+	for f in `find distrib/jallib-export/sample -type f -name '*_blink*.jal' | grep -v canopen`; \
 	do \
 		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
 	done
 
 	# also add dependencies
 	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
+	cp distrib/jallib-export/include/jal/delay.jal distrib/jallib-all_devices-${VERSION}/lib
 
 ifneq ($(GENERATE_DOCS),false)
 	$(MAKE) generate-docs
