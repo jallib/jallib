@@ -49,7 +49,13 @@ if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
    include crc16_ccitt_bitwise
    
    --------------------------------------------------------------------------------
-   -- Initialize CRC system (for SD card compatibility)
+   -- Description: Initialize CRC calculation system
+   -- - Prepares CRC libraries for SD card operations
+   -- Parameters: None
+   -- Returns: None
+   -- Notes: CRC libraries handle their own initialization automatically
+   -- - This function exists for SD card library compatibility
+   -- - Only compiled when SD_USE_CRC is enabled
    --------------------------------------------------------------------------------
    procedure crc_init() is
       -- CRC libraries handle their own initialization
@@ -57,7 +63,13 @@ if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
    end procedure
    
    --------------------------------------------------------------------------------
-   -- Clear CRC error (for SD card compatibility)
+   -- Description: Clear CRC error flags
+   -- - Resets CRC error state for retry operations
+   -- Parameters: None
+   -- Returns: None
+   -- Notes: CRC libraries handle their own error clearing automatically
+   -- - This function exists for SD card library compatibility
+   -- - Only compiled when SD_USE_CRC is enabled
    --------------------------------------------------------------------------------
    procedure crc_clear_error() is
       -- CRC libraries handle their own error clearing
@@ -202,7 +214,12 @@ procedure sd_init()
 
 
 --------------------------------------------------------------------------------
--- Enable the sd card
+-- Description: Enable the SD card for SPI communication
+-- - Activates chip select and sends clock pulses to prepare SD card
+-- Parameters: None
+-- Returns: None
+-- Notes: This procedure must be called before any SD card operations
+-- - Sends dummy bytes to ensure proper SPI timing
 --------------------------------------------------------------------------------
 procedure sd_enable() is
    pragma inline
@@ -212,7 +229,12 @@ procedure sd_enable() is
 end procedure
 
 --------------------------------------------------------------------------------
--- Disable the sd card
+-- Description: Disable the SD card and release SPI bus
+-- - Deactivates chip select and sends final clock pulse
+-- Parameters: None
+-- Returns: None
+-- Notes: Called after SD card operations are complete
+-- - Releases the SD card from SPI communication
 --------------------------------------------------------------------------------
 procedure sd_disable() is
    pragma inline
@@ -221,7 +243,12 @@ procedure sd_disable() is
 end procedure
 
 --------------------------------------------------------------------------------
--- Disable then enable the sd card
+-- Description: Toggle SD card chip select (disable then enable)
+-- - Performs a reset of the chip select line
+-- Parameters: None
+-- Returns: None
+-- Notes: Used to reset communication state with SD card
+-- - Sends clock pulse between disable and enable operations
 --------------------------------------------------------------------------------
 procedure sd_toggle() is
    pragma inline
@@ -231,7 +258,13 @@ procedure sd_toggle() is
 end procedure
 
 --------------------------------------------------------------------------------
--- set sd_card error
+-- Description: Set SD card error flag
+-- - Records error by setting corresponding bit in error details register
+-- Parameters:
+-- - error - Error code number to set (0-15)
+-- Returns: None
+-- Notes: Multiple errors can be recorded simultaneously as bit flags
+-- - Sets sd_has_error flag to indicate error state
 --------------------------------------------------------------------------------
 procedure sd_error'put(word in error) is
    var word error_bit = word(1) << error
@@ -240,7 +273,14 @@ procedure sd_error'put(word in error) is
 end procedure
 
 --------------------------------------------------------------------------------
--- read sd card error (resets error status)
+-- Description: Read and clear SD card error flags
+-- - Returns current error details and resets error state
+-- Parameters: None
+-- Returns:
+-- - word - Bitmask of error codes that occurred
+-- Notes: This function clears the error state after reading
+-- - Each bit represents a different error code
+-- - Returns 0 if no errors occurred
 --------------------------------------------------------------------------------
 function sd_error'get() return word is
    var word return_val = sd_error_details
@@ -249,7 +289,14 @@ function sd_error'get() return word is
 end function
 
 --------------------------------------------------------------------------------
--- Report sd card error (does NOT reset error status)
+-- Description: Print human-readable SD card error messages
+-- - Outputs all current error flags without clearing error state
+-- Parameters:
+-- - device - Output device for printing (e.g., serial port)
+-- Returns: None
+-- Notes: Does NOT reset error status after printing
+-- - Prints "NO ERROR" if no errors are present
+-- - Multiple error messages may be printed if multiple errors occurred
 --------------------------------------------------------------------------------
 procedure sd_print_error(volatile byte out device) is
    if sd_error_details == 0 then
@@ -318,7 +365,14 @@ procedure sd_print_error(volatile byte out device) is
 end procedure
 
 --------------------------------------------------------------------------------
--- Print R1 Response
+-- Description: Print human-readable SD card R1 response byte
+-- - Decodes and displays R1 response status flags
+-- Parameters:
+-- - device   - Output device for printing (e.g., serial port)
+-- - response - R1 response byte from SD card
+-- Returns: None
+-- Notes: Displays card status including idle state, errors, and ready status
+-- - Used for debugging SD card communication
 --------------------------------------------------------------------------------
 procedure sd_print_response(volatile byte out device,byte in response) is
    -- R1 RESPONSE BITS
@@ -393,7 +447,17 @@ procedure sd_print_response(volatile byte out device,byte in response) is
 end procedure
 
 --------------------------------------------------------------------------------
--- send a command to the sd card (commands with 1 response only)
+-- Description: Send a command to the SD card
+-- - Transmits SD command with parameters and receives R1 response
+-- Parameters:
+-- - command  - SD command number (0-63)
+-- - data     - 32-bit command argument/parameter
+-- - response - Returns R1 response byte from SD card
+-- Returns:
+-- - response - R1 response byte (0x00 = success, other values indicate status/errors)
+-- Notes: Only handles commands with single R1 response
+-- - Automatically calculates CRC7 if SD_USE_CRC is enabled
+-- - For CMD0 and CMD8, uses hardcoded CRC values per SD specification
 --------------------------------------------------------------------------------
 procedure send_command(byte in command,dword in data, byte out response) is
    var byte parameters[4] at data
@@ -477,8 +541,15 @@ procedure send_command(byte in command,dword in data, byte out response) is
 end procedure
 
 --------------------------------------------------------------------------------
--- check if the sd card is ready after last command.
--- returns 1 if ready, 0 if not ready.
+-- Description: Check if SD card is ready after initialization
+-- - Polls SD card using SEND_OP_COND command until ready or timeout
+-- Parameters: None
+-- Returns:
+-- - 1 - SD card is ready
+-- - 0 - SD card not ready (timeout occurred)
+-- Notes: Waits for SD card to complete power-up initialization
+-- - Sets SD_TIMED_OUT error if card doesn't respond within timeout
+-- - Maximum 100 polling attempts
 --------------------------------------------------------------------------------
 function sd_ready() return byte is
    var byte response = 1
@@ -526,7 +597,16 @@ end function
 ;   end function
 
 --------------------------------------------------------------------------------
--- Check if SD card exists
+-- Description: Check if SD card is present and responsive
+-- - Attempts to detect and initialize communication with SD card
+-- Parameters: None
+-- Returns:
+-- - 1 (TRUE)  - SD card detected and responding
+-- - 0 (FALSE) - SD card not found or not responding
+-- Notes: Sends GO_IDLE_STATE command and waits for valid response
+-- - Clears any previous error flags before detection
+-- - Tries up to 100 times with delays between attempts
+-- - Sets SD_DEVICE_NOT_FOUND error if card doesn't respond
 --------------------------------------------------------------------------------
 function sd_is_inserted() return bit is
    sd_has_error = 0
@@ -595,7 +675,16 @@ function sd_is_inserted() return bit is
 end function
 
 --------------------------------------------------------------------------------
--- Enhanced SD card initialization with improved error handling and reporting
+-- Description: Initialize SD card for read/write operations
+-- - Detects card type (Standard/High/Extended capacity) and prepares for use
+-- Parameters: None
+-- Returns: None
+-- Notes: Must be called before any SD card operations
+-- - Detects SD card version (Spec 1 or Spec 2)
+-- - Determines card capacity type (SDSC, SDHC, SDXC)
+-- - Retrieves total sector count from card
+-- - Sets SD_INIT_FAILURE error if initialization fails
+-- - Initializes CRC system if SD_USE_CRC is enabled
 --------------------------------------------------------------------------------
 procedure sd_init() is
    var byte response = 0 -- sd_card command response
@@ -692,7 +781,13 @@ procedure sd_init() is
 end procedure
 
 --------------------------------------------------------------------------------
--- set the sd card to idle state
+-- Description: Set SD card to idle state
+-- - Stops any ongoing operations and resets card to idle
+-- Parameters: None
+-- Returns: None
+-- Notes: Sends multiple STOP_TRANSMISSION commands to ensure clean stop
+-- - Call this to abort any active read or write operations
+-- - Sends 16 stop commands to ensure card receives at least one
 --------------------------------------------------------------------------------
 procedure sd_set_idle() is
    sd_enable()  -- enable the sd card
@@ -717,8 +812,15 @@ procedure sd_set_idle() is
 end procedure
 
 --------------------------------------------------------------------------------
--- tell sd card you will be reading data from a specified sector
--- do not interupt read process by switching to another spi component
+-- Description: Start reading multiple blocks from SD card
+-- - Initiates multi-block read operation at specified sector
+-- Parameters:
+-- - address - Sector number to start reading from
+-- Returns: None
+-- Notes: Do not interrupt read process by switching to another SPI component
+-- - Must call sd_stop_read() when finished
+-- - For standard capacity cards, converts sector address to byte address
+-- - Resets internal byte and sector counters
 --------------------------------------------------------------------------------
 procedure  sd_start_read(dword in address) is
    sd_sector_select = address
@@ -740,6 +842,19 @@ procedure  sd_start_read(dword in address) is
 end procedure
 
 
+--------------------------------------------------------------------------------
+-- Description: Wait for SD card to be ready for next byte transfer
+-- - Checks for data ready token at start of each sector
+-- Parameters:
+-- - read_write - Operation type (SD_READ or SD_WRITE)
+-- Returns:
+-- - 1 - SD card is ready for next byte
+-- - 0 - Timeout waiting for ready signal
+-- Notes: Called automatically during multi-block operations
+-- - Waits for 0xFE data token at beginning of each sector
+-- - Sets SD_READ_ERROR or SD_WRITE_ERROR on timeout
+-- - Timeout occurs after 10,000 polling attempts
+--------------------------------------------------------------------------------
 function sd_read_write_next_ready(byte in read_write) return byte is
    if sd_byte_count == 0 then            -- beginning of sector read
       var word count1 = 0
@@ -759,7 +874,15 @@ function sd_read_write_next_ready(byte in read_write) return byte is
 end function
 
 --------------------------------------------------------------------------------
--- read 1 bytes from the sd card (pseudo var)
+-- Description: Read one byte from SD card during multi-block read
+-- - Pseudo-variable for sequential byte reading
+-- Parameters: None
+-- Returns:
+-- - byte - Data byte read from SD card
+-- Notes: Must be called after sd_start_read()
+-- - Automatically handles sector boundaries and CRC bytes
+-- - Increments internal byte counter
+-- - Returns after setting error if read fails
 --------------------------------------------------------------------------------
 function sd_data_byte'get() return byte is
    var byte x, data_byte
@@ -784,8 +907,13 @@ end function
 
 
 --------------------------------------------------------------------------------
--- tell sd card you are finished reading
--- needed to be the same as other mass media libs
+-- Description: Stop multi-block read operation
+-- - Ends read session and returns SD card to idle state
+-- Parameters: None
+-- Returns: None
+-- Notes: Must be called after sd_start_read() when finished reading
+-- - Required for compatibility with mass media library interface
+-- - Sends STOP_TRANSMISSION command to card
 --------------------------------------------------------------------------------
 procedure sd_stop_read() is
    sd_set_idle()
@@ -793,7 +921,14 @@ procedure sd_stop_read() is
 end procedure
 
 --------------------------------------------------------------------------------
--- send a read pulse to the sd card, go 1 bytes forward in current sector.
+-- Description: Skip forward by reading and discarding bytes
+-- - Advances read position without returning data
+-- Parameters:
+-- - count1 - Number of bytes to skip
+-- Returns: None
+-- Notes: Reads bytes from SD card but discards the data
+-- - Useful for seeking within current sector
+-- - More efficient than reading into unused buffer
 --------------------------------------------------------------------------------
 procedure sd_read_pulse_byte(word in count1) is
    var byte x
@@ -803,9 +938,16 @@ procedure sd_read_pulse_byte(word in count1) is
 end procedure
 
 --------------------------------------------------------------------------------
--- tell sd card you will be writing data to a specified sector
--- must write 1 sector at a time, SD_BYTE_PER_SECTOR bytes
--- do not interupt write process by switching to another spi component
+-- Description: Start writing multiple blocks to SD card
+-- - Initiates multi-block write operation at specified sector
+-- Parameters:
+-- - address - Sector number to start writing to
+-- Returns: None
+-- Notes: Do not interrupt write process by switching to another SPI component
+-- - Must write complete sectors (512 bytes each)
+-- - Must call sd_stop_write() when finished
+-- - For standard capacity cards, converts sector address to byte address
+-- - Resets internal byte and sector counters
 --------------------------------------------------------------------------------
 procedure sd_start_write(dword in address) is
 
@@ -831,7 +973,16 @@ procedure sd_start_write(dword in address) is
 end procedure
 
 --------------------------------------------------------------------------------
--- write 1 byte to the sd card (pseudo var)
+-- Description: Write one byte to SD card during multi-block write
+-- - Pseudo-variable for sequential byte writing
+-- Parameters:
+-- - data_byte - Byte value to write to SD card
+-- Returns: None
+-- Notes: Must be called after sd_start_write()
+-- - Automatically handles sector boundaries and CRC bytes
+-- - Sends start token at beginning of each sector
+-- - Waits for write completion at end of each sector
+-- - Increments internal byte counter
 --------------------------------------------------------------------------------
 procedure sd_data_byte'put(byte in data_byte) is
    var byte x
@@ -868,8 +1019,15 @@ procedure sd_data_byte'put(byte in data_byte) is
 end procedure
 
 --------------------------------------------------------------------------------
--- write till sector is finished with input byte
--- data does not actually get written till you get to the end of the sector
+-- Description: Fill remainder of current sector with specified byte
+-- - Pads sector to 512 bytes with repeated byte value
+-- Parameters:
+-- - input_byte - Byte value to use for padding
+-- Returns: None
+-- Notes: Data is not written to card until sector is complete
+-- - Useful for partial sector writes
+-- - Automatically sends CRC and waits for write completion
+-- - Only writes if not at sector boundary (byte_count != 0)
 --------------------------------------------------------------------------------
 procedure sd_write_to_sector_end(byte in input_byte) is
    if !(sd_byte_count == 0) then
@@ -902,7 +1060,15 @@ procedure sd_write_to_sector_end(byte in input_byte) is
 end procedure
 
 --------------------------------------------------------------------------------
--- tell sd card you are finished writing
+-- Description: Stop multi-block write operation
+-- - Ends write session and returns SD card to idle state
+-- Parameters: None
+-- Returns: None
+-- Notes: Must be called after sd_start_write() when finished writing
+-- - Automatically pads partial sector with zeros
+-- - Sends stop transmission token (0xFD)
+-- - Waits for card to complete write operation
+-- - Uses delay or polling based on SD_DELAY_AFTER_WRITE setting
 --------------------------------------------------------------------------------
 procedure sd_stop_write() is
    var byte response
@@ -925,9 +1091,16 @@ procedure sd_stop_write() is
    sd_disable  -- disable the sd card
 end procedure
 
-;--------------------------------------------------------------------------------
-;-- send a write pulse to the sd card by writing 2 bytes, 0's as data
-;--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Write zero bytes to SD card (OBSOLETE)
+-- - Writes pairs of zero bytes to advance write position
+-- Parameters:
+-- - count1 - Number of byte pairs to write (writes count1 * 2 bytes)
+-- Returns: None
+-- Notes: This procedure is obsolete - use sd_write_pulse_byte() instead
+-- - Writes two zero bytes per loop iteration
+-- - Kept for backwards compatibility only
+--------------------------------------------------------------------------------
 procedure sd_write_pulse(byte in count1) is
    _warn "This procedure is obsolete. Please use sd_write_pulse_byte()"
    for count1 loop
@@ -936,9 +1109,16 @@ procedure sd_write_pulse(byte in count1) is
    end loop
 end procedure
 
-;--------------------------------------------------------------------------------
-;-- send a write pulse to the sd card by writing 1 bytes, 0 as data
-;--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Write zero bytes to SD card
+-- - Advances write position by writing specified number of zeros
+-- Parameters:
+-- - count1 - Number of zero bytes to write
+-- Returns: None
+-- Notes: Useful for padding or creating empty space in sectors
+-- - More efficient than sd_write_pulse() (writes 1 byte per loop vs 2)
+-- - Commonly used for sector padding operations
+--------------------------------------------------------------------------------
 procedure sd_write_pulse_byte(word in count1) is
    for count1 loop
       sd_data_byte = 0
@@ -950,9 +1130,17 @@ end procedure
 -- Note: sd_sector_buffer is now a large_array_6, so direct access is used
 ---------------------------------------------------------------------------
 
----------------------------------------------------------------------------
--- Extra speed read procedure
----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Read 512 bytes from SD card into sector buffer (optimized, no CRC)
+-- - High-speed unrolled loop for maximum read performance
+-- Parameters: None
+-- Returns: None
+-- Notes: Internal procedure - not intended for direct use by applications
+-- - Reads directly into sd_sector_buffer
+-- - Does not perform CRC validation
+-- - Loop is fully unrolled for speed (512 individual SPI reads)
+-- - Use sd_read_sector() for public API
+--------------------------------------------------------------------------------
 procedure _sd_read_512() is
    sd_sector_buffer[0] = spi_master
    sd_sector_buffer[1] = spi_master
@@ -1469,10 +1657,16 @@ procedure _sd_read_512() is
 end procedure
 
 --------------------------------------------------------------------------------
--- Extra speed read procedure with CRC calculation
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- Extra speed read procedure with CRC calculation
+-- Description: Read 512 bytes from SD card into sector buffer with CRC validation
+-- - High-speed unrolled loop with CRC16 calculation per byte
+-- Parameters: None
+-- Returns: None
+-- Notes: Internal procedure - not intended for direct use by applications
+-- - Reads directly into sd_sector_buffer
+-- - Calculates CRC16 for each byte as it's read
+-- - Loop is fully unrolled for speed (512 SPI reads + CRC calculations)
+-- - Only compiled if SD_USE_CRC is enabled
+-- - Use sd_read_sector() for public API
 --------------------------------------------------------------------------------
 if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
 procedure _sd_read_512_crc() is
@@ -2504,7 +2698,15 @@ end procedure
 end if
 
 --------------------------------------------------------------------------------
--- read one entire sector
+-- Description: Read one complete 512-byte sector into buffer
+-- - Reads entire sector from current position into sd_sector_buffer
+-- Parameters: None
+-- Returns: None
+-- Notes: Sector data is stored in sd_sector_buffer[0-511]
+-- - Performs CRC16 validation if SD_USE_CRC is enabled
+-- - Uses optimized unrolled loop if SD_READ_EXTRA_SPEED is enabled
+-- - Sets SD_DATA_CRC_ERROR if CRC validation fails
+-- - Automatically waits for data ready token before reading
 --------------------------------------------------------------------------------
 procedure sd_read_sector() is
    var byte x
@@ -2611,12 +2813,18 @@ if defined(SD_WRITE_EXTRA_SPEED) then
    end if
 end if
 
-;------------------------------------------------------------------------------
-; read one entire sector with callback to storage_read_callback()
-; for direct reading with spi_master. Make sure you call spi_master
-; chunk_size times in your storage_read_callback().
-; chunk_size must be a division of 512 (ex, chunk_size 64 is 512/8)
-;------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Read sector in chunks using callback function
+-- - Allows user-provided callback to handle data as it's read
+-- Parameters:
+-- - chunk_size - Number of bytes per callback (must divide evenly into 512)
+-- Returns: None
+-- Notes: Callback function must read chunk_size bytes via spi_master
+-- - User must implement storage_read_callback(word in chunk_size)
+-- - Example: chunk_size of 64 calls callback 8 times (512/64)
+-- - Useful for direct USB or serial streaming without buffering
+-- - Only available if SD_READ_EXTRA_SPEED is enabled
+--------------------------------------------------------------------------------
 procedure sd_read_sector_with_callback(word in chunk_size) is
    var byte x
    var byte count1
@@ -2659,7 +2867,15 @@ end procedure
 
 
 --------------------------------------------------------------------------------
--- read one entire sector at address
+-- Description: Read single sector at specified address
+-- - Convenience function combining start, read, and stop operations
+-- Parameters:
+-- - address - Sector number to read from
+-- Returns: None
+-- Notes: Data is stored in sd_sector_buffer[0-511]
+-- - Automatically handles start and stop of read operation
+-- - Equivalent to calling sd_start_read(), sd_read_sector(), sd_stop_read()
+-- - Use for reading single sectors; for multiple sectors use manual control
 --------------------------------------------------------------------------------
 procedure sd_read_sector_address(dword in address) is
    sd_start_read(address)
@@ -2667,9 +2883,17 @@ procedure sd_read_sector_address(dword in address) is
    sd_stop_read()
 end procedure
 
----------------------------------------------------------------------------
--- Extra speed write procedure
----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Write 512 bytes from sector buffer to SD card (optimized, no CRC)
+-- - High-speed unrolled loop for maximum write performance
+-- Parameters: None
+-- Returns: None
+-- Notes: Internal procedure - not intended for direct use by applications
+-- - Writes from sd_sector_buffer to SD card
+-- - Does not calculate or send CRC
+-- - Loop is fully unrolled for speed (512 individual SPI writes)
+-- - Use sd_write_sector() for public API
+--------------------------------------------------------------------------------
 procedure _sd_write_512() is
    spi_master = sd_sector_buffer[0]
    spi_master = sd_sector_buffer[1]
@@ -3186,10 +3410,16 @@ procedure _sd_write_512() is
 end procedure
 
 --------------------------------------------------------------------------------
--- Extra speed write procedure with CRC calculation
---------------------------------------------------------------------------------
---------------------------------------------------------------------------------
--- Extra speed write procedure with CRC calculation
+-- Description: Write 512 bytes from sector buffer to SD card with CRC calculation
+-- - High-speed unrolled loop with CRC16 calculation per byte
+-- Parameters: None
+-- Returns: None
+-- Notes: Internal procedure - not intended for direct use by applications
+-- - Writes from sd_sector_buffer to SD card
+-- - Calculates CRC16 for each byte as it's written
+-- - Loop is fully unrolled for speed (512 SPI writes + CRC calculations)
+-- - Only compiled if SD_USE_CRC is enabled
+-- - Use sd_write_sector() for public API
 --------------------------------------------------------------------------------
 if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
 procedure _sd_write_512_crc() is
@@ -4221,7 +4451,15 @@ end procedure
 end if
 
 --------------------------------------------------------------------------------
--- write one entire sector
+-- Description: Write one complete 512-byte sector from buffer
+-- - Writes entire sector from sd_sector_buffer to current position
+-- Parameters: None
+-- Returns: None
+-- Notes: Sector data must be in sd_sector_buffer[0-511] before calling
+-- - Performs CRC16 calculation if SD_USE_CRC is enabled
+-- - Uses optimized unrolled loop if SD_WRITE_EXTRA_SPEED is enabled
+-- - Waits for write completion before returning
+-- - Sets SD_CRC_ERROR if CRC calculation fails
 --------------------------------------------------------------------------------
 procedure sd_write_sector() is
    var byte x
@@ -4315,9 +4553,16 @@ procedure sd_write_sector() is
 end procedure
 
 --------------------------------------------------------------------------------
--- write one entire sector with callback to storage_write_callback()
--- for direct reading with spi_master. Make sure you call spi_master
--- chunk_size times in your storage_write_callback().
+-- Description: Write sector in chunks using callback function
+-- - Allows user-provided callback to supply data as it's written
+-- Parameters:
+-- - chunk_size - Number of bytes per callback (must divide evenly into 512)
+-- Returns: None
+-- Notes: Callback function must write chunk_size bytes via spi_master
+-- - User must implement storage_write_callback(word in chunk_size)
+-- - Example: chunk_size of 64 calls callback 8 times (512/64)
+-- - Useful for direct USB or serial streaming without buffering
+-- - Requires SD_WRITE_EXTRA_SPEED to be enabled
 --------------------------------------------------------------------------------
 procedure sd_write_sector_with_callback(word in chunk_size) is
    var byte x
@@ -4361,7 +4606,15 @@ procedure sd_write_sector_with_callback(word in chunk_size) is
 end procedure
 
 --------------------------------------------------------------------------------
--- write one entire sector at address
+-- Description: Write single sector at specified address
+-- - Convenience function combining start, write, and stop operations
+-- Parameters:
+-- - address - Sector number to write to
+-- Returns: None
+-- Notes: Sector data must be in sd_sector_buffer[0-511] before calling
+-- - Automatically handles start and stop of write operation
+-- - Equivalent to calling sd_start_write(), sd_write_sector(), sd_stop_write()
+-- - Use for writing single sectors; for multiple sectors use manual control
 --------------------------------------------------------------------------------
 procedure sd_write_sector_address(dword in address) is
    sd_start_write(address)
@@ -4369,9 +4622,17 @@ procedure sd_write_sector_address(dword in address) is
    sd_stop_write()
 end procedure
 
--- ----------------------------------------------------------------------------
--- print a sector to an output device
--- ----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Print sector data to output device
+-- - Reads and outputs raw sector bytes
+-- Parameters:
+-- - device  - Output device for printing (e.g., serial port)
+-- - address - Sector number to read and print
+-- Returns: None
+-- Notes: Outputs 512 bytes of raw binary data
+-- - Useful for debugging or data inspection
+-- - Data is sent directly without formatting
+--------------------------------------------------------------------------------
 procedure sd_print_sector(volatile byte out device, dword in address) is
    sd_start_read(address)
    for SD_BYTE_PER_SECTOR loop
@@ -4380,9 +4641,18 @@ procedure sd_print_sector(volatile byte out device, dword in address) is
    sd_stop_read
 end procedure
 
--- ----------------------------------------------------------------------------
--- print a sector to an output device in ascii hex
--- ----------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Print sector data in hexadecimal format
+-- - Reads and outputs sector bytes as formatted hex values
+-- Parameters:
+-- - device         - Output device for printing (e.g., serial port)
+-- - bytes_per_line - Number of hex bytes per line (must divide evenly into 512)
+-- - address        - Sector number to read and print
+-- Returns: None
+-- Notes: Outputs data in human-readable hex format with line breaks
+-- - Each byte is displayed as two-digit hex value with space separator
+-- - Useful for debugging and data inspection
+--------------------------------------------------------------------------------
 procedure sd_print_sector_hex(volatile byte out device,word in bytes_per_line,dword in address) is
    sd_start_read(address)
    for SD_BYTE_PER_SECTOR / bytes_per_line loop
@@ -4425,8 +4695,15 @@ end procedure
 ;   end procedure
 
 --------------------------------------------------------------------------------
--- Gets sd card size in number of sectors into dword sd_number_of_sectors
--- Total size in bytes = sd_number_of_sectors * 512
+-- Description: Retrieve SD card capacity in sectors
+-- - Reads Card-Specific Data (CSD) register to determine total sectors
+-- Parameters: None
+-- Returns: None
+-- Notes: Results stored in sd_number_of_sectors variable
+-- - Total size in bytes = sd_number_of_sectors * 512
+-- - Handles both standard and high capacity cards differently
+-- - Sets SD_COMMAND_TIME_OUT error if CSD read fails
+-- - Called automatically during sd_init()
 --------------------------------------------------------------------------------
  procedure sd_get_number_of_sectors() is
    sd_enable()  -- enable the sd card
@@ -4519,7 +4796,14 @@ var dword sd_success_count = 0
 -- Enhanced Error Handling Procedures
 -- =============================================================================
 
--- Print separator line
+--------------------------------------------------------------------------------
+-- Description: Print separator line for debug output
+-- - Outputs visual separator for debugging messages
+-- Parameters: None
+-- Returns: None
+-- Notes: Only prints if serial_data is defined
+-- - Outputs "----" followed by carriage return/line feed
+--------------------------------------------------------------------------------
 procedure sd_seperator() is
    if defined(serial_data) then
       print_string(serial_data, "----")
@@ -4527,7 +4811,16 @@ procedure sd_seperator() is
    end if
 end procedure
 
--- Check for errors and print detailed error information
+--------------------------------------------------------------------------------
+-- Description: Check for errors and update error statistics
+-- - Increments error or success counters based on current error state
+-- Parameters: None
+-- Returns: None
+-- Notes: Does not print errors (commented out for performance)
+-- - Updates sd_error_count if errors present
+-- - Updates sd_success_count if no errors
+-- - Can be uncommented to enable detailed error printing
+--------------------------------------------------------------------------------
 procedure sd_check_crc_errors() is
    if sd_has_error == TRUE then
       ;if defined(SD_USE_CRC) & (SD_USE_CRC != FALSE) then
@@ -4559,14 +4852,32 @@ procedure sd_check_crc_errors() is
    end if
 end procedure
 
--- Reset error state for retry
+--------------------------------------------------------------------------------
+-- Description: Reset SD card error flags
+-- - Clears all error state for retry operations
+-- Parameters: None
+-- Returns: None
+-- Notes: Called before retry attempts to clear previous error state
+-- - Resets both sd_has_error flag and sd_error_details bitmask
+--------------------------------------------------------------------------------
 procedure sd_reset_error_state() is
    pragma inline
    sd_has_error = 0
    sd_error_details = 0
 end procedure
 
--- Simple retry mechanism for operations
+--------------------------------------------------------------------------------
+-- Description: Retry failed SD card operation with automatic error recovery
+-- - Attempts operation up to sd_max_retries times
+-- Parameters:
+-- - sector_address   - Sector number for operation
+-- - operation_type   - Type of operation (1=read, 2=write)
+-- Returns: None
+-- Notes: Automatically retries on failure up to configured maximum
+-- - Resets error state before each retry attempt
+-- - Tracks retry count in sd_retry_count variable
+-- - Default maximum retries is 3 (configurable via sd_max_retries)
+--------------------------------------------------------------------------------
 procedure sd_retry_operation(dword in sector_address, byte in operation_type) is
    var bit operation_success = FALSE
    sd_retry_count = 0
@@ -4623,7 +4934,16 @@ procedure sd_retry_operation(dword in sector_address, byte in operation_type) is
    ;end if
 end procedure
 
--- Print enhanced error handling statistics
+--------------------------------------------------------------------------------
+-- Description: Print SD card operation statistics
+-- - Outputs detailed statistics about SD operations and errors
+-- Parameters: None
+-- Returns: None
+-- Notes: Only prints if serial_data is defined
+-- - Displays total operations, success count, error count
+-- - Shows error rate percentage
+-- - Indicates if CRC checking is enabled
+--------------------------------------------------------------------------------
 procedure sd_print_enhanced_statistics() is
    if defined(serial_data) then
       sd_seperator()
