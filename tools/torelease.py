@@ -4,15 +4,12 @@
 
  Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
 
- Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
-
- Revision: $Revision$
+ Adapted-by: Rob Jansen, Copyright (c) 2018..2025, all rights reserved.
 
  Compiler: N/A
 
- This file is part of jallib  http://jallib.googlecode.com
- Released under the BSD license
-              http://www.opensource.org/licenses/bsd-license.php
+This file is part of jallib  https://github.com/jallib/jallib
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
  Description:
  - Read TORELEASE and collect entries on a per-directory basis
@@ -52,15 +49,14 @@ platform_name = platform.system()
 
    # --- platform dependent paths
 if (platform_name == "Linux"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
+   jallib   = os.path.join("/", "mnt", "data", "GitHub", "jallib")  # local copy Jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")             # compiler (in current directory)
 elif (platform_name == "Windows"):
-#   jallib   = os.path.join("D:\\", "jallib-master")                   # local copy jallib master
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")                   # local copy jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
+   jallib   = os.path.join("D:\\", "GitHub", "jallib")              # local copy jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2.exe")                # compiler (in current directory)
 elif (platform_name == "Darwin"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2osx")            # compiler (in current directory)
+   jallib   = os.path.join("/", "mnt", "data", "GitHub", "jallib")  # local copy Jallib master
+   compiler = os.path.join(os.getcwd(), "jalv2osx")                 # compiler (in current directory)
 else:
    print("Please add platform specific info to this script!")
    exit(1)
@@ -68,7 +64,8 @@ else:
 
 
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
-smpdir     = os.path.join(jallib, "sample")                 # samples
+smpdir     = os.path.join(jallib, "sample")                 # Standard samples
+blinkdir   = os.path.join(jallib, "sample", "blink")        # Blink samples
 projdir    = os.path.join(jallib, "project")                # projects
 torelease  = os.path.join(jallib, "TORELEASE")              # TORELEASE
 newrelease = "./TORELEASE.NEW"                              # New TORELEASE
@@ -137,13 +134,17 @@ def analyze_torelease():
             part = dirs[1]                                  # part is 2nd level subdirectory
             libs.append(os.path.split(ln)[1])               # add to list of device files and libraries
          else:                                              # sample / project / doc
+            # Check for blink samples.
             part = dirs[0]                                  # part is 1st level subdirectory
          if (part == "sample"):
-            word = ln.split("_")
-            picname = word[0][7:]                           # strip 'sample/'
+            # Check for blink sample
+            element = ln.split("/")
+            sample = element[-1]                            # get name of the sample file 
+            word = sample.split("_")
+            picname = word[0]                               # get device name
             if (picname != ""):
                smppic[picname] = picname                    # PIC with at least 1 sample
-               if (word[1] == "blink"):
+               if (element[1] == "blink"):
                   blinkpic[picname] = picname               # blink sample found for this PIC
          if (f.get(part) == None):                          # new part
             f[part] = []
@@ -160,9 +161,10 @@ def list_counts(fr):
    print("Classify and count released samples in major groups")
    global f
    for smp in f["sample"]:                                  # all samples
-      smp = smp[7:-4]                                       # sample name
+      smp = smp.split("/")                                  
+      smp = smp[-1]                                         # sample name
       word = smp.split("_")
-      picname = word[0]
+      picname = word[0]                                     # device name
       if (picname != dev.get(picname)):                     # not released device file
          fr.write("  Device file of " + picname + \
                   " for sample " + smp + " not released\n")
@@ -258,13 +260,6 @@ def list_unreleased_libraries(fr):
          fs = fs[(len(jallib) + 1):]                        # remove base prefix
          fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):
-#           if (unlisted == 0):
-#             for x in lines:
-#                print x
-#           elif (unlisted > 5):
-#             return
-#           print "fs ", fs
-#           print "   ", os.path.join(root,file)
             unlisted = unlisted + 1
             if (fs.startswith("include/device/")):          # unreleased device file
                unlisteddevice = unlisteddevice + 1
@@ -285,8 +280,8 @@ def list_unreleased_libraries(fr):
 # ---------------------------------------------
 def list_unreleased_samples(fr):
    """ List unreleased samples or use of unreleased libraries or device files
-       - Walk the sample directory tree
-         to find unreleased samples
+       - Walk the sample directory tree to find unreleased standard samples
+       - Walk the sample/blink directory to find unreleased blink samples
        - Check if sample name and included device file are matching
        - Check if unreleased libraries are included
    """
