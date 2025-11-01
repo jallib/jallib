@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Compare new device files with previous committed device files
-
-Author: Rob Hamerling, Copyright (c) 2017..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		
-Adapted-by: 
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2017..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -24,15 +19,8 @@ Description:
 Sources: N/A
 
 Notes:
-   Adapt the platform dependent variables to your situation
 
 """
-
-from pic2jal_environment import check_and_set_environment
-
-base, mplabxversion = check_and_set_environment()  # obtain environment variables
-if (base == ""):
-    exit(1)
 
 import sys
 import os
@@ -41,29 +29,49 @@ import fnmatch
 import subprocess
 import platform
 
+# Check - environment - requirements for running this script.
+if (sys.version_info < (3,5,0)):
+    print("You need Python 3.5.0 or later to run this script!\n")
+    exit(1)
+
+if not ('PIC2JAL' in os.environ):
+    print("Environment variable PIC2JAL for destination not set.")
+    exit(1)
+
+if not ('JALLIB' in os.environ):
+    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
+    exit(1)
+
+if not ('MPLABXVERSION' in os.environ):
+    print("Environment variable MPLABXVERSION for latest MPLABX version not set.")
+    exit(1)
+
+if not ('KDIFF3' in os.environ):
+    print("Environment variable KDIFF3 to local kdiff3 installation not defined.")
+    exit(1)
+
+
+# All OK, set variables. 
+base = os.path.join(os.environ['PIC2JAL'] + "." + os.environ['MPLABXVERSION'])  
+kdiff3 = os.environ['KDIFF3']
+olddir = os.path.join(os.environ['JALLIB'], "include", "device")
+newdir = os.path.join(base, "device")  # new device files
+log = os.path.join(base, "comparejal_devices.log")  # list with change device files
+log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information
+
+# We need to know which platorm is used to copy data.
 platform_name = platform.system()
 
-# --- system dependent paths
+# 
 if (platform_name == "Linux"):
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
     cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
 elif (platform_name == "Windows"):
-    #   olddir = os.path.join("D:\\", "jallib-master", "include", "device")      # previous device files
-    olddir = os.path.join("D:\\", "GitHub", "jallib", "include", "device")  # previous device files, current Master
-    kdiff = os.path.join("C:\\", "Program Files", "KDiff3", "kdiff3.exe")  # full path
-    cpy = os.path.join(base, "comparejal_copy.cmd")  # copy commandfile
+    cpy = os.path.join(base, "comparejal_copy.cmd") # copy commandfile
 elif (platform_name == "Darwin"):  # Mac
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
     cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
 else:
     print("Please add platform specific info to this script!")
     exit(1)
-
-newdir = os.path.join(base, "device")  # new device files
-log = os.path.join(base, "comparejal_devices.log")  # list with change device files
-log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information
 
 
 # -----------------------------------------------------

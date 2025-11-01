@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Collect .PIC files of JALV2 supported PICs
-
-Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2014..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -30,32 +25,35 @@ Notes:
 
 """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()    # obtain environment variables
-if (base == ""):
-   exit(1)
-
 import os
 import sys
 import fnmatch
-import platform
 import shutil
 
-platform_name = platform.system()
+# Check - environment - requirements for running this script.
+if (sys.version_info < (3,5,0)):
+    print("You need Python 3.5.0 or later to run this script!\n")
+    exit(1)
 
-# platform specific path prefix (Linux, Windows, OSX (Darwin))
-if (platform_name == "Linux"):
-   xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
-elif (platform_name == "Windows"):
-   # When using the Windows MPLABX installation from the original location use this:
-   xml_pfx = os.path.join("C:\\", "Program Files", "microchip", "mplabx", "v" + mplabxversion)
-elif (platform_name == "Darwin"):
-   xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
-else:
-   sys.stderr.write(f"Please add proper environment settings for {platform_name}=\n")
-   exit(1)
+if not ('PIC2JAL' in os.environ):
+    print("Environment variable PIC2JAL for destination not set.")
+    exit(1)
 
-# xml path prefixes
+if not ('MPLABXVERSION' in os.environ):
+    print("Environment variable MPLABXVERSION for MPLABX version not set.")
+    exit(1)
+
+if not ('MPLABXINSTALL' in os.environ):
+    print("Environment variable MPLABXINSTALL for MPLABX installation not set.")
+    exit(1)
+
+# All OK, set variables.
+mplabxversion = os.environ['MPLABXVERSION']
+mplabinstall = os.environ['MPLABXINSTALL']
+base = os.path.join(os.environ['PIC2JAL'] + "." + mplabxversion)  
+
+# xml paths.
+xml_pfx = os.path.join(mplabinstall, "v" + mplabxversion)
 xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
 
 # destination of extracted .pic files:

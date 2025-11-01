@@ -1,67 +1,54 @@
 #!/usr/bin/env python3
 """
- Title: Analyze TORELEASE and check consistency with Jallib
-
- Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
-
- Adapted-by: Rob Jansen, Copyright (c) 2018..2025, all rights reserved.
-
- Compiler: N/A
+Title: Analyze TORELEASE and check consistency with Jallib
+Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
- Description:
- - Read TORELEASE and collect entries on a per-directory basis
-   (2nd level subdirectory for includes, 1st level for others).
- - Collect PICnames used in filenames of sample programs.
-   Check if there is at least 1 blink-a-led sample for each PIC.
- - Check if every sample uses a released device file.
- - Collect and list some statistics for every main library group.
- - Collect Jallib contents (directory tree) and
-    - list unreleased samples
-    - list released samples which include one or more unreleased libraries
- - Sort each of the parts and create a new TORELEASE
-   (report and comment-out duplicate entries)
+Description:
+- Read TORELEASE and collect entries on a per-directory basis
+  (2nd level subdirectory for includes, 1st level for others).
+- Collect PICnames used in filenames of sample programs.
+  Check if there is at least 1 blink-a-led sample for each PIC.
+- Check if every sample uses a released device file.
+- Collect and list some statistics for every main library group.
+- Collect Jallib contents (directory tree) and
+   - list unreleased samples
+   - list released samples which include one or more unreleased libraries
+- Sort each of the parts and create a new TORELEASE
+  (report and comment-out duplicate entries)
 
- Sources: none
+ - Check if requirements for this script are satisfied:
+   - Python version: at least Python 3.5
+   - Environment variable:
+     - JALLIB  - path to your local GitHub Jallib directory
 
- Notes:
-  - When a commandline argument 'runtype' is specified a slightly more
-    extensive listing is produced: ALL unreleased files are listed.
-    By default unreleased device files and unreleased basic blink-a-led
-    samples are not listed, only counted.
+Sources: none
+
+Notes:
+ - When a commandline argument 'runtype' is specified a slightly more
+   extensive listing is produced: ALL unreleased files are listed.
+   By default unreleased device files and unreleased basic blink-a-led
+   samples are not listed, only counted.
 
 """
-
 import os, sys
 import re
 import time
-import string
-import platform
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()              # obtain environment variables
-if (base == ""):
-   exit(1)
+# Check - environment - requirements for running this script.
+if (sys.version_info < (3,5,0)):
+    print("You need Python 3.5.0 or later to run this script!\n")
+    exit(1)
 
-platform_name = platform.system()
+if not ('JALLIB' in os.environ):
+    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
+    exit(1)
 
-   # --- platform dependent paths
-if (platform_name == "Linux"):
-   jallib   = os.path.join("/", "mnt", "data", "GitHub", "jallib")  # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")             # compiler (in current directory)
-elif (platform_name == "Windows"):
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")              # local copy jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")                # compiler (in current directory)
-elif (platform_name == "Darwin"):
-   jallib   = os.path.join("/", "mnt", "data", "GitHub", "jallib")  # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2osx")                 # compiler (in current directory)
-else:
-   print("Please add platform specific info to this script!")
-   exit(1)
-
-
+# All OK, set variables. 
+jallib = os.environ['JALLIB'] 
 
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
 smpdir     = os.path.join(jallib, "sample")                 # Standard samples
@@ -94,7 +81,7 @@ def read_torelease():
    print("Reading", torelease)
    global lines
    try:
-      with open(torelease, "r") as ft:
+      with open(torelease, "r", encoding='utf-8') as ft:
          for ln in ft:
             ln = ln.strip()
             if (len(ln) > 0):
@@ -319,7 +306,7 @@ def list_unreleased_samples(fr):
                fr.write(fs + "\n")                          # list file
          else:                                              # found sample in torelease
             try:
-               with open(os.path.join(root, file), "r") as fi:       # full pathspec
+               with open(os.path.join(root, file), "r", encoding='utf-8') as fi:       # full pathspec
                   lncount = 0
                   for ln in fi:
                      lncount = lncount + 1                        # line number

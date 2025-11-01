@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Compile all Jallib samples
-
-Author: Rob Hamerling, Copyright (c) 2015..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-
-Adapted-by: 
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2015..2012, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -23,8 +18,8 @@ Notes: - For the samples and libraries the latest jallib 'bee' package
          Howover the new device files are used in stead of those of jallib bee
          by putting its include path in front of the bee include path.
          (Include sequence dependency is a JalV2 compiler property).
-       - Blink-a-led samples are skipped: supposedly already validated/compiled
-         with the generation of new device files.
+       - Blink-a-led samples are skipped and not compiled: supposedly 
+         already validated/compiled with the generation of new blink sample files.
        - Sample source and compiler output are preserved when any errors or
          warnings are reported in log files in the 'log' directory
          Otherwise output is discarded.
@@ -34,38 +29,42 @@ Notes: - For the samples and libraries the latest jallib 'bee' package
          for an unknown reason.
 """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()              # obtain environment variables
-if (base == ""):
-   exit(1)
-
-import os
+import os, sys
 import time
 import subprocess
 import queue
 import multiprocessing as mp
 import fnmatch
 import shutil
-import platform
 
-scriptversion   = "1.0"
-scriptauthor    = "Rob Hamerling"
+# Check - environment - requirements for running this script.
+if (sys.version_info < (3,5,0)):
+    print("You need Python 3.5.0 or later to run this script!\n")
+    exit(1)
 
-platform_name = platform.system()
+if not ('PIC2JAL' in os.environ):
+    print("Environment variable PIC2JAL for destination not set.")
+    exit(1)
 
-# --- platform dependent paths
-if (platform_name == "Linux"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
-elif (platform_name == "Windows"):
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")         # local copy jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
-elif (platform_name == "Darwin"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2osx")            # compiler (in current directory)
-else:
-   print("Please add platform specific info to this script!")
-   exit(1)
+if not ('JALLIB' in os.environ):
+    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
+    exit(1)
+
+if not ('JALCOMPILER' in os.environ):
+    print("Environment variable JALCOMPILER for compiling samples not set.")
+    exit(1)
+
+if not ('MPLABXVERSION' in os.environ):
+    print("Environment variable MPLABXVERSION for latest MPLABX version not set.")
+    exit(1)
+
+# All OK, set variables. 
+base = os.path.join(os.environ['PIC2JAL'] + "." + os.environ['MPLABXVERSION'])  
+jallib = os.environ['JALLIB'] 
+compiler = os.environ['JALCOMPILER'] 
+
+scriptversion   = "1.2"
+scriptauthor    = "Rob Hamerling, Rob Jansen"
 
 # --- common
 smpdir  = os.path.join(jallib, "sample")                       # directory with Jallib samples
