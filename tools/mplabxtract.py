@@ -30,30 +30,14 @@ import sys
 import fnmatch
 import shutil
 
-# Check - environment - requirements for running this script.
-if (sys.version_info < (3,5,0)):
-    print("You need Python 3.5.0 or later to run this script!\n")
-    exit(1)
-
-if not ('PIC2JAL' in os.environ):
-    print("Environment variable PIC2JAL for destination not set.")
-    exit(1)
-
-if not ('MPLABXVERSION' in os.environ):
-    print("Environment variable MPLABXVERSION for MPLABX version not set.")
-    exit(1)
-
-if not ('MPLABXINSTALL' in os.environ):
-    print("Environment variable MPLABXINSTALL for MPLABX installation not set.")
-    exit(1)
-
-# All OK, set variables.
-mplabxversion = os.environ['MPLABXVERSION']
-mplabinstall = os.environ['MPLABXINSTALL']
-base = os.path.join(os.environ['PIC2JAL'] + "." + mplabxversion)  
+## obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 # xml paths.
-xml_pfx = os.path.join(mplabinstall, "v" + mplabxversion)
+xml_pfx = os.path.join(mplabxinstall, "v" + mplabxversion)
 xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
 
 # destination of extracted .pic files:

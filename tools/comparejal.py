@@ -29,32 +29,13 @@ import fnmatch
 import subprocess
 import platform
 
-# Check - environment - requirements for running this script.
-if (sys.version_info < (3,5,0)):
-    print("You need Python 3.5.0 or later to run this script!\n")
-    exit(1)
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
-if not ('PIC2JAL' in os.environ):
-    print("Environment variable PIC2JAL for destination not set.")
-    exit(1)
-
-if not ('JALLIB' in os.environ):
-    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
-    exit(1)
-
-if not ('MPLABXVERSION' in os.environ):
-    print("Environment variable MPLABXVERSION for latest MPLABX version not set.")
-    exit(1)
-
-if not ('KDIFF3' in os.environ):
-    print("Environment variable KDIFF3 to local kdiff3 installation not defined.")
-    exit(1)
-
-
-# All OK, set variables. 
-base = os.path.join(os.environ['PIC2JAL'] + "." + os.environ['MPLABXVERSION'])  
-kdiff3 = os.environ['KDIFF3']
-olddir = os.path.join(os.environ['JALLIB'], "include", "device")
+olddir = os.path.join(jallib, "include", "device")
 newdir = os.path.join(base, "device")  # new device files
 log = os.path.join(base, "comparejal_devices.log")  # list with change device files
 log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information

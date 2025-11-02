@@ -36,30 +36,11 @@ import time
 import subprocess
 import shutil
 
-# Check - environment - requirements for running this script.
-if (sys.version_info < (3,5,0)):
-    print("You need Python 3.5.0 or later to run this script!\n")
-    exit(1)
-
-if not ('PIC2JAL' in os.environ):
-    print("Environment variable PIC2JAL for destination not set.")
-    exit(1)
-
-if not ('JALLIB' in os.environ):
-    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
-    exit(1)
-
-if not ('JALCOMPILER' in os.environ):
-    print("Environment variable JALCOMPILER for compiling samples not set.")
-    exit(1)
-
-if not ('MPLABXVERSION' in os.environ):
-    print("Environment variable MPLABXVERSION for latest MPLABX version not set.")
-    exit(1)
-
-# All OK, set variables. 
-mplabxversion = os.environ['MPLABXVERSION']
-base = os.path.join(os.environ['PIC2JAL'] + "." + mplabxversion)
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 if (base == os.getcwd()):                             # cwd must be different than base
    print("This script should not be run in the destination directory\n   <",

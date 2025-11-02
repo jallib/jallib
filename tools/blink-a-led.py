@@ -63,29 +63,13 @@ import json
 from concurrent import futures
 import jallib3                                  # Python 3 version
 
-# Check - environment - requirements for running this script.
-if (sys.version_info < (3,5,0)):
-    print("You need Python 3.5.0 or later to run this script!\n")
-    exit(1)
-
-if not ('PIC2JAL' in os.environ):
-    print("Environment variable PIC2JAL for destination not set.")
-    exit(1)
-
-if not ('JALCOMPILER' in os.environ):
-    print("Environment variable JALCOMPILER for compiling samples not set.")
-    exit(1)
-
-if not ('MPLABXVERSION' in os.environ):
-    print("Environment variable MPLABXVERSION for latest MPLABX version not set.")
-    exit(1)
-
-# All OK, set variables. 
-base = os.path.join(os.environ['PIC2JAL'] + "." + os.environ['MPLABXVERSION'])
-compiler = os.environ['JALCOMPILER']
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 # global constants
-
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
 CompilerVersion = "2.5r9"   # latest JalV2 compiler version
 scriptversion = "2.1"       # script version

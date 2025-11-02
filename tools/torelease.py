@@ -38,17 +38,11 @@ import os, sys
 import re
 import time
 
-# Check - environment - requirements for running this script.
-if (sys.version_info < (3,5,0)):
-    print("You need Python 3.5.0 or later to run this script!\n")
-    exit(1)
-
-if not ('JALLIB' in os.environ):
-    print("Environment variable JALLIB to local GitHub/Jallib directory not defined.")
-    exit(1)
-
-# All OK, set variables. 
-jallib = os.environ['JALLIB'] 
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
 smpdir     = os.path.join(jallib, "sample")                 # Standard samples
