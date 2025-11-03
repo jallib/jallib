@@ -75,6 +75,7 @@ CompilerVersion = "2.5r9"   # latest JalV2 compiler version
 scriptversion = "2.1"       # script version
 
 devdir = os.path.join(base, "device")           # origin of new device files
+jaldir = os.path.join(jallib, "include", "jal")  # compiler include files
 dstdir = os.path.join(base, "blink")            # destination of new samples
 if not os.path.exists(dstdir):                  # dstdir doesn't exists
    os.makedirs(dstdir)                          # create it
@@ -82,10 +83,6 @@ if not os.path.exists(dstdir):                  # dstdir doesn't exists
 devspecfile = os.path.join(base, "devicespecific.json")  # specific PIC properties
 with open(devspecfile, "r") as fp:
    devspec = json.load(fp)                      # get dictionary with contents
-
-if not os.path.exists('constants_jallib.jal'):
-   print('Missing required "constants_jallib.jal" in current directory')
-   exit(6)
 
 def scan_devfile(devfile):
    """ Scan device file for selected device info """
@@ -246,7 +243,7 @@ def compile_sample(pgmname):
        otherwise return result code and create .log file
    """
    opts = '-no-asm -no-hex -no-codfile'               # compiler options
-   cmd = f'{compiler} {opts} -s {devdir} {os.path.join(dstdir,pgmname)}'
+   cmd = f'{compiler} {opts} -s {devdir} -s {jaldir} {os.path.join(dstdir,pgmname)}'
    flog = os.path.join(dstdir, pgmname + ".log")      # compiler output report
    if os.path.exists(flog):
       os.remove(flog)
@@ -657,3 +654,4 @@ if __name__ == "__main__":
       print(f"        ({sample_count/runtime:.2f} samples per second)")
 
 #
+
