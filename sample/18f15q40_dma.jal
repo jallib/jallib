@@ -1,0 +1,142 @@
+-- -----------------------------------------------------------------------------
+-- Title: Sample program for demonstrating the DMA feature.
+-- Author: Rob Jansen, Copyright (c) 2025..2025 all rights reserved.
+-- Adapted-by:
+--
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demonstration of the DMA feature of the PIC and comparing the
+--              number of cycles used with and without DMA transfer.
+--
+-- Notes: When a constant array is not used it is optimized away by the
+--        the compiler which results in 'whereis()' generating a compiler
+--        error. To prevent this for the DMA transfer, some dummy code is
+--        added to 'use' the DMA constant array.
+--
+include 18f15q40                
+
+-- This program uses the internal oscillator at 64 MHz.
+pragma target clock    64_000_000       -- oscillator frequency
+--
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINTOSC_64MHZ   -- select 64 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target XINST    DISABLED         -- do not use extended instructionset
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+pragma target MVECEN   DISABLED         -- Do not use multi vectored interrupts
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCFRQ_HFFRQ = 0b1000                   -- Fosc 64
+--
+enable_digital_io()
+
+-- (Re)Assign pins for USART
+include pps
+pps_control_lock(FALSE)                
+RC4PPS = PPS_TX1 ; Pin 6 of 20-pin DIP.
+pps_control_lock(TRUE)   
+
+-- USART setup.
+alias pin_RX_direction is pin_C5_direction -- Pin 5 of 20 pin DIP.
+alias pin_TX_direction is pin_C4_direction -- Pin 6 of 20 pin DIP.
+const serial_hw_baudrate = 115_200
+include serial_hardware
+serial_hw_init()
+alias serial is serial_hw_data
+
+include print
+
+-- Declare an array with text.
+const byte my_text_no_dma[] =   "This is an array with some text that it transferred to the USART not using the Direct Memory Access (DMA) feature of the PIC.\r\n"
+const byte my_text_with_dma[] = "This is an array with some text that it transferred to the USART and using the Direct Memory Access (DMA) feature of the PIC.\r\n"
+
+-- Variables
+var dword counter
+var word text_size
+var byte text_size_lo at text_size
+var byte text_size_hi at text_size + 1
+var word text_address
+var byte text_address_lo at text_address
+var byte text_address_hi at text_address + 1
+var byte dummy
+
+-- Main program starts here.
+
+-- Setup DMA but do not start it yet.
+text_size = count(my_text_with_dma)
+text_address = whereis(my_text_with_dma) 
+DMASELECT = 0x00 -- First DMA instance.
+DMANCON1 = 0x0B -- Select Flash as source and increment pointer.
+-- Source size.
+DMANSSZH = text_size_hi
+DMANSSZL = text_size_lo
+-- Source start address.
+DMANSSAU = 0x00
+DMANSSAH = text_address_hi
+DMANSSAL = text_address_lo
+-- Destination size.
+DMANDSZH = 0x00
+DMANDSZL = 0x01
+-- Destination start address.
+DMANDSA = whereis(U1TXB)
+-- Start trigger source U1TX.
+DMANSIRQ = 0x21
+-- Arbiter priority.
+DMA1PR = 0x01 -- Default priority is 7 which is lowest.
+-- The following sequence is mandatory for DMA operation.
+PRLOCK = 0x55
+PRLOCK = 0xAA
+PRLOCK_PRLOCKED = TRUE
+
+-- Note: Since the DMA array itself not used it will be optimized away and 
+--       a compiler error is generated. To prevent that 'use' the const array
+--       with some dummy code to prevent this optimization.
+dummy = dummy + my_text_with_dma[text_size] -- Dummy code to 'use' array.
+
+-- First write data without DMA.
+print_string(serial, "Data transfer without using DMA.\r\n")
+-- We access the serial registers directly.
+counter =0
+text_size = 0
+while text_size < count(my_text_no_dma) loop
+   -- Wait for transmit buffer to be empty.
+   if PIR4_U1TXIF then
+      U1TXB = my_text_no_dma[text_size]
+      text_size = text_size + 1
+   end if
+   counter = counter + 1
+end loop
+-- Counter value.
+print_string(serial, "Counter value is: ")
+print_dword_dec(serial, counter)
+print_crlf(serial)
+
+-- Now using DMA, see data sheet example. 
+print_string(serial, "Data transfer using DMA.\r\n")
+counter = 0
+-- Enable the DMA & Trigger to start DMA Transfer.
+DMANCON0 = 0xC0
+-- Wait for DMA to be completed.
+while DMANCON0_SIRQEN loop 
+   counter = counter + 1
+end loop
+-- Disable DMA.
+DMANCON0_EN = FALSE
+-- Counter value.
+print_string(serial, "Counter value is: ")
+print_dword_dec(serial, counter)
+print_crlf(serial)
+
+print_string(serial, "Done!\r\n\"")
+
+
