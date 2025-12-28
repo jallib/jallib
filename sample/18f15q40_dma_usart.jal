@@ -43,8 +43,13 @@ enable_digital_io()
 -- (Re)Assign pins for USART
 include pps
 pps_control_lock(FALSE)                
-RC4PPS = PPS_TX1 ; Pin 6 of 20-pin DIP.
+RC4PPS = PPS_TX1 
 pps_control_lock(TRUE)   
+
+-- Set Weak pull-up.
+WPUA = 0b1111_1111
+WPUB = 0b1111_1111
+WPUC = 0b1101_1111 -- Not on RX.
 
 -- USART setup.
 alias pin_RX_direction is pin_C5_direction -- Pin 5 of 20 pin DIP.
@@ -63,45 +68,10 @@ const byte my_text_with_dma[] = "This is an array with some text that it transfe
 -- Variables
 var dword counter
 var word text_size
-var byte text_size_lo at text_size
-var byte text_size_hi at text_size + 1
-var word text_address
-var byte text_address_lo at text_address
-var byte text_address_hi at text_address + 1
 var byte dummy
 
 -- Main program starts here.
 
--- Setup DMA but do not start it yet.
-text_size = count(my_text_with_dma)
-text_address = whereis(my_text_with_dma) 
-DMASELECT = 0x00 -- First DMA instance.
-DMANCON1 = 0x0B -- Select Flash as source and increment pointer.
--- Source size.
-DMANSSZH = text_size_hi
-DMANSSZL = text_size_lo
--- Source start address.
-DMANSSAU = 0x00
-DMANSSAH = text_address_hi
-DMANSSAL = text_address_lo
--- Destination size.
-DMANDSZH = 0x00
-DMANDSZL = 0x01
--- Destination start address.
-DMANDSA = whereis(U1TXB)
--- Start trigger source U1TX.
-DMANSIRQ = 0x21
--- Arbiter priority.
-DMA1PR = 0x01 -- Default priority is 7 which is lowest.
--- The following sequence is mandatory for DMA operation.
-PRLOCK = 0x55
-PRLOCK = 0xAA
-PRLOCK_PRLOCKED = TRUE
-
--- Note: Since the DMA array itself not used it will be optimized away and 
---       a compiler error is generated. To prevent that 'use' the const array
---       with some dummy code to prevent this optimization.
-dummy = dummy + my_text_with_dma[text_size] -- Dummy code to 'use' array.
 
 -- First write data without DMA.
 print_string(serial, "Data transfer without using DMA.\r\n")
@@ -120,6 +90,32 @@ end loop
 print_string(serial, "Counter value is: ")
 print_dword_dec(serial, counter)
 print_crlf(serial)
+
+
+-- Setup DMA but do not start it yet.
+DMASELECT = 0x00 -- First DMA instance.
+DMANCON1 = 0x0B -- Select Flash as source and increment pointer.
+-- Source size.
+DMANSSZ = count(my_text_with_dma)
+-- Source start address.
+DMANSSA = whereis(my_text_with_dma) 
+-- Destination size.
+DMANDSZL = 0x01
+-- Destination start address is USART TX register.
+DMANDSA = whereis(U1TXB)
+-- Start trigger source U1TX.
+DMANSIRQ = 0x21
+-- Arbiter priority.
+DMA1PR = 0x01 -- Default priority is 7 which is lowest.
+-- The following sequence is mandatory for DMA operation.
+PRLOCK = 0x55
+PRLOCK = 0xAA
+PRLOCK_PRLOCKED = TRUE
+
+-- Note: Since the DMA array itself not used it will be optimized away and 
+--       a compiler error is generated. To prevent that 'use' the const array
+--       with some dummy code to prevent this optimization.
+dummy = dummy + my_text_with_dma[text_size] -- Dummy code to 'use' array.
 
 -- Now using DMA, see data sheet example. 
 print_string(serial, "Data transfer using DMA.\r\n")
