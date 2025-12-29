@@ -1,7 +1,7 @@
 -- Title: Stopwatch library
--- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2023, all rights reserved.
+-- Author: Matthew Schinkel - borntechi.com, copyright (c) 2009..2025, all rights reserved.
 -- Adapted-by: Rob Jansen
--- Compiler: 2.5r8
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -79,15 +79,19 @@ if STOPWATCH2_USE_TIMER == 1 then
    alias stopwatch2_on       is t1con_tmr1on     -- enables timer
    alias stopwatch2_tmr      is TMR1             -- timer interval
    alias stopwatch2_ps       is T1CON_T1CKPS     -- timer prescaler select bits
-   -- Support for newer PICs (based on 16f15325).
-   if defined(T1CLK) then
-      alias stopwatch2_cs       is T1CLK_CS      -- timer clock source bit
-      alias stopwatch2_ie       is PIE4_TMR1IE   -- interrupt enable
-      alias stopwatch2_if       is PIR4_TMR1IF   -- interrupt overflow bit
+
+   if defined(PIE3_TMR1IE) then -- Support for newer PICs (based on 18f05q40).
+      alias stopwatch2_cs    is T1CLK_CS      -- timer clock source bit
+      alias stopwatch2_ie    is PIE3_TMR1IE   -- interrupt enable
+      alias stopwatch2_if    is PIR3_TMR1IF   -- interrupt overflow bit
+   elsif defined(PIE4_TMR1IE) then -- Support for newer PICs (based on 16f15325).
+      alias stopwatch2_cs    is T1CLK_CS      -- timer clock source bit
+      alias stopwatch2_ie    is PIE4_TMR1IE   -- interrupt enable
+      alias stopwatch2_if    is PIR4_TMR1IF   -- interrupt overflow bit
     else
-      alias stopwatch2_cs       is T1CON_TMR1CS  -- timer clock source bit
-      alias stopwatch2_ie       is PIE1_TMR1IE   -- interrupt enable
-      alias stopwatch2_if       is PIR1_TMR1IF   -- interrupt overflow bit
+      alias stopwatch2_cs    is T1CON_TMR1CS  -- timer clock source bit
+      alias stopwatch2_ie    is PIE1_TMR1IE   -- interrupt enable
+      alias stopwatch2_if    is PIR1_TMR1IF   -- interrupt overflow bit
    end if 
 elsif STOPWATCH2_USE_TIMER == 3 then
    -- set timer registers to timer3
@@ -103,9 +107,14 @@ end if
 -- initialize the stopwatch2
 --------------------------------------------------------------------------------
 procedure stopwatch2_init() is
+
    -- init pic interrupt settings
-   intcon_gie  = on      -- enables all unmasked interrupts
-   intcon_peie = on      -- enables all unmasked peripheral interrupts
+   if defined(PIE3_TMR1IE) then
+      intcon0_gie = on      -- enables all unmasked interrupts
+   else 
+      intcon_gie  = on      -- enables all unmasked interrupts
+      intcon_peie = on      -- enables all unmasked peripheral interrupts
+   end if 
 
    -- timer3 setup
    if defined(T1CLK) then
