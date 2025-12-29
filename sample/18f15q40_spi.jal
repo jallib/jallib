@@ -1,0 +1,103 @@
+-- -----------------------------------------------------------------------------
+-- Title: SPI example.
+-- Author: Rob Jansen, Copyright (c) 2025..2025 all rights reserved.
+-- Adapted-by:
+--
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: This sample sends data via SPI.
+--              
+-- Notes: Based on the SPI sample program of Matthew Schinkel.
+--
+include 18f15q40                
+
+-- This program uses the internal oscillator at 64 MHz.
+pragma target clock    64_000_000       -- oscillator frequency
+--
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINTOSC_64MHZ   -- select 64 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target XINST    DISABLED         -- do not use extended instructionset
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+pragma target MVECEN   DISABLED         -- Do not use multi vectored interrupts
+--
+-- The configuration bit settings above are only a selection, sufficient
+-- for this program. Other programs may need more or different settings.
+--
+OSCFRQ_HFFRQ = 0b1000                   -- Fosc 64
+--
+enable_digital_io()
+
+-- Set Weak pull-up on all pins.
+WPUA = 0b1111_1111
+WPUB = 0b1111_1111
+WPUC = 0b1111_1111 
+
+-- Wait some time for the hardware to power up.
+_usec_delay(100_000)
+
+include delay                       -- library with delay procedures
+include print
+
+-- Set the pinning for the hardware pins of SPI. This is default but still
+-- needed for this chip. Do not use this when using software SPI since the
+-- pins are then assigned for hardware SPI.
+include pps
+pps_control_lock(FALSE)                
+RC3PPS     = PPS_SCK1 -- SPI clock 
+SPI1SDIPPS = PPS_RC4  -- SPI data in
+RC5PPS     = PPS_SDO1 -- SPI data out
+pps_control_lock(TRUE)                 
+
+-- Define the SPI pin.
+alias spi_sck_direction is pin_C3_direction -- Pin 7 of 20 pin DIP.
+spi_sck_direction = output
+alias spi_sdi_direction is pin_C4_direction -- Pin 6 of 20 pin DIP. 
+spi_sdi_direction = input
+alias spi_sdo_direction is pin_C5_direction -- Pin 5 of 20 pin DIP. 
+spi_sdo_direction = output
+
+-- Now include the used SPI interface.
+include spi_host_hw
+-- Set SPI mode 00. Clock is Fosc/4 / (2 * (n+1)). When using n = 1 then
+-- the SPI clock is 64_000_000 / (2 * (1 + 1)) = 16 MHz.
+spi_init(SPI_MODE_00, 1) 
+
+alias spi_host is spi_host_hw
+alias spi_host_exchange is spi_host_hw_exchange
+
+-- setup the SPI chip select pin
+alias chip_select is pin_a1
+alias chip_select_direction is pin_a1_direction
+chip_select = high
+chip_select_direction = output
+
+-- Setup a led to blink while we send data
+alias  led       is pin_A0          -- alias for pin with LED
+pin_A0_direction = OUTPUT
+
+procedure spi_send'put(byte in data) is
+   chip_select = low  -- enable the SPI device
+   spi_host = data  -- send data
+   chip_select = high -- disable the SPI device
+end procedure
+
+-- Main program.
+forever loop
+   led = ON
+   print_string(spi_send,"TEST")
+   print_crlf(spi_send)
+   delay_1ms(10)
+   led = OFF
+   spi_send = "."
+   print_crlf(spi_send)
+   delay_1ms(10)
+end loop
