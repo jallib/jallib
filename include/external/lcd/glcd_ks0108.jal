@@ -498,38 +498,6 @@ if defined(GLCD_FONT_USAGE) then                   -- when using a font library
 -- Notes:     When y-coordinate is a multiple of 8 (0,8,16,etc.): single write,
 --            otherwise two read-modify-write cycles needed: slower!
 -- ----------------------------------------------------------------------------
-procedure glcd_write_char_old(byte in x, byte in y, byte in ch ) is
-   var word indx                                   -- position of bit pattern
-   var byte cx                                     -- bit pattern
-   if (ch <  32) | (ch > 122) then                 -- unsupported char
-      ch = " "                                     -- replace it by a space
-   end if
-   indx = glcd_font_current_width_ * word(ch - 32)  -- non proportional font
-   for glcd_font_current_width_ loop               -- whole character
-      if (x >= GLCD_X_PIXELS) then                 -- check for maximum x value
-         exit loop                                 -- clip text beyond display
-      end if
-      cx = glcd_font_lookup(indx)                  -- obtain bit pattern
-      if glcd_pen_color == GLCD_WHITE then         -- white pen
-         cx = !cx                                  -- invert bit pattern
-      end if
-      ks0108_write_byte_(x, y, cx)                 -- write vertical pixel pattern
-      indx = indx + 1                              -- next byte in font table
-      x = x + 1                                    -- position of next pixel row
-   end loop
-end procedure
-
-  -- Write a char at position (x,y), using font previously selected with
-   -- glcd_font_use(FONT_ID). Honor glcd_background_color variable, and indirectly
-   -- glcd_pen_color, such as:
-   --    * glcd_background_color can be GLCD_BLACK. If so, pen color will be white (inverted)
-   --    * if glcd_background_color isn't GLCD_BLACK, then background color will be white, and
-   --      pen color will be white ("normal").
-   -- When using glcd_common library, a glcd'put pseudo-variable will be defined,
-   -- and can be called as an output device (eg. glcd = "x")
-   -- Note that x and y are given in pixels but the y coordindate will be mapped
-   -- on lines (pages) using glcd_font_current_height_. So when called y must always
-   -- be defined in steps of glcd_font_current_height_. 
    procedure ks0108_write_char(byte in x, byte in y, byte in char) is
 
       var word index
@@ -538,10 +506,7 @@ end procedure
 
       -- Select the right character from the font table.
       offset = char - 32 -- Fix for ascii value.
-      index = 0
-      for offset loop
-         index = index + word(glcd_font_current_byte_per_char_)
-      end loop
+      index = word(glcd_font_current_byte_per_char_) * word(offset) 
  
       -- The ks0108 uses vertical writing of pixels. 
       if (glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL) then
