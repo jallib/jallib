@@ -147,10 +147,12 @@ procedure  ks0108_write_(bit in side, byte in data) is
 
    GLCD_E = low                                    -- start cycle in low state
    _usec_delay(1)                                  -- Twl/2
-   if side == KS0108_LEFT then
-      GLCD_CS1 = high                              -- select left half
-   else
-      GLCD_CS2 = high                              -- select right half
+   if side == KS0108_LEFT then                     -- select left half
+      GLCD_CS2 = low
+      GLCD_CS1 = high
+   else                                            -- select right half
+      GLCD_CS1 = low
+      GLCD_CS2 = high
    end if
    GLCD_RW = low                                   -- clear for writing
    _usec_delay(1)                                  -- Twl/2 (Tasu)
@@ -161,7 +163,8 @@ procedure  ks0108_write_(bit in side, byte in data) is
    GLCD_E = low                                    -- data to display
    _usec_delay(1)                                  -- Tah
    GLCD_CS1 = low                                  -- deselect both halves
-   GLCD_CS2 = low                                  -- (Tdhw)
+   GLCD_CS2 = low
+   GLCD_E = high                                 
 
 end procedure
 
@@ -184,8 +187,10 @@ function ks0108_read_(bit in side) return byte  is
    GLCD_E = low                                    -- start cycle in low state
    _usec_delay(1)                                  -- Twl/2
    if side == KS0108_LEFT then                     -- select left half
+      GLCD_CS2 = low
       GLCD_CS1 = high
    else                                            -- select right half
+      GLCD_CS1 = low
       GLCD_CS2 = high
    end if
    GLCD_DATAPRT_DIR = all_input                    -- Set port to input, before RW low
@@ -194,10 +199,10 @@ function ks0108_read_(bit in side) return byte  is
    GLCD_E = high                                   -- make E high, data is set-up
    _usec_delay(3)                                  -- Twh (Td), data delay time
    data = remap_bits(GLCD_DATAPRT)                 -- latch/read data
-   _usec_delay(1)                                  -- Data hold time read
    GLCD_E = low                                    -- stop cycle
    GLCD_CS1 = low                                  -- deselect both halves
    GLCD_CS2 = low
+   GLCD_E = high                                 
 
    return data                                     -- return the data
 end function
@@ -293,7 +298,7 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Write (modify) a single pixel of the display
+-- Purpose:    Write a single pixel to the display
 -- Arguments:  - x-coordinate of the pixel
 --             - y-coordinate of the pixel
 -- ----------------------------------------------------------------------------
@@ -551,7 +556,7 @@ if defined(GLCD_FONT_USAGE) then                   -- when using a font library
                   buffer_offset = buffer_offset + ((glcd_font_current_width_ - 1) / 8) + 1
                end loop
                -- If the height is not a full byte, complete the last part.
-              if ((glcd_font_current_height_ % 8) != 0) then
+               if ((glcd_font_current_height_ % 8) != 0) then
                   ch = ch >> (8 - bit_count)
                   if (glcd_background_color == GLCD_BLACK) then
                      ch = ch ^ 0xFF
