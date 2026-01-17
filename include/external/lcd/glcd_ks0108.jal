@@ -1,6 +1,6 @@
 -- ----------------------------------------------------------------------------
 -- Title: glcd_ks0108 - Library for KS0108 compatible graphic LCDs
--- Author: Serkan Ayyldz Copyright (c) 2006..2025, all rights reserved.
+-- Author: Serkan Ayyldz Copyright (c) 2006..2026, all rights reserved.
 -- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
 -- Compiler: 2.5r9
 --
@@ -58,6 +58,10 @@ var byte glcd_pen_color        = GLCD_BLACK        -- default pen color
 -- Define some glcd aliases for the available procedures. See glcd_common.
 procedure glcd_write_pixel(byte in x, byte in y)  
 procedure glcd_clear_screen()
+procedure ks0108_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height)
+alias glcd_draw_image is ks0108_draw_image  
 
 -- The display does not support autowrap.
 if defined(FONT_AUTO_WRAP) then
@@ -593,4 +597,51 @@ if defined(GLCD_FONT_USAGE) then                   -- when using a font library
 
 
 end if     -- (using a font library)
+
+-- -----------------------------------------------------------------------------
+-- Description: Draw an bitmap image from a byte array.
+-- - Draws in vertical mode, 1 bit per pixel. 
+-- Parameters: 
+-- - image[] byte array with image
+-- - x in range 0..127
+-- - y in range 0..63
+-- - width of image in number of pixels
+-- - height of image in number of pixels
+-- Notes:
+-- - This procedure only fills the cache with the image. To send the contents of 
+-- - the cache to the screen call sh1106_update_display()
+-- -----------------------------------------------------------------------------
+procedure ks0108_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height) is
+
+   var word image_index
+   var byte x_coord, y_coord, pixel_mask, data, pen_color
+
+   -- We have to write the image in the selected pen color.
+   pen_color = glcd_pen_color
+   for height using y_coord loop
+      pixel_mask = y_coord % 8
+      for width using x_coord loop
+         -- Calculate location of the data in the image array.
+         image_index = word(x_coord) + (word(y_coord/8) * word(width))
+         data = image[image_index]
+         -- Always write a pixel but clearing the pixel depends on
+         -- the chosen pen color.
+         if (data & (1<<pixel_mask)) == 0 then
+            -- Write in the inverted pen color (clear pixel).
+            if (pen_color == GLCD_BLACK) then
+               glcd_pen_color = GLCD_WHITE
+            elsif (pen_color == GLCD_WHITE) then
+               glcd_pen_color = GLCD_BLACK
+            end if 
+         end if
+         -- Always write the pixel (nice for animations).
+         glcd_write_pixel(x + x_coord, y + y_coord)
+         -- Restore pen color.
+         glcd_pen_color = pen_color
+     end loop
+   end loop
+end procedure
+
 
