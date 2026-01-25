@@ -1,5 +1,5 @@
 -- Title: glcd_common - generic routines for graphic lcd
--- Author: Stef Mientki, Serkan Ayyldz Copyright (c) 2006..2022, all rights reserved.
+-- Author: Stef Mientki, Serkan Ayyldz Copyright (c) 2006..2026, all rights reserved.
 -- Adapted-by: Joep Suijs, Matthew Schinkel, Rob Hamerling, Rob Jansen
 -- Compiler: 2.5r6
 --
@@ -154,11 +154,15 @@ var byte*GLCD_Y_SIZE glcd_display_y_size = GLCD_Y_PIXELS
 include glcd_font                                  -- common font library
 
 -- -----------------------------------------------------------------------------
--- Purpose:   Draw one character pixel by pixel - slowest method.
--- Arguments: - x- and y-coordinates of character (upper left corner, in pixels)
---            - character to be displayed
--- Notes:     Requires this procedure to be defined within your glcd library
---              glcd_write_pixel() - draw one pixel to glcd
+-- Purpose: Draw a character pixel by pixel
+-- Parameters: 
+-- - x - horizontal pixel coordinate of the character
+-- - y - vertical pixel coordinate of the character
+-- Notes:     
+-- - Requires this procedure to be defined within your glcd library
+-- - glcd_write_pixel() to draw one pixel to the lcd.
+-- - Some libraries use a chache which must be sent to the display 
+-- - after the character is written.
 -- -----------------------------------------------------------------------------
 procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte in value) is
 
@@ -166,8 +170,6 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte
    var byte char_byte, bit_y_address
    var byte*GLCD_COLOR_SIZE color = glcd_pen_color -- save current pen color
 
-   -- generic font printing (bit by bit)
-   -- this will work for any glcd that has a lcd_write_pixel procedure
    if glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL then
       -- Depending on the font size, more bytes are needed for one row to complete the font.
       row_width = ((glcd_font_current_width_ - 1) / 8)  + 1
@@ -180,10 +182,10 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte
          next_in_row = 0 -- First byte in the row of the font.
          for glcd_font_current_width_ using j loop
             if ((char_byte & bit_y_address) > 0) then
-               glcd_pen_color = color
+                glcd_pen_color = color
             else
                glcd_pen_color = glcd_background_color
-            end if
+            end if 
             glcd_write_pixel(byte*GLCD_X_SIZE(x+j),byte*GLCD_Y_SIZE(y+k))
             bit_y_address = bit_y_address >> 1
             -- If we are done with one row there may be more rows, depending on the width.
@@ -216,8 +218,15 @@ procedure glcd_write_char_pbp(byte*GLCD_X_SIZE in x, byte*GLCD_Y_SIZE in y, byte
    else
       -- not supported yet!
    end if
-
-   glcd_pen_color = color                          -- restore pen color
+   -- Some libraries use a cache for writing pixels. After pixel update this
+   -- cache has to be sent to the display.
+   if defined(glcd_update_display) then
+      glcd_update_display()
+   end if 
+   -- The x- and y- coordinate are adjusted by the pseudo variable so restore them.
+   glcd_char_x_pos = x
+   glcd_char_y_pos = y 
+   glcd_pen_color = color  -- Restore pen color
 
 end procedure
 
