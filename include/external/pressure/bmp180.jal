@@ -1,7 +1,8 @@
+-- -----------------------------------------------------------------------------
 -- Title: Library functions for the BMP180 pressure sensor.
--- Author: Rob Jansen, Copyright (c) 2024..2024, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2024..2025, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r8
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -13,8 +14,6 @@
 -- Sources:Bosch BMP180 Datasheet version 2.5, document BST-BMP180-DS000-09.
 --
 
--- ============================= Public API=====================================
-
 -- ---------------------------- Public constants -------------------------------
 
 -- Resolution modes and oversampling settings.
@@ -22,45 +21,6 @@ const byte BMP180_MODE_ULTRA_LOW_POWER = 0 -- Default.
 const byte BMP180_MODE_STANDARD        = 1
 const byte BMP180_MODE_HIGH_RES        = 2
 const byte BMP180_MODE_ULTRA_HIGH_RES  = 3
-
--- ------------------ Public procedures and functions  -------------------------
-
--- -----------------------------------------------------------------------------
--- Initialize the BMP180 library. The resoluton mode is set to 
--- BMP180_MODE_ULTRA_LOW_POWER. The IIC interface must be initialized.
--- -----------------------------------------------------------------------------
-procedure bmp180_init()
-
--- -----------------------------------------------------------------------------
--- Reset the BMP180 device. 
--- -----------------------------------------------------------------------------
-procedure bmp180_reset()
-
--- -----------------------------------------------------------------------------
--- Set the resolution mode.
--- -----------------------------------------------------------------------------
-procedure bmp180_set_mode(byte in mode) 
-
--- -----------------------------------------------------------------------------
--- Get the resolution mode.
--- -----------------------------------------------------------------------------
-function bmp180_get_mode() return byte
-
--- -----------------------------------------------------------------------------
--- Get the current temperature. This is a blocking call. The delay is depending
--- on the last selected resolution mde and is at least 4.5 ms. See datasheet.
--- Temperature is returned as a value of 0.1 degrees Celcius.
--- -----------------------------------------------------------------------------
-function bmp180_get_temperature() return sword
-
--- -----------------------------------------------------------------------------
--- Get the current pressure. This is a blocking call. The delay is depending on
--- the last selected resolution mode and can be larger than 31 ms. See datasheet.
--- Pressure is returned in Pascal (Pa).
--- -----------------------------------------------------------------------------
-function bmp180_get_pressure() return sdword
-
--- ============================ Implementation =================================
 
 -- ---------------- Private constants and function prototypes ------------------
 
@@ -92,36 +52,13 @@ const byte _BMP180_REG_MD  = 0xBE
 const byte _BMP180_READ_TEMPERATURE_CMD = 0x2E
 const byte _BMP180_READ_PRESSURE_CMD    = 0x34
 
-
--- -----------------------------------------------------------------------------
--- Read a the raw temperaturee and return it.
--- -----------------------------------------------------------------------------
+-- Function prototypes.
+procedure bmp180_set_mode(byte in mode)
 function _read_raw_temperature() return dword 
-
--- -----------------------------------------------------------------------------
--- Read a the raw pressure and return it.
--- -----------------------------------------------------------------------------
 function _read_raw_pressure() return dword 
-
--- -----------------------------------------------------------------------------
--- Read a byte from the given register of the BMP180 via the IIC interface.
--- -----------------------------------------------------------------------------
 function _bmp180_read_data_byte(byte in register) return byte
-
--- -----------------------------------------------------------------------------
--- Write a byte to the given register of the BMP180 via the IIC interface.
--- -----------------------------------------------------------------------------
 procedure _bmp180_write_data_byte(byte in register, byte in data)
-
--- -----------------------------------------------------------------------------
--- Read a word from the given register of the BMP180 via the IIC interface.
--- The BMP180 has data stored with Most Significant Byte (MSB) first.
--- -----------------------------------------------------------------------------
 function _bmp180_read_data_word(byte in register) return word
-
--- -----------------------------------------------------------------------------
--- Calculate the value of B5. We need this more than once. See datasheet figure 4.
--- -----------------------------------------------------------------------------
 function _bmp180_calculate_b5(sdword in raw_data) return sdword
 
 -- --------------------------- Private variables -------------------------------
@@ -133,11 +70,15 @@ var sword _bmp180_b1, _bmp180_b2, _bmp180_mb, _bmp180_mc, _bmp180_md
 
 var byte _bmp180_oversampling -- Holds the resolution mode.
 
--- ============================ Final implemenation ============================
+-- ---------------------- Public procedures & functions ------------------------
 
 -- -----------------------------------------------------------------------------
--- Initialize the BMP180 library. The resoluton mode is set to 
--- BMP180_MODE_ULTRA_LOW_POWER. The IIC interface must be initialized.
+-- Description: Initialize the BMP180 library
+-- - The resoluton mode is set to BMP180_MODE_ULTRA_LOW_POWER.
+-- Parameters: 
+-- - None
+-- Notes:
+-- - The IIC interface must be initialized.
 -- -----------------------------------------------------------------------------
 procedure bmp180_init() is
 
@@ -163,7 +104,9 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
--- Reset the BMP180 device. 
+-- Description: Reset the BMP180 device
+-- Parameters: 
+-- - None
 -- -----------------------------------------------------------------------------
 procedure bmp180_reset() is
 
@@ -176,7 +119,9 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
--- Set the resolution mode.
+-- Description: Set the resolution mode
+-- Parameters: 
+-- - mode - Resolution mode, see BMP180_MODE_xx.
 -- -----------------------------------------------------------------------------
 procedure bmp180_set_mode(byte in mode) is
 
@@ -187,7 +132,11 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
--- Get the resolution mode.
+-- Description: Get the current resolution mode
+-- Parameters: 
+-- - None
+-- Returns:
+-- - Resolution mode, see BMP180_MODE_xx.
 -- -----------------------------------------------------------------------------
 function bmp180_get_mode() return byte is
 
@@ -197,9 +146,14 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Get the current temperature. This is a blocking call. The delay is depending
--- on the last selected resolution mode and is at least 4.5 ms. See datasheet.
--- Temperature is returned as a value of 0.1 degrees Celcius.
+-- Description: Get the current temperature
+-- Parameters: 
+-- - None
+-- Returns:
+-- - Temperature in 0.1 degrees Celcius
+-- Notes:
+-- - This is a blocking call. The delay is depending on the last selected 
+-- - resolution mode and is at least 4.5 ms. See datasheet. 
 -- -----------------------------------------------------------------------------
 function bmp180_get_temperature() return sword is
 
@@ -216,9 +170,14 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Get the current pressure. This is a blocking call. The delay is depending on
--- the last selected resolution mode and can be larger than 31 ms. See datasheet.
--- Pressure is returned in Pascal (Pa).
+-- Description: Get the current pressure
+-- Parameters: 
+-- - None
+-- Returns:
+-- - Pressure in Pascal (Pa)
+-- Notes:
+-- - This is a blocking call. The delay is depending on the last selected 
+-- - resolution mode and can be longer than 31 ms. See datasheet.
 -- -----------------------------------------------------------------------------
 function bmp180_get_pressure() return sdword is
 
@@ -262,10 +221,14 @@ function bmp180_get_pressure() return sdword is
 end function
 
 
--- ----------------------------- Private functions -----------------------------
+-- ---------------------- Private procedures & functions -----------------------
 
 -- -----------------------------------------------------------------------------
--- Read a the raw temperaturee and return it.
+-- Description: Read the raw temperature
+-- Parameters: 
+-- - None
+-- Returns:
+-- - Raw temperature.
 -- -----------------------------------------------------------------------------
 function _read_raw_temperature() return dword is
 
@@ -283,7 +246,11 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Read a the raw pressure and return it.
+-- Description: Read the raw pressure
+-- Parameters: 
+-- - None
+-- Returns:
+-- - Raw pressure.
 -- -----------------------------------------------------------------------------
 function _read_raw_pressure() return dword is
 
@@ -317,7 +284,11 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Read a byte from the given register of the BMP180 via the IIC interface.
+-- Description: Read a byte from the given BMP180 register
+-- Parameters: 
+-- - register - register to read from
+-- Returns:
+-- - Data from register
 -- -----------------------------------------------------------------------------
 function _bmp180_read_data_byte(byte in register) return byte is
 
@@ -339,7 +310,10 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Write a byte to the given register of the BMP180 via the IIC interface.
+-- Description: Write a byte to the given BMP180 register
+-- Parameters: 
+-- - register - register to write to
+-- - data     - data to be written
 -- -----------------------------------------------------------------------------
 procedure _bmp180_write_data_byte(byte in register, byte in data) is
 
@@ -355,8 +329,13 @@ end procedure
 
 
 -- -----------------------------------------------------------------------------
--- Read a word from the given register of the BMP180 via the IIC interface.
--- The BMP180 has data stored with Most Significant Byte (MSB) first.
+-- Description: Read a word from the given BMP180 register
+-- Parameters: 
+-- - register - register to read from
+-- Returns:
+-- - Data from register
+-- Notes:
+-- - The BMP180 stores data with Most Significant Byte (MSB) first.
 -- -----------------------------------------------------------------------------
 function _bmp180_read_data_word(byte in register) return word is
 
@@ -382,7 +361,13 @@ end function
 
 
 -- -----------------------------------------------------------------------------
--- Calculate the value of B5. We need this more than once. See datasheet figure 4.
+-- Description: Calculate the value of B5
+-- Parameters: 
+-- - raw_data - raw data 
+-- Returns:
+-- - Value of B5
+-- Notes:
+-- - See datasheet figure 4.
 -- -----------------------------------------------------------------------------
 function _bmp180_calculate_b5(sdword in raw_data) return sdword is
 
