@@ -1,5 +1,6 @@
+-- -----------------------------------------------------------------------------
 -- Title: GLCD SSD1306 demo sample showing text (fonts) and pixel based graphics.
--- Author: Rob Jansen, Copyright (c) 2020..2025, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2020..2026, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.5r9
 --
@@ -24,40 +25,22 @@
 --        *) Code output format must be: Plain bytes
 --        *) Draw mode must be: Vertical - 1 bit per pixel
 --
---       For a text only version that uses IIC see the sample file
---       16f1825_glcd_ssd1306_font.jal.
+--       For a text only version see the sample file 16f1825_glcd_ssd1306_font.jal.
 --
 
 include 16f18857
-pragma target clock 20_000_000      -- oscillator frequency
-pragma target OSC      HS           -- crystal or resonator
-pragma target RSTOSC   EXT1X        -- power-up clock select: OSC
-pragma target CLKOUTEN DISABLED     -- no clock output
-pragma target WDT      DISABLED     -- watchdog
-pragma target BROWNOUT DISABLED     -- no brownout reset
-pragma target FCMEN    DISABLED     -- no clock monitoring
-pragma target CSWEN    ENABLED      -- allow writing OSCCON1 NOSC and NDIV
-pragma target LVP      ENABLED      -- use low voltage programming
-pragma target MCLR     EXTERNAL     -- external reset 
-
--- This program uses the internal oscillator at 4 MHz.
-;pragma target clock    4_000_000       -- oscillator frequency
---
-;pragma target OSC      OFF                       -- internal oscillator
-;pragma target RSTOSC   HFINT32                   -- select 32 MHz
-;pragma target CLKOUTEN DISABLED                  -- no clock output
-;pragma target WDT      DISABLED                  -- watchdog
-;pragma target BROWNOUT DISABLED                  -- no brownout reset
-;pragma target FCMEN    DISABLED                  -- no clock monitoring
-;pragma target CSWEN    ENABLED                   -- allow writing OSCCON1 NOSC and NDIV
-;pragma target LVP      ENABLED                   -- low voltage programming
-;pragma target MCLR     EXTERNAL                  -- external reset
---
--- The configuration bit settings above are only a selection, sufficient
--- for this program. Other programs may need more or different settings.
---
-;OSCFRQ_HFFRQ = 0b010                -- Fosc 32 -> 4 MHz
---
+-- This program uses the internal oscillator at 16 MHz (PIC at 3.3V)
+pragma target clock    16_000_000 -- oscillator frequency
+pragma target OSC      OFF        -- internal oscillator
+pragma target RSTOSC   HFINT32    -- select 32 MHz
+pragma target CLKOUTEN DISABLED   -- no clock output
+pragma target WDT      DISABLED   -- watchdog
+pragma target BROWNOUT DISABLED   -- no brownout reset
+pragma target FCMEN    DISABLED   -- no clock monitoring
+pragma target CSWEN    ENABLED    -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED    -- low voltage programming
+pragma target MCLR     EXTERNAL   -- external reset
+OSCFRQ_HFFRQ = 0b101              -- Fosc 16 MHz
 
 enable_digital_io()
 -- Wait some time for the hardware to power up.
@@ -67,14 +50,14 @@ _usec_delay(100_000)
 -- const SSD1306_Y_32_PIXELS = TRUE
 
 -- In this sample program you can select between IIC or SPI communication.
--- const USE_IIC = TRUE -- When commenting this out, the program will use SPI.
+const USE_IIC = TRUE -- When commenting this out, the program will use SPI.
 if defined(USE_IIC) then
    -- Using IIC, include and initialize IIC.
    const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz) 
    const bit _i2c_level = TRUE   -- i2c levels (not SMB)
-   alias i2c_scl is pin_C3
+   alias i2c_scl is pin_C3                     -- To SCK of SSD1306
    alias i2c_scl_direction is pin_C3_direction -- Pin 14 of 28 pin DIP
-   alias i2c_sda is pin_C4
+   alias i2c_sda is pin_C4                     -- To SDA of SSD1306
    alias i2c_sda_direction is pin_C4_direction -- Pin 15 of 28 pin DIP  
    include i2c_hardware
    i2c_initialize()
@@ -125,7 +108,8 @@ include print
 -- Font libraries.
 include glcd_6x8_font
 include glcd_12x16_font
--- Since we are using a bigger font we need to set a bigger buffer.
+-- Note that we do not need a character buffer for the horizontal font since
+-- graphics is used and so the character is written using pixel writing.
 const byte SSD1306_CHAR_BUFFER_SIZE = FONT_12X16_BYTE_PER_CHAR
 include glcd_font
 
@@ -438,24 +422,6 @@ const byte image_erase[] = {
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 }
 
--- Arrow, 24x24px
-const byte arrow[] = {
-	0xf8, 0xfc, 0x06, 0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x02, 0x02, 0x02, 0x02, 0x02, 0x02, 0x06, 
-	0x86, 0xe6, 0x76, 0x3c, 0x08, 0x00, 0x00, 0x00, 0x01, 0xff, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 
-	0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 0x80, 
-	0x00, 0x07, 0x0f, 0x18, 0x0c, 0x0e, 0x06, 0x03, 0x01, 0x03, 0x06, 0x0c, 0x18, 0x30, 0x60, 0xc0, 
-	0xc0, 0x60, 0x30, 0x18, 0x0c, 0x06, 0x03, 0x01
-}
-
--- Envelope, 24x24px
-const byte envelope[] = {
-	0x00, 0x80, 0xc0, 0x60, 0x20, 0x30, 0x18, 0x0c, 0x0c, 0x06, 0x03, 0x03, 0x03, 0x03, 0x06, 0x0c, 
-	0x0c, 0x18, 0x30, 0x20, 0x60, 0xc0, 0x80, 0x80, 0xff, 0x07, 0x06, 0x0c, 0x18, 0x18, 0x30, 0x60, 
-	0xc0, 0xc0, 0xc0, 0x40, 0x40, 0xc0, 0xc0, 0xc0, 0x60, 0x30, 0x18, 0x18, 0x0c, 0x06, 0x07, 0xff, 
-	0xff, 0xe0, 0xe0, 0xf0, 0x98, 0x8c, 0x86, 0x83, 0x83, 0x81, 0x80, 0x80, 0x80, 0x80, 0x81, 0x83, 
-	0x83, 0x86, 0x8c, 0x98, 0xf0, 0xe0, 0xe0, 0xff
-}
-
 -- Erase the space used by the images. It keeps the top lines 16 of the display.
 procedure erase_image_space() is
    glcd_draw_image(image_erase,0,16,128,48)
@@ -473,7 +439,7 @@ end procedure
 -- Show a battery charging.
 procedure draw_battery_charging() is
    erase_image_space() 
- 	for 3 loop
+ 	for 2 loop
       glcd_draw_image(battery_00,30,16,84,48)
       ssd1306_update_display()
  	   _usec_delay(250_000)
@@ -492,25 +458,17 @@ procedure draw_battery_charging() is
 	end loop
 end procedure
 
+-- Show text normal
+procedure show_normal() is
+   glcd_background_color = GLCD_WHITE
+   glcd_pen_color = GLCD_BLACK
+end procedure 
 
--- Show two icons drawn independently.
-procedure draw_two_icons() is
-   erase_image_space() 
-	for 4 loop
-      glcd_draw_image(envelope,30,25,24,24)
-      ssd1306_update_display()
-      _usec_delay(500_000)
-      glcd_draw_image(arrow,70,25,24,24)
-      ssd1306_update_display()
-      _usec_delay(500_000)
-      glcd_draw_image(envelope,70,25,24,24)
-      ssd1306_update_display()
-      _usec_delay(500_000)
-      glcd_draw_image(arrow,30,25,24,24)
-      ssd1306_update_display()
-     _usec_delay(500_000)
-	end loop
-end procedure
+-- Show text inverse
+procedure show_inverse() is
+   glcd_background_color = GLCD_BLACK
+   glcd_pen_color = GLCD_WHITE
+end procedure 
 
 -- Variable declaration.
 var byte x
@@ -518,67 +476,76 @@ var byte x
 forever loop
  
    -- First write the demo text.
+   show_normal()
    ssd1306_clear_screen()
    glcd_font_use(FONT_6X8)
-   ssd1306_goto(22,0)
+   ssd1306_goto_pixel(22,0)
    print_string(glcd,"JAL SSD1306")  
-   ssd1306_goto(20,1)
+   ssd1306_goto_pixel(20,8)
    print_string(glcd,"Library Demo")
-   ssd1306_goto(30,4)
-   print_string(glcd,"2025-09-25")
-   ssd1306_goto(15,5)
+   ssd1306_goto_pixel(30,16)
+   print_string(glcd,"2026-01-25")
+   ssd1306_goto_pixel(15,32)
    print_string(glcd,"Text & Graphics")
-   ssd1306_goto(32,6)
+   ssd1306_goto_pixel(32,40)
    print_string(glcd,"Font 6x8")
    delay_1s(3)
 
    -- Goto test. Show all corners.
    glcd_font_use(FONT_6X8)
    -- Top left.
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    glcd = "8"
    -- Top utmost right for this font size.
-   ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
+   ssd1306_goto_pixel(122,0) -- Font is 6 wide so places it to the most right position.
    glcd = "8"          -- at 122 .. 127.
    -- Bottom left.
-   ssd1306_goto(0,7)
+   ssd1306_goto_pixel(0,56) -- Font has a height of 8 so 63 - 8 = 56 (including 56)
    glcd = "8"
    -- Bottom utmost right for this font size.
-   ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
-   glcd = "8"          -- at 122 .. 127.
+   ssd1306_goto_pixel(122,56) 
+   glcd = "8"         
    delay_1s(3)
 
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    
-   -- Show big font
+   -- Show bigger horizontal font
+   ssd1306_clear_screen()
+   ssd1306_goto_pixel(0,5)
    glcd_font_use(FONT_12X16)
+   print_string(glcd,"Font 12*16 with text" )
+
+   -- And inverted
+   show_inverse()
+   ssd1306_goto_pixel(0,40)
    print_string(glcd,"Font 12*16" )
    delay_1s(3)
 
    -- Continue with 6X8 font.
+   show_normal()
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    glcd_font_use(FONT_6X8)
    print_string(glcd,"Font 6*8")
    delay_1s(1)
 
-   ssd1306_goto(0,3)
+   ssd1306_goto_pixel(0,24)
    -- we'll print numbers starting with "0" in inverted format.
    x = 48
    -- numbers are printed inverted
-   glcd_background_color = GLCD_BLACK
+   show_inverse()
    while x <= 57 loop
       glcd = x
       delay_100ms(1)
       x = x + 1
    end loop
 
-   ssd1306_goto(0,4)
+   ssd1306_goto_pixel(0,32)
    -- now print capital letters and small letters in normal format.
    x = 65  -- this is "A"
    -- not inverted (ie. normal)
-   glcd_background_color = GLCD_WHITE
+   show_normal()
    while x <= 122 loop
       glcd = x
       delay_100ms(1)
@@ -586,7 +553,7 @@ forever loop
    end loop
    delay_1s(3)
 
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Brightness Demo")
 
    -- Play with the contrast.
@@ -596,24 +563,24 @@ forever loop
    end loop
 
    -- Show some display features.
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"All Segments On   ")
    delay_1s(3)
    ssd1306_display_all_on()
    delay_1s(3)
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Resume Display    ")
    ssd1306_display_resume()
    delay_1s(3)
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Inverse Display   ")
    ssd1306_display_inverse()
    delay_1s(3)
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Normal Display    ")
    ssd1306_display_normal()
    delay_1s(3)
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Display Off and On")
    delay_1s(2)
    ssd1306_display_off()
@@ -622,9 +589,9 @@ forever loop
    delay_1s(2)
   
    -- Show some display scroll features.
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Scroll Right...   ")
-   ssd1306_goto(0,1)
+   ssd1306_goto_pixel(0,8)
    print_string(glcd,"...and Left       ")
    delay_1s(2)
    ssd1306_start_scroll_right(0x00, 0x07)
@@ -639,9 +606,9 @@ forever loop
    -- Custom made vertical scroll. There is no automatic vertical scroll
    -- feature supported by the SSD1306 but we can use the set start line 
    -- function to create one.
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Scroll Up ...     ")
-   ssd1306_goto(0,1)
+   ssd1306_goto_pixel(0,8)
    print_string(glcd,"...and Down       ")
    delay_1s(2)
    -- Up.
@@ -661,9 +628,10 @@ forever loop
    -- Back to normal.
    ssd1306_set_start_line(0) 
 
-   ssd1306_goto(0,0)
+   -- Note. This only seems to work for the SSD1306 with SPI interface.
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Scroll Diagonal...")
-   ssd1306_goto(0,1)
+   ssd1306_goto_pixel(0,8)
    print_string(glcd,"...Right and Left ")
    delay_1s(2)
    ssd1306_start_scroll_diagonal_right(0x00, 0x07)
@@ -677,7 +645,7 @@ forever loop
 
    -- Do some graphics stuff.
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Draw a Line       ")
    delay_1s(2)
    glcd_line(10,20,60,40)
@@ -685,7 +653,7 @@ forever loop
    delay_1s(2)
 
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Draw a Box        ")
    delay_1s(2)
    glcd_box(20,20,80,60)
@@ -693,7 +661,7 @@ forever loop
    delay_1s(2)
 
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Draw a Circle     ")
    delay_1s(2)
    glcd_circle(40,40,20)
@@ -701,7 +669,7 @@ forever loop
    delay_1s(2)
 
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Draw an Ellipse   ")
    delay_1s(2)
    glcd_ellipse(40,30,30,10)
@@ -710,33 +678,29 @@ forever loop
 
    -- Draw the images, one default, one inverted.
    ssd1306_clear_screen()
-   ssd1306_goto(0,0)
+   ssd1306_goto_pixel(0,0)
    print_string(glcd,"Draw images       ")
-   ssd1306_goto(0,1)
+   ssd1306_goto_pixel(0,8)
    print_string(glcd,"in normal mode    ")
    delay_1s(2)
 	-- Start with default black color.
-   glcd_pen_color = GLCD_BLACK
-  	draw_an_image(jal_logo)
-  	draw_an_image(marilyn)
-  	-- Show the battery charging.
+   show_normal()
+   draw_an_image(jal_logo)
+   draw_an_image(marilyn)
+   -- Show the battery charging.
    draw_battery_charging()
-     -- Show drawing 2 icons drawn independently.
-   draw_two_icons()
 
    -- Now display the inverted image.
-   ssd1306_goto(0,1)
+   ssd1306_goto_pixel(0,8)
    print_string(glcd,"in inverse mode   ")
-   glcd_pen_color = GLCD_WHITE
+   show_inverse()
    erase_image_space()
    delay_1s(2)
-  	draw_an_image(jal_logo)
-  	draw_an_image(marilyn)
-  	-- Show the battery charging.
+   draw_an_image(jal_logo)
+   draw_an_image(marilyn)
+   -- Show the battery charging.
    draw_battery_charging()
-     -- Show drawing 2 icons drawn independently.
-   draw_two_icons()
-   glcd_pen_color = GLCD_BLACK
+   delay_1s(2)
 
 end loop
 

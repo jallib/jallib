@@ -175,10 +175,22 @@ const bit _SH1106_DATA_TRANSMISSION    = 1
 const bit _SH1106_COMMAND_TRANSMISSION = 0
 
 -- --------------------------- Private variables -------------------------------
-include glcd_common
 
--- Cache definition only needed when using graphics. Size is 1k.
-if !defined(SH1106_TEXT_ONLY) then
+if defined(SH1106_TEXT_ONLY) then
+   -- When using horizontal fonts we need a buffer to store one character.
+   -- Define the buffer for writing characters using horizontal fonts.
+   if !defined(SH1106_CHAR_BUFFER_SIZE) then
+      -- Set buffer size to the minimum size.
+      const SH1106_CHAR_BUFFER_SIZE = 1
+   end if 
+
+   var byte _sh1106_char_buffer[SH1106_CHAR_BUFFER_SIZE]
+
+   procedure sh1106_write_char(byte in x, byte in y, byte in char)
+   -- Define the glcd alias for this procedure.
+   alias glcd_write_char is sh1106_write_char  
+else
+   -- Cache definition only needed when using graphics. Size is 1k.
    const word CACHE_SIZE = word(GLCD_X_PIXELS) * word(GLCD_Y_PIXELS/8)
    -- Cache array, defaulting when not previously defined.
    if !defined(glcd_cache) then
@@ -194,20 +206,8 @@ if !defined(SH1106_TEXT_ONLY) then
    var bit  glcd_cache_changed = TRUE
 end if 
  
-if defined(GLCD_FONT_USAGE) then
-   -- When using horizontal fonts we need a buffer to store one character.
-   -- Define the buffer for writing characters using horizontal fonts.
-   if !defined(SH1106_CHAR_BUFFER_SIZE) then
-      -- Set buffer size to the minimum size.
-      const SH1106_CHAR_BUFFER_SIZE = 1
-   end if 
-
-   var byte _sh1106_char_buffer[SH1106_CHAR_BUFFER_SIZE]
-
-   procedure sh1106_write_char(byte in x, byte in y, byte in char)
-   -- Define the glcd alias for this procedure.
-   alias glcd_write_char is sh1106_write_char  
-end if
+-- Now we can include glcd_common.
+include glcd_common
 
 -- Check which interface is used and map it to one sh1106 interface.
 if defined(SH1106_SOFTWARE_SPI) then
@@ -260,13 +260,13 @@ procedure sh1106_init() is
 
       -- Reset the device if a hardware reset pin is present. Only available in
       -- the SPI version of the module.
-      if defined(sh1106_rst) then
-         sh1106_rst_direction = OUTPUT
-         sh1106_rst = HIGH
+      if defined(sh1106_res) then
+         sh1106_res_direction = OUTPUT
+         sh1106_res = HIGH
          _usec_delay(1_000)
-         sh1106_rst = LOW
+         sh1106_res = LOW
          _usec_delay(10_000)
-         sh1106_rst = HIGH     
+         sh1106_res = HIGH     
       end if 
       
    end if -- defined(_SH1106_SPI_CONTROL)
@@ -356,24 +356,11 @@ end procedure
 -- -----------------------------------------------------------------------------
 procedure sh1106_goto_pixel(byte in x, byte in y) is
 
-   var byte x_fix -- Needed to correct 132 pixels --> 128 pixels.
-
-   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
-
-   -- Set column addresses. High address first. Since the controller assumes 
-   -- 132 pixels horizontal instead of 128 we need to add 2 pixels 
-   -- (assuming 2 left and 2 right) to the x_coordinate.
-   x_fix = x + 2
-   _sh1106_write_byte(_SH1106_COLUMN_ADDRESS_HIGH + (x_fix >> 4))
-   _sh1106_write_byte(_SH1106_COLUMN_ADDRESS_LOW + (x_fix & 0x0F)) 
-   -- Set page address. Pixels --> pages.
-   _sh1106_write_byte(_SH1106_PAGE_START_ADDRESS + (y / 8))
-   _sh1106_stop_transmission()
+   sh1106_goto(x, y / 8)
 
    -- When using font, set x and y from glcd_common in pixels for x and y.
-   -- Note that y always maps on pages not pixels using the height of the font.
    if defined(GLCD_FONT_USAGE) then 
-      glcd_char_x_pos = x -- We tell glcd that we are still at x, not x-fix.
+      glcd_char_x_pos = x 
       glcd_char_y_pos = y 
    end if
    
@@ -386,9 +373,9 @@ if !defined(SH1106_TEXT_ONLY) then
 -- Parameters: 
 -- - None
 -- Notes:
--- - Only used for graphics mode; glcd_cache_update() must be called next. 
+-- - Only used for graphics mode; sh1106_update_display() must be called next. 
 -- -----------------------------------------------------------------------------
-procedure glcd_clear_cache() is
+procedure sh1106_clear_cache() is
 
    var word i
 
@@ -410,8 +397,8 @@ end procedure
 -- - None
 -- Notes:
 -- - Only used for graphics mode. This procedure is to be used when using 
--- - graphics features like pixes, lines, circles, etc. glcd_cache_update() 
--- - must be called next to update the display. 
+-- - graphics features like pixes, lines, circles, etc. to send the contents
+-- - of the cache to the display. 
 -- -----------------------------------------------------------------------------
 procedure sh1106_update_display() is
 
@@ -484,7 +471,7 @@ procedure sh1106_clear_screen() is
      end loop
    else
       -- Graphics implementation, clear cache and update display.
-      glcd_clear_cache()
+      sh1106_clear_cache()
       sh1106_update_display()
    end if
 
@@ -598,7 +585,7 @@ end procedure
 end if -- defined(SH1106_TEXT_ONLY)
  
 
-if !defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE) then
+if defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE) then
  -- -----------------------------------------------------------------------------
 -- Description: Write a character at position (x,y)
 -- - It uses the font previously selected with glcd_font_use(FONT_ID) and honors
@@ -617,7 +604,7 @@ if !defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE) then
 -- -----------------------------------------------------------------------------
 procedure sh1106_write_char(byte in x, byte in y, byte in char) is
 
-   var word index
+  var word index
    var byte offset, y_offset, buffer_offset
    var byte ch, mask, bit_count 
 
@@ -705,7 +692,7 @@ procedure sh1106_write_char(byte in x, byte in y, byte in char) is
 
    end if 
 end procedure
-end if -- defined(GLCD_FONT_USAGE)
+end if -- defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE)
 
 -- -----------------------------------------------------------------------------
 -- Description: Set the display contrast

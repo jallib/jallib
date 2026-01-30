@@ -8,33 +8,26 @@
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: Demo program showing how to use the OLED display using an SH1106. 
---              It demonstrates the features of the glcd_sh1106.jal library. 
+--              It demonstrates tje features of the glcd_sh1106.jal library. 
 --              This sample shows the text (font usage). 
 --
--- Note: For a full graphics version that uses SPI see the sample file
---       16f18857_glcd_sh1106_font_graphics.jal.
+-- Notes:  For a text and graphics version see the sample file
+--         16f18857_glcd_sh1106_font_graphics.jal.
 --
 
-include 16f1825                 
-
--- This program uses the internal oscillator at 16 MHz (PIC at 3.3V).
-pragma target clock    16_000_000      -- oscillator frequency
-pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
-pragma target PLLEN    DISABLED        -- No PLL
-pragma target WDT      DISABLED        -- No Watchdog
-pragma target PWRTE    ENABLED         -- Power up timer enabled
-pragma target BROWNOUT DISABLED        -- No brownout reset
-pragma target FCMEN    DISABLED        -- No clock monitoring
-pragma target IESO     DISABLED        -- int/ext osc. switch
-pragma target LVP      DISABLED        -- No low voltage programming
-pragma target MCLR     EXTERNAL        -- Reset internal
-OSCCON_IRCF   = 0b1111                 -- Set 16 MHz 
-OSCCON_SCS    = 0b00                   -- Clock determined by FOSC
-
--- Enable weak pull up for all unused ports since some inputs are not connected
-WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
-WPUC = 0b0011_1000       -- Weak pull-up for unused pins.
-OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+include 16f18857
+-- This program uses the internal oscillator at 16 MHz (PIC at 3.3V)
+pragma target clock    16_000_000 -- oscillator frequency
+pragma target OSC      OFF        -- internal oscillator
+pragma target RSTOSC   HFINT32    -- select 32 MHz
+pragma target CLKOUTEN DISABLED   -- no clock output
+pragma target WDT      DISABLED   -- watchdog
+pragma target BROWNOUT DISABLED   -- no brownout reset
+pragma target FCMEN    DISABLED   -- no clock monitoring
+pragma target CSWEN    ENABLED    -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED    -- low voltage programming
+pragma target MCLR     EXTERNAL   -- external reset
+OSCFRQ_HFFRQ = 0b101              -- Fosc 16 MHz
 
 enable_digital_io()
 -- Wait some time for the hardware to power up.
@@ -44,32 +37,32 @@ _usec_delay(100_000)
 -- const SH1106_Y_32_PIXELS = TRUE
 
 -- In this sample program you can select between IIC or SPI communication.
-const SH1106_USE_IIC = TRUE -- When commenting this out, this program will use SPI.
+const SH1106_USE_IIC = TRUE -- When commenting this out, the program will use SPI.
 if defined(SH1106_USE_IIC) then
    -- Using IIC, include and initialize IIC.
    const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz) 
    const bit _i2c_level = TRUE   -- i2c levels (not SMB)
-   alias i2c_scl is pin_C0                     -- To SCK of sh1106 
-   alias i2c_scl_direction is pin_C0_direction -- Pin 10 of 14 pin DIP 
-   alias i2c_sda is pin_C1                     -- To SDA of sh1106  
-   alias i2c_sda_direction is pin_C1_direction -- Pin 9 of 14 pin DIP
+   alias i2c_scl is pin_C3
+   alias i2c_scl_direction is pin_C3_direction -- Pin 14 of 28 pin DIP
+   alias i2c_sda is pin_C4
+   alias i2c_sda_direction is pin_C4_direction -- Pin 15 of 28 pin DIP  
    include i2c_hardware
    i2c_initialize()
 else
    -- Using SPI.
-   ; Define the required SPI pins.
-   alias sh1106_sck is pin_c0                      -- To SCK of sh1106 
-   alias sh1106_sck_direction is pin_c0_direction  -- Pin 10 of 14 pin DIP 
-   alias sh1106_sdo is pin_c2                      -- To SDA of sh1106  
-   alias sh1106_sdo_direction is pin_c2_direction  -- Pin 8 of 14 pin DIP 
-   alias sh1106_csn is pin_c3                      -- To CS of sh1106  
-   alias sh1106_csn_direction is pin_c3_direction  -- Pin 7 of 14 pin DIP 
-   alias sh1106_dc is pin_c4                       -- To DC of sh1106 
-   alias sh1106_dc_direction is pin_c4_direction   -- Pin 6 of 14 pin DIP  
-   -- The SPI version of the sh1106 uses a hardware reset pin for its reset. 
+   -- Define the required SPI pins.
+   alias sh1106_sck is pin_C3                     -- To SCK of SH1106 
+   alias sh1106_sck_direction is pin_C3_direction -- Pin 14 of 28 pin DIP 
+   alias sh1106_sdo is pin_C4                     -- To SDA of SH1106  
+   alias sh1106_sdo_direction is pin_C4_direction -- Pin 15 of 28 pin DIP   
+   alias sh1106_csn is pin_C2                     -- To CS of SH1106  
+   alias sh1106_csn_direction is pin_C2_direction -- Pin 13 of 28 pin DIP  
+   alias sh1106_dc is pin_C1                      -- To DC of SH1106 
+   alias sh1106_dc_direction is pin_C1_direction  -- Pin 12 of 28 pin DIP     
+   -- The SPI version of the SH1106 uses a hardware reset pin for its reset. 
    -- This optional feature can be used by defining the following:
-   alias sh1106_res is pin_c5                      -- To RES of sh1106 
-   alias sh1106_res_direction is pin_c5_direction  -- Pin 5 of 14 pin DIP 
+   alias sh1106_res is pin_c0                      -- To RES of SH1106 
+   alias sh1106_res_direction is pin_c0_direction  -- Pin 11 of 28 pin DIP 
 
    -- You can use software SPI too by setting this constant.
    -- const SH1106_SOFTWARE_SPI = TRUE 
@@ -79,6 +72,17 @@ else
       spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
    end if 
 end if 
+
+-- Set the pinning for the hardware pins of IIC or SPI. This is default but 
+-- still needed for this chip. Do not use when using software SPI since it
+-- the pins are then assigned for hardware SPI.
+if !defined(SH1106_SOFTWARE_SPI) then
+   include pps
+   pps_control_lock(FALSE)                
+   RC4PPS = PPS_SDA1  -- SDA re-assigned to C4  (default)             
+   RC3PPS = PPS_SCK1  -- SCK re-assigned to C3  (default)            
+   pps_control_lock(TRUE)                 
+end if
 
 include delay
 include print
@@ -112,7 +116,7 @@ end procedure
 var byte x
 
 forever loop
-
+ 
    -- First write the demo text.
    show_normal()
    sh1106_clear_screen()
@@ -150,6 +154,7 @@ forever loop
    sh1106_goto(0,0)
    glcd_font_use(FONT_12X16)
    print_string(glcd,"Font 12*16 with text" )
+
    -- And inverted
    show_inverse()
    sh1106_goto(0,3)
@@ -244,6 +249,7 @@ forever loop
       delay_1ms(50)
    end loop
    delay_1s(2)
+
 
 end loop
 
