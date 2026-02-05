@@ -1,80 +1,128 @@
+-- -----------------------------------------------------------------------------
 -- Title: SPI host, driving MSSP2 module
--- Author: Sebastien Lelong Copyright (c) 2011, all rights reserved.
--- Compiler: 2.4n
+-- Author: Sebastien Lelong Copyright (c) 2011..2025, all rights reserved.
+-- Adapted-by: Rob Jansen
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
 -- Description: SPI host hardware control.
--- Routines for sending and receiving through the SPI in host mode, using MSSP2
+--              Routines for sending and receiving through the SPI in host mode, using MSSP2
 --
--- Sources: good overview of SPI at http://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
--- also at: http://elm-chan.org/docs/spi_e.html
+-- Sources: Good overview of SPI at http://en.wikipedia.org/wiki/Serial_Peripheral_Interface_Bus
+--          Also at: http://elm-chan.org/docs/spi_e.html
 --
--- Notes: this is a rough duplication of spi_host_hw.jal at rev 1537,
--- (http://code.google.com/p/jallib/source/browse/trunk/include/peripheral/spi/spi_host_hw.jal?r=1537)
--- originally written by William Welch, from which MSSP1 registers were modified to match MSSP2 names.
+-- Notes: This is a rough duplication of spi_host_hw.jal at rev 1537,originally written by
+--        William Welch, from which MSSP1 registers were modified to match MSSP2 names.
 --
 
+-- Aliases needed to support newer PICs.
+if defined(SPI2CON0) then 
+   -- Newer PICs, e.g. PIC18F15Q40.
+   alias SPI2BUF_TX      is SPI2TXB
+   alias SPI2BUF_RX      is SPI2RXB
+   alias SPI2CONTROL     is SPI2CON0
+   alias SPI2BUF_SAMPLE  is SPI2CON1_SMP
+else
+   -- Original version.
+   alias SPI2BUF_TX      is SSPBUF
+   alias SPI2BUF_RX      is SSPBUF
+   alias SPI2STATUS_TXWE is SSPCON1_WCOL
+   alias SPI2STATUS_TXBE is SSPSTAT_BF
+   alias SPI2CON1_CKE    is SSPSTAT_CKE
+   alias SPI2CON1_CKP    is SSPCON1_CKP
+   alias SPI2CLK_CLKSEL  is SSPCON1_SSPM
+   alias SPI2CONTROL     is SSPCON1
+   alias SPI2BUF_SAMPLE  is SSPSTAT_SMP
+end if 
+
 include spi_common
-include spi_host_hw2
+
 
 -- SPI is full-duplex, so we exchange host and slave data byte
 function spi_host_hw2_exchange(byte in m_data) return byte is
 
-   SSP2BUF = m_data
+    SPI2BUF_TX = m_data
 
-   if ( SSP2CON1_WCOL != 0 ) then
-      -- FIXME how to report error???
+   -- Check for write collision.
+   if SPI2STATUS_TXWE then
       return 0xFF
    end if
 
-   while ( SSP2STAT_BF == 0 ) loop end loop
+   -- Wait for transmission to complete.
+   while !SPI2STATUS_TXBE loop end loop
 
-   -- return slave data
-   return SSP2BUF
+   -- Return slave data
+   return SPI2BUF_RX
+   
 end function
 
--- half-duplex convenience function. send data to slave, discard reply
+
+-- Half-duplex convenience function. send data to slave, discard reply.
 procedure spi_host_hw2'put(byte in data) is
+
    var byte dummy
+
    dummy = spi_host_hw2_exchange(data)
+
 end procedure
 
--- half-duplex convenience function. send 0xFF, get slave data
+
+-- Half-duplex convenience function. send 0xFF, get slave data.
 function spi_host_hw2'get() return byte is
+
    var byte data
+
    data = spi_host_hw2_exchange(0xFF)
+
    return data
+
 end function
 
+-- Clock SPI data when SCK goes from low to high. SCK is low inactive low.
 procedure spi_host_hw2_set_mode_00() is
    pragma inline
-   SSP2CON1_CKP = 0
-   SSP2STAT_CKE = 1
+
+   SPI2CON1_CKP = 0
+   SPI2CON1_CKE = 1
+
 end procedure
 
+
+-- Clock SPI data when SCK goes from high to low. SCK is inactive low.
 procedure spi_host_hw2_set_mode_01() is
    pragma inline
-   SSP2CON1_CKP = 0
-   SSP2STAT_CKE = 0
+
+   SPI2CON1_CKP = 0
+   SPI2CON1_CKE = 0
 end procedure
 
+
+-- Clock SPI data when SCK goes from high to low. SCK is inactive high.
 procedure spi_host_hw2_set_mode_10() is
    pragma inline
-   SSP2CON1_CKP = 1
-   SSP2STAT_CKE = 1
+
+   SPI2CON1_CKP = 1
+   SPI2CON1_CKE = 1
+
 end procedure
 
+
+-- Clock SPI data when SCK goes from low to high. SCK is inactive high.
 procedure spi_host_hw2_set_mode_11() is
    pragma inline
-   SSP2CON1_CKP = 1
-   SSP2STAT_CKE = 0
+
+   SPI2CON1_CKP = 1
+   SPI2CON1_CKE = 0
+
 end procedure
 
--- Specify SPI mode (see spi_common for predefined constant you can use
--- as parameters)
+-- Specify SPI mode. Ssee spi_common for predefined constant you can use
+-- as parameters.
 procedure spi_host_hw2_set_mode(byte in spi_mode) is
+   pragma inline
+
    if spi_mode == SPI_MODE_00 then
       spi_host_hw2_set_mode_00()
    elsif spi_mode == SPI_MODE_01 then
@@ -84,23 +132,50 @@ procedure spi_host_hw2_set_mode(byte in spi_mode) is
    else
       spi_host_hw2_set_mode_11()
    end if
+
 end procedure
 
+
+-- Set the SPI host speed, see spi_common.jal. Some newer PICs have a separate 
+-- baud rate register, in that case SCK = Fosc / (2 * (spi_rate + 1)).
 procedure spi_host_hw2_set_speed(byte in spi_rate) is
    pragma inline
-   SSP2CON1_SSPM = spi_rate
+
+    if defined(SPI2BAUD) then 
+      -- Newer PICs have a separate baud rate generator.
+      SPI2CLK = 0b0000 -- Use system clock Fosc.
+      SPI2BAUD = spi_rate 
+   else
+      -- Original version. 
+      SPI2CLK_CLKSEL = spi_rate
+   end if 
+
 end procedure
 
--- Initialize the SPI registers.
--- Note: check your datasheet -- TRIS settings, any SPI errata?
+
+-- Initialize the SPI registers and enable the SPI interface.
 procedure spi2_init(byte in spi_mode, byte in spi_rate) is
    pragma inline
-   SSP2CON1 = 0
-   SSP2STAT_SMP = 0
+
+   -- Disable SPI.
+   SPI2CONTROL = 0
+   SPI2BUF_SAMPLE = FALSE
 
    spi_host_hw2_set_mode(spi_mode)
    spi_host_hw2_set_speed(spi_rate)
 
-   SSP2CON1_SSPEN = 1
+  if defined(SPI2CON0) then 
+      -- Newer PICs.
+      SPI2CON0_MST   = TRUE -- SPI host mode. 
+      SPI2CON0_BMODE = TRUE -- Apply Bit-Length to every byte.
+      SPI2CON2_TXR   = TRUE -- Transmit data required.
+      SPI2CON2_RXR   = TRUE -- Receive FIFO space required.
+      SPI2CON0_EN    = TRUE
+   else
+      -- Original version.
+      SSPCON1 = 0
+      SSPCON1_SSPEN = TRUE
+   end if 
+
 end procedure
 

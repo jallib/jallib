@@ -6,13 +6,10 @@
 #
 # Adapted-by: Rob Hamerling 2017: converted to Python3
 #
-# Revision: $Revision$
-#
 # Compiler: N/A
 #
-# This file is part of jallib  http://jallib.googlecode.com
-# Released under the BSD license
-#              http://www.opensource.org/licenses/bsd-license.php
+# This file is part of jallib  https://github.com/jallib/jallib
+# Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 #
 # Description:
 #   Create a list with a count of sample types based on the filename.
@@ -27,8 +24,14 @@
 
 import os, sys
 
-base       = os.path.join("/", "media", "nas", "jallib")    # local copy of Jallib base
-smpdir     = os.path.join(base, "sample")                   # samples subdirectory
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
+
+
+smpdir     = os.path.join(jallib, "sample")                   # samples subdirectory
 report     = "sampleclass.lst"                              # list in curent working directory
 
 # --------------------------------------------------------------

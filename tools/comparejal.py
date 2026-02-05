@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Compare new device files with previous committed device files
-
-Author: Rob Hamerling, Copyright (c) 2017..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-		
-Adapted-by: 
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2017..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -24,15 +19,8 @@ Description:
 Sources: N/A
 
 Notes:
-   Adapt the platform dependent variables to your situation
 
 """
-
-from pic2jal_environment import check_and_set_environment
-
-base, mplabxversion = check_and_set_environment()  # obtain environment variables
-if (base == ""):
-    exit(1)
 
 import sys
 import os
@@ -41,29 +29,30 @@ import fnmatch
 import subprocess
 import platform
 
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
+
+olddir = os.path.join(jallib, "include", "device")
+newdir = os.path.join(base, "device")  # new device files
+log = os.path.join(base, "comparejal_devices.log")  # list with change device files
+log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information
+
+# We need to know which platorm is used to copy data.
 platform_name = platform.system()
 
-# --- system dependent paths
+# 
 if (platform_name == "Linux"):
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
     cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
 elif (platform_name == "Windows"):
-    #   olddir = os.path.join("D:\\", "jallib-master", "include", "device")      # previous device files
-    olddir = os.path.join("D:\\", "GitHub", "jallib", "include", "device")  # previous device files, current Master
-    kdiff = os.path.join("C:\\", "Program Files", "KDiff3", "kdiff3.exe")  # full path
-    cpy = os.path.join(base, "comparejal_copy.cmd")  # copy commandfile
+    cpy = os.path.join(base, "comparejal_copy.cmd") # copy commandfile
 elif (platform_name == "Darwin"):  # Mac
-    olddir = os.path.join("/", "media", "nas", "picdevices", "test")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
     cpy = os.path.join(base, "comparejal_copy.sh")  # copy commandfile
 else:
     print("Please add platform specific info to this script!")
     exit(1)
-
-newdir = os.path.join(base, "device")  # new device files
-log = os.path.join(base, "comparejal_devices.log")  # list with change device files
-log_d = os.path.join(base, "comparejal_details.log")  # list with detailed information
 
 
 # -----------------------------------------------------

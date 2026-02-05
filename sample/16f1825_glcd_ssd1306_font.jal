@@ -1,14 +1,15 @@
+-- -----------------------------------------------------------------------------
 -- Title: GLCD SSD1306 demo sample showing text (fonts).
--- Author: Rob Jansen, Copyright (c) 2020..2021, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2020..2026, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r5
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Demo program showing how to use GLCD SSD1306. It demonstrates
---              all features of the glcd_ssd1360.jal library. This sample shows 
---              the text (font usage). 
+-- Description: Demo program showing how to use the OLED display using an SSD1306. 
+--              It demonstrates the features of the glcd_ssd1306.jal library. 
+--              This sample shows the text (font usage). 
 --
 -- Note: For a full graphics version that uses SPI see the sample file
 --       16f18857_glcd_ssd1306_font_graphics.jal.
@@ -16,10 +17,10 @@
 
 include 16f1825                 
 
--- This program uses the internal oscillator at 32 MHz.
-pragma target clock    32_000_000      -- oscillator frequency
+-- This program uses the internal oscillator at 16 MHz (PIC at 3.3V).
+pragma target clock    16_000_000      -- oscillator frequency
 pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
-pragma target PLLEN    ENABLED         -- PLL on to get 32 MHz
+pragma target PLLEN    DISABLED        -- No PLL
 pragma target WDT      DISABLED        -- No Watchdog
 pragma target PWRTE    ENABLED         -- Power up timer enabled
 pragma target BROWNOUT DISABLED        -- No brownout reset
@@ -27,9 +28,8 @@ pragma target FCMEN    DISABLED        -- No clock monitoring
 pragma target IESO     DISABLED        -- int/ext osc. switch
 pragma target LVP      DISABLED        -- No low voltage programming
 pragma target MCLR     EXTERNAL        -- Reset internal
--- Set the internal clock frequency to 32 MHz.
-OSCCON_IRCF   = 0b1110                 -- Set 32 MHz (uses 8 MHz source)
-OSCCON_SCS    = 0b00                   -- Clock determined by FOSC (32 MHz)
+OSCCON_IRCF   = 0b1111                 -- Set 16 MHz 
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC
 
 -- Enable weak pull up for all unused ports since some inputs are not connected
 WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
@@ -40,97 +40,134 @@ enable_digital_io()
 -- Wait some time for the hardware to power up.
 _usec_delay(100_000)
 
--- Define the pins. In this case we define only the IIC. 
-alias ssd1306_sck is pin_C0 -- Pin 10 for 14 pin DIP
-alias ssd1306_sck_direction is pin_C0_direction
-alias ssd1306_sdo is pin_C1 -- Pin 9 for 14 pin DIP.
-alias ssd1306_sdo_direction is pin_C1_direction 
-
--- Since this PIC does not have more than 1024 bytes of data memory we use
--- will write the text only mode.
-const SSD1306_TEXT_ONLY = TRUE
-
--- We use the IIC hardware of this PIC but if we want to be flexible in our
--- pin assignment we can also use a software implementation by defining
--- the following constant.
--- const SSD1306_SOFTWARE_IIC = TRUE
-
--- If hardware IIC interface problems occur try fixing it with this setting:
--- const bit _i2c_level = FALSE  
-
 -- The default display resolution is 128 x 64. When using 128 x 32 define:
--- const SSD1306_Y_32_PIXELS = TRUE
+-- const ssd1306_Y_32_PIXELS = TRUE
+
+-- In this sample program you can select between IIC or SPI communication.
+const SSD1306_USE_IIC = TRUE -- When commenting this out, the program will use SPI.
+if defined(SSD1306_USE_IIC) then
+   -- Using IIC, include and initialize IIC.
+   const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz) 
+   const bit _i2c_level = TRUE   -- i2c levels (not SMB)
+   alias i2c_scl is pin_C0                       -- To SCK of SSD1306
+   alias i2c_scl_direction is pin_C0_direction   -- Pin 10 of 14 pin DIP 
+   alias i2c_sda is pin_C1                       -- To SCL of SSD1306
+   alias i2c_sda_direction is pin_C1_direction   -- Pin 9 of 14 pin DIP
+   include i2c_hardware
+   i2c_initialize()
+else
+   alias ssd1306_sck is pin_c0                      -- To D0 of SSD1306 
+   alias ssd1306_sck_direction is pin_c0_direction  -- Pin 10 of 14 pin DIP 
+   alias ssd1306_sdo is pin_c2                      -- To D1 of SSD1306  
+   alias ssd1306_sdo_direction is pin_c2_direction  -- Pin 8 of 14 pin DIP 
+   alias ssd1306_csn is pin_c3                      -- To CS of SSD1306  
+   alias ssd1306_csn_direction is pin_c3_direction  -- Pin 7 of 14 pin DIP 
+   alias ssd1306_dc is pin_c4                       -- To DC of SSD1306 
+   alias ssd1306_dc_direction is pin_c4_direction   -- Pin 6 of 14 pin DIP  
+   -- The SPI version of the SSD1306 uses a hardware reset pin for its reset. 
+   -- This optional feature can be used by defining the following:
+   alias ssd1306_res is pin_c5                      -- To RES of SSD1306 
+   alias ssd1306_res_direction is pin_c5_direction  -- Pin 5 of 14 pin DIP 
+
+   -- You can use software SPI too by setting this constant.
+   -- const SSD1306_SOFTWARE_SPI = TRUE 
+   if !defined(SSD1306_SOFTWARE_SPI) then
+      -- Using SPI hardware and initiallize.
+      include spi_master_hw
+      spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+   end if 
+end if 
 
 include delay
 include print
 
 -- Font libraries.
-include glcd_5x7_font
-include glcd_6x8_font
+include glcd_6x8_font   -- Vertical font.
+include glcd_12x16_font -- Horizontal font.
+-- Since we are using a horizontal font so we need to set the character buffer.
+const byte SSD1306_CHAR_BUFFER_SIZE = FONT_12X16_BYTE_PER_CHAR
+-- Only use fonts, no graphics.
+const SSD1306_TEXT_ONLY = TRUE
 include glcd_font
-glcd_font_use(FONT_5X7)
 
--- Include and initialize the GLCD lib. This will also initialize the IIC
--- interface.
+-- Include and initialize the GLCD ssd1306 lib. 
 include glcd_ssd1306
 ssd1306_init()
 
+-- Show text normal
+procedure show_normal() is
+   glcd_background_color = GLCD_WHITE
+   glcd_pen_color = GLCD_BLACK
+end procedure 
+
+-- Show text inverse
+procedure show_inverse() is
+   glcd_background_color = GLCD_BLACK
+   glcd_pen_color = GLCD_WHITE
+end procedure 
+
+-- Variable declaration.
 var byte x
-var bit use_font_1 = false
-
--- First write the demo text.
-ssd1306_clear_screen()
-glcd_font_use(FONT_6X8)
-ssd1306_goto(22,0)
-print_string(glcd,"JAL SSD1306")
-ssd1306_goto(20,1)
-print_string(glcd,"Library Demo")
-ssd1306_goto(30,4)
-print_string(glcd,"2021-09-09")
-ssd1306_goto(30,5)
-print_string(glcd,"Text only")
-ssd1306_goto(32,6)
-print_string(glcd,"Font 6x8")
-delay_1s(3)
-
--- Gotoxy test. Show all corners.
-glcd_font_use(FONT_6X8)
--- Top left.
-ssd1306_goto(0,0)
-glcd = "8"
--- Top utmost right for this font size.
-ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
-glcd = "8"          -- at 122 .. 127.
--- Bottom left.
-ssd1306_goto(0,7)
-glcd = "8"
--- Bottom utmost right for this font size.
-ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
-glcd = "8"          -- at 122 .. 127.
-delay_1s(3)
 
 forever loop
+ 
+   -- First write the demo text.
+   show_normal()
+   ssd1306_clear_screen()
+   glcd_font_use(FONT_6X8)
+   ssd1306_goto(22,0)
+   print_string(glcd,"JAL SSD1306")  
+   ssd1306_goto(20,1)
+   print_string(glcd,"Library Demo")
+   ssd1306_goto(30,4)
+   print_string(glcd,"2026-01-25")
+   ssd1306_goto(30,5)
+   print_string(glcd,"Text only")
+   ssd1306_goto(32,6)
+   print_string(glcd,"Font 6x8")
+   delay_1s(3)
 
+   -- Goto test. Show all corners.
+   glcd_font_use(FONT_6X8)
+   -- Top left.
+   ssd1306_goto(0,0)
+   glcd = "8"
+   -- Top utmost right for this font size.
+   ssd1306_goto(122,0) -- Font is 6 wide so places it to the most right position.
+   glcd = "8"          -- at 122 .. 127.
+   -- Bottom left.
+   ssd1306_goto(0,7) 
+   glcd = "8"
+   -- Bottom utmost right for this font size.
+   ssd1306_goto(122,7) -- Font is 6 wide so places it to the most right position.       
+   glcd = "8"          -- at 122 .. 127.
+   delay_1s(3)
+
+   -- Show bigger horizontal font
    ssd1306_clear_screen()
    ssd1306_goto(0,0)
-   
-   -- switch fonts and inform user
-   use_font_1 = !use_font_1
-   if use_font_1 then
-      glcd_font_use(FONT_5X7)
-      print_string(glcd,"Font 5*7          ")
-      delay_1s(1)
-   else
-      glcd_font_use(FONT_6X8)
-      print_string(glcd,"Font 6*8          ")
-      delay_1s(1)
-   end if
+   glcd_font_use(FONT_12X16)
+   print_string(glcd,"Font 12*16 with text" )
+
+   -- And inverted
+   show_inverse()
+   ssd1306_goto(0,3)
+   print_string(glcd,"Font 12*16" )
+   delay_1s(3)
+
+   -- Continue with 6X8 font.
+   show_normal()
+   ssd1306_clear_screen()
+   ssd1306_goto(0,0)
+   glcd_font_use(FONT_6X8)
+   print_string(glcd,"Font 6*8")
+   delay_1s(1)
 
    ssd1306_goto(0,3)
    -- we'll print numbers starting with "0" in inverted format.
    x = 48
    -- numbers are printed inverted
-   glcd_background_color = GLCD_BLACK
+   show_inverse()
    while x <= 57 loop
       glcd = x
       delay_100ms(1)
@@ -141,7 +178,7 @@ forever loop
    -- now print capital letters and small letters in normal format.
    x = 65  -- this is "A"
    -- not inverted (ie. normal)
-   glcd_background_color = GLCD_WHITE
+   show_normal()
    while x <= 122 loop
       glcd = x
       delay_100ms(1)
@@ -198,12 +235,12 @@ forever loop
    delay_1s(8)
    ssd1306_stop_scroll()
    delay_1s(2)
- 
+
    -- Custom made vertical scroll. There is no automatic vertical scroll
    -- feature supported by the SSD1306 but we can use the set start line 
    -- function to create one.
    ssd1306_goto(0,0)
-   print_string(glcd,"Scroll Up...      ")
+   print_string(glcd,"Scroll Up ...     ")
    ssd1306_goto(0,1)
    print_string(glcd,"...and Down       ")
    delay_1s(2)
@@ -224,6 +261,7 @@ forever loop
    -- Back to normal.
    ssd1306_set_start_line(0) 
 
+   -- Note. This only seems to work for the SSD1306 with SPI interface.
    ssd1306_goto(0,0)
    print_string(glcd,"Scroll Diagonal...")
    ssd1306_goto(0,1)
@@ -237,7 +275,7 @@ forever loop
    delay_1s(5)
    ssd1306_stop_scroll()
    delay_1s(3)
-   
+
 end loop
 
 

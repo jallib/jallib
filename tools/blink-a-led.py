@@ -1,12 +1,7 @@
 #!/usr/bin/python3
 """ Create and compile blink-a-led samples.
-
-  Author: Rob Hamerling, Copyright (c) 2008..2024, all rights reserved.
-          Rob Jansen,    Copyright (c) 2018..2025 all rights reserved.
-
-  Adapted-by:
-
-  Compiler: N/A
+  Author: Rob Hamerling, Copyright (c) 2008..2025, all rights reserved.
+  Adapted-by: Rob Jansen
 
   This file is part of jallib  https://github.com/jallib/jallib
   Released under the ZLIB license
@@ -21,6 +16,13 @@
                - Check the compiler output for errors and warnings
                With validation or compiler errors or warnings:
                - find '.vlog' and/or '.log' files with the samples
+
+      Check if requirements for pic2jal scripts are satisfied:
+     - Python version: at least Python 3.5
+     - Environment variables:
+       - PIC2JAL        - path of destination directory 
+       - JALCOMPILER    - used JAL compiler (platform specific)
+       - MPLABXVERSION  - latest version number of MPLABX, e.g.: 6.25
 
   Sources:
 
@@ -53,40 +55,27 @@
 
 """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()    # obtain environment variables
-if base == "":
-   exit(1)
-
 import sys
 import os
-import datetime
 import time
 import fnmatch
 import json
-import platform
 from concurrent import futures
-
 import jallib3                                  # Python 3 version
 
-# global constants
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
+# global constants
 ScriptAuthor    = "Rob Hamerling, Rob Jansen"
 CompilerVersion = "2.5r9"   # latest JalV2 compiler version
-scriptversion = "2.0"       # script version
-
-platform_name = platform.system()
-# specification of system dependent compiler executable
-if platform_name == "Linux":
-   compiler = os.path.join("/", "media", "rob", "XS2000A", "jalv2compiler", "bin", "jalv2-x86-64")
-elif platform_name == "Windows":
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")
-elif platform_name == "Darwin":
-   compiler = os.path.join(os.getcwd(), "jalv2osx")
-else:
-   print("Please specify platform specific compiler to this script!")
+scriptversion = "2.1"       # script version
 
 devdir = os.path.join(base, "device")           # origin of new device files
+jaldir = os.path.join(jallib, "include", "jal")  # compiler include files
 dstdir = os.path.join(base, "blink")            # destination of new samples
 if not os.path.exists(dstdir):                  # dstdir doesn't exists
    os.makedirs(dstdir)                          # create it
@@ -94,10 +83,6 @@ if not os.path.exists(dstdir):                  # dstdir doesn't exists
 devspecfile = os.path.join(base, "devicespecific.json")  # specific PIC properties
 with open(devspecfile, "r") as fp:
    devspec = json.load(fp)                      # get dictionary with contents
-
-if not os.path.exists('constants_jallib.jal'):
-   print('Missing required "constants_jallib.jal" in current directory')
-   exit(6)
 
 def scan_devfile(devfile):
    """ Scan device file for selected device info """
@@ -258,7 +243,7 @@ def compile_sample(pgmname):
        otherwise return result code and create .log file
    """
    opts = '-no-asm -no-hex -no-codfile'               # compiler options
-   cmd = f'{compiler} {opts} -s {devdir} {os.path.join(dstdir,pgmname)}'
+   cmd = f'{compiler} {opts} -s {devdir} -s {jaldir} {os.path.join(dstdir,pgmname)}'
    flog = os.path.join(dstdir, pgmname + ".log")      # compiler output report
    if os.path.exists(flog):
       os.remove(flog)
@@ -669,3 +654,4 @@ if __name__ == "__main__":
       print(f"        ({sample_count/runtime:.2f} samples per second)")
 
 #
+

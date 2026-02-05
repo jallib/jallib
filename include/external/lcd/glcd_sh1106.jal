@@ -1,0 +1,949 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for GLCD using the SH1106 display controller.
+-- Author: Rob Jansen, Copyright (c) 2026..2026, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Text and graphics library for the graphic display module using 
+--              the SH1106 display controller. The library supports displays
+--              with a resolution of 128 x 32 or 128 x 64 (default).
+--
+-- Sources: Library glcd_ssd1306.jal used as starting point.
+--          SH1106 Data Sheet from Sino wealth version 2.6
+--
+-- Notes: This library supports the control of the display via one of two
+--        interfaces IIC or 4-wire SPI which depends on the interface that is 
+--        included by the main program before including this library. 
+--        This library supports control of the module using I2C software, 
+--        I2C hardware, I2C hardware2, SPI hardware and SPI hardware2. 
+--        Next to that the user can select a software SPI interface. In order 
+--        to use this define the following:
+--        -) const SSD1306_SOFTWARE_SPI = TRUE 
+--
+--        The default display pixel size is 128 x 64 but can be changed to
+--        128 x 32 using the following:
+--        -) const SH1106_Y_32_PIXELS = TRUE 
+--
+--        The main program must include the required interface library and
+--        initialize it. 
+--        -) For IIC the maximum clock is 400 kHz. 
+--        -) For SPI use SPI_MODE_00 with a maximum clock of 10 MHz.
+--
+--        The main program has to define the required pins. When SPI is
+--        used addtional SPI must be defined by the main program before
+--        including this library. 
+--        For both I2C and SPI:
+--        -) alias sh1106_sck             -- For SPI to D0 SCK SH1106. 
+--        -) alias sh1106_sck_direction  
+--        -) alias sh1106_sdo             -- For SPI to D1 SDA SH1106.  
+--        -) alias sh1106_sdo_direction   
+--        Additonal for SPI:
+--        -) alias sh1106_csn             -- For SPI to CS of SH1106.  
+--        -) alias sh1106_csn_direction   
+--        -) alias sh1106_dc              -- For SPI to DC of SH1106. 
+--        -) alias sh1106_dc_direction    
+--
+--        The SPI version of the SH1106 uses a hardware reset pin for its reset. 
+--        This optional feature can be used by defining the following: pin
+--        -) alias sh1106_res             -- For SPI to RES of SH1106.
+--        -) alias sh1106_res_direction   
+--        If not defined the RES pin of the module must be connected to another
+--        reset circuit. It is active low.
+-- 
+--        The graphic display library needs a large data space for maintaining
+--        a cache. The PIC must have more than 1024 bytes of data memory
+--        available as to be able to use the grapics features.
+--        If only text needs to be displayed, this cache is not needed. The
+--        text only mode can be enabled by defining the following:
+--        -) const SH1106_TEXT_ONLY = TRUE     
+--        In this mode, characters can only be placed on certain rows (pages).
+--        When using a horizontal oriented character font a character buffer 
+--        is needed with the size of the used font, see the font library value
+--        FONT_xxxx_BYTE_PER_CHAR for the font you are using.
+--        The default size of this buffer is set to the minimum value of 1.
+--        For example the 12x16 horizontal font uses 32 bytes for one character 
+--        and so we can set the character buffer to this size by:
+--        -) const SH1106_CHAR_BUFFER_SIZE = 32 
+--        No buffer is required for vertical oriented fonts and when using
+--        graphics mode. In graphics mode, characters can be postioned on
+--        any y-coordinate, bypassing the row (pages) limitation.
+--
+--        The default IIC address can be overruled by defining it in the main
+--        program. The default is set to the module IIC address of 0b0111_1000
+--        which is the 7-bit IIC address << 1. Can be overruled by:
+--        -) const byte SH1106_IIC_ADDRESS = <IIC Address>
+--
+
+-- ---------------------------- Public constants -------------------------------
+
+-- Number of pixels on the screen. Number of Y pixels is default 64 but can be 
+-- changed to 32 pixels. 
+const byte SH1106_MAX_X_PIXELS = 128 -- 0..127
+
+if defined(SH1106_Y_32_PIXELS) then
+      const byte SH1106_MAX_Y_PIXELS = 32  -- 0..31
+   else
+      const byte SH1106_MAX_Y_PIXELS = 64  -- 0..63
+end if
+
+-- Vertically the device uses pages of 8 pixels high.
+const byte SH1106_MAX_PAGES = 8 -- 0..7
+
+-- ---------------- Private constants and function prototypes ------------------
+
+-- Function prototypes.
+procedure sh1106_clear_screen()
+procedure sh1106_write_pixel(byte in x, byte in y)
+procedure sh1106_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height)
+function _sh1106_spi_sw_exchange(byte in data) return byte
+procedure _sh1106_start_transmission(bit in transmission)
+procedure _sh1106_stop_transmission()
+procedure _sh1106_write_byte(byte in data)
+procedure _sh1106_write_one_data_byte(byte in data)
+if defined(_SH1106_SPI_CONTROL) & defined(SH1106_SOFTWARE_SPI) then 
+   function _sh1106_spi_sw_exchange(byte in data) return byte
+end if 
+
+-- Define the IIC address. Given address is the IIC module default address << 1.
+if !defined(SH1106_IIC_ADDRESS) then
+   const byte SH1106_IIC_ADDRESS = 0b0111_1000 -- 7-bit IIC address is 0x3C or 0x3D.
+end if
+
+-- Define glcd aliases for the available procedures. See glcd_common.
+alias glcd_clear_screen is sh1106_clear_screen  
+alias glcd_write_pixel is sh1106_write_pixel   
+alias glcd_draw_image  is sh1106_draw_image  
+if !defined(SH1106_TEXT_ONLY) then
+   -- For graphics we also need to declare procedure for updating the display 
+   -- with the cache since characters are then written as pixels.
+   procedure sh1106_update_display()
+   alias glcd_update_display is sh1106_update_display
+end if
+
+-- GLCD specifications.
+const byte GLCD_X_PIXELS   = SH1106_MAX_X_PIXELS
+const byte GLCD_Y_PIXELS   = SH1106_MAX_Y_PIXELS
+const byte GLCD_COLOR_BITS = 1 -- Monochrome display.
+
+-- Colors constants. Black & white are official values for the display controller.
+const GLCD_BLACK = 0x00
+const GLCD_WHITE = 0xFF
+-- This color is a special, internal to this library (not part of the 
+-- controller specs). When using this color, what's black becomes white
+-- (off), what's white becomes black (on)
+const GLCD_XOR   = 0x01
+
+-- Default background color.
+var byte glcd_background_color = GLCD_WHITE
+-- Default pen color.
+var byte glcd_pen_color = GLCD_BLACK
+
+-- The display does not support auto wrap, glcd_common will handle this.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+      _warn "FONT_AUTO_WRAP must be set to TRUE since not supported by controller"
+   end if
+else
+   const bit FONT_AUTO_WRAP = TRUE
+end if
+
+-- SH1106 commands.
+const byte _SH1106_COLUMN_ADDRESS_LOW   = 0x00 -- Address 0x00..0x0F
+const byte _SH1106_COLUMN_ADDRESS_HIGH  = 0x10 -- Address 0x10..0x1F
+const byte _SH1106_PAGE_START_ADDRESS   = 0xB0 -- Address 0xB0..0xB7
+const byte _SH1106_SET_STARTLINE        = 0x40
+const byte _SH1106_SET_CONTRAST         = 0x81 -- Parameter 0x00..0xFF (POR is 0x80)
+const byte _SH1106_SET_CHARGEPUMP       = 0x8D
+const byte _SH1106_SET_SEGMENTREMAP     = 0xA1 -- Reverse direction (POR is A0)
+const byte _SH1106_DISPLAY_RESUME       = 0xA4 -- Normal display status (POR)
+const byte _SH1106_DISPLAY_ALL_ON       = 0xA5 -- Counterpart of display resume.
+const byte _SH1106_DISPLAY_NORMAL       = 0xA6
+const byte _SH1106_DISPLAY_INVERSE      = 0xA7
+const byte _SH1106_SET_MULTIPLEX        = 0xA8
+const byte _SH1106_DISPLAY_OFF          = 0xAE
+const byte _SH1106_DISPLAY_ON           = 0xAF
+const byte _SH1106_COMSCANDEC           = 0xC8
+const byte _SH1106_SET_DISPLAY_OFFSET   = 0xD3 -- Parameter 0..63. POR = 0
+const byte _SH1106_SET_PRECHARGE        = 0xD9 -- Parameter 0x00..0xFF. POR = 0x22
+const byte _SH1106_SET_COMPINS          = 0xDA -- Parameter 0x02 or 0x12. POR = 0x02
+const byte _SH1106_SET_VCOMDETECT       = 0xDB -- Parameter 0x00..0xFF. POR = 0x35
+const byte _SH1106_SET_DISPLAY_CLOCKDIV = 0xD5 -- Parameter 0x00..0xFF. POR = 0x50
+
+const bit _SH1106_DATA_TRANSMISSION    = 1
+const bit _SH1106_COMMAND_TRANSMISSION = 0
+
+-- --------------------------- Private variables -------------------------------
+
+if defined(SH1106_TEXT_ONLY) then
+   -- When using horizontal fonts we need a buffer to store one character.
+   -- Define the buffer for writing characters using horizontal fonts.
+   if !defined(SH1106_CHAR_BUFFER_SIZE) then
+      -- Set buffer size to the minimum size.
+      const SH1106_CHAR_BUFFER_SIZE = 1
+   end if 
+
+   var byte _sh1106_char_buffer[SH1106_CHAR_BUFFER_SIZE]
+
+   procedure sh1106_write_char(byte in x, byte in y, byte in char)
+   -- Define the glcd alias for this procedure.
+   alias glcd_write_char is sh1106_write_char  
+else
+   -- Cache definition only needed when using graphics. Size is 1k.
+   const word CACHE_SIZE = word(GLCD_X_PIXELS) * word(GLCD_Y_PIXELS/8)
+   -- Cache array, defaulting when not previously defined.
+   if !defined(glcd_cache) then
+      -- Large array definition needed for cache.
+      const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
+      const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
+      include large_array_1
+      alias glcd_cache is large_array_1
+   end if 
+   -- Track current changed (dirty) area. Set to no area to write.
+   var word glcd_lo_watermark = CACHE_SIZE - 1  -- Points to start of write area.
+   var word glcd_hi_watermark = 0               -- Points to end of write area.
+   var bit  glcd_cache_changed = TRUE
+end if 
+ 
+-- Now we can include glcd_common.
+include glcd_common
+
+-- Check which interface is used and map it to one sh1106 interface.
+if defined(SH1106_SOFTWARE_SPI) then
+   const _SH1106_SPI_CONTROL = TRUE
+   alias _sh1106_interface is _sh1106_spi_sw_exchange
+elsif defined(spi_master_hw_exchange) then
+   const _SH1106_SPI_CONTROL = TRUE
+   alias _sh1106_interface is spi_master_hw_exchange
+elsif defined(spi_master_hw2_exchange) then
+   const _SH1106_SPI_CONTROL = TRUE
+   alias _sh1106_interface is spi_master_hw2_exchange
+elsif defined(i2c_transmit_byte) then
+   alias _sh1106_interface is i2c_transmit_byte 
+   alias _sh1106_start is i2c_start
+   alias _sh1106_stop is i2c_stop
+elsif defined(i2c_transmit_byte2) then
+   alias _sh1106_interface is i2c_transmit_byte2
+   alias _sh1106_start is i2c_start2
+   alias _sh1106_stop is i2c_stop2
+end if 
+
+-- ---------------------- Public procedures & functions ------------------------
+
+-- -----------------------------------------------------------------------------
+-- Description: Initialize the SH1106 library and display
+-- - When SPI is used and the reset pin is defined then the module will also be 
+-- - hardware reset.
+-- Parameters: 
+-- - None
+-- Notes:
+-- - The use IIC interface or SPI interface must be initialized.
+-- -----------------------------------------------------------------------------
+procedure sh1106_init() is
+
+   if defined(_SH1106_SPI_CONTROL) then
+
+      -- Initialize common SPI pins.
+      sh1106_sck_direction = OUTPUT
+      sh1106_sdo_direction = OUTPUT
+      sh1106_csn_direction = OUTPUT
+      sh1106_dc_direction  = OUTPUT
+      sh1106_csn = HIGH
+      sh1106_dc  = _SH1106_COMMAND_TRANSMISSION
+
+      if defined(SH1106_SOFTWARE_SPI) then
+         -- SPI done in software, initialize additonal pins.
+         sh1106_sck = LOW
+         sh1106_sdo = LOW 
+      end if  
+
+      -- Reset the device if a hardware reset pin is present. Only available in
+      -- the SPI version of the module.
+      if defined(sh1106_res) then
+         sh1106_res_direction = OUTPUT
+         sh1106_res = HIGH
+         _usec_delay(1_000)
+         sh1106_res = LOW
+         _usec_delay(10_000)
+         sh1106_res = HIGH     
+      end if 
+      
+   end if -- defined(_SH1106_SPI_CONTROL)
+
+   -- Initialize the module. Most values are reset defaults. 
+   -- See datasheet for more information.
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_OFF)
+   _sh1106_write_byte(_SH1106_SET_DISPLAY_CLOCKDIV)
+   _sh1106_write_byte(0x80) -- POR is 0x50
+   _sh1106_write_byte(_SH1106_SET_MULTIPLEX)
+   _sh1106_write_byte(GLCD_Y_PIXELS - 1)
+    _sh1106_write_byte(_SH1106_SET_DISPLAY_OFFSET)
+   _sh1106_write_byte(0x00)
+   _sh1106_write_byte(_SH1106_SET_STARTLINE)
+   _sh1106_write_byte(_SH1106_SET_CHARGEPUMP)
+   _sh1106_write_byte(0x14) -- Enable charge pump.
+   _sh1106_write_byte(_SH1106_SET_SEGMENTREMAP)
+   _sh1106_write_byte(_SH1106_COMSCANDEC)
+   _sh1106_write_byte(_SH1106_SET_COMPINS)
+   if SH1106_MAX_Y_PIXELS == 32 then
+      _sh1106_write_byte(0x02) -- Display with 32 pixels on Y axis.  
+   else      
+      _sh1106_write_byte(0x12) -- Display with 64 pixels on Y axis.  
+   end if 
+   _sh1106_write_byte(_SH1106_SET_CONTRAST)
+   _sh1106_write_byte(0xAF)
+   _sh1106_write_byte(_SH1106_SET_PRECHARGE)
+   _sh1106_write_byte(0x22) -- SSD1306 was 0x25.POR value is 0x22.
+   _sh1106_write_byte(_SH1106_SET_VCOMDETECT)
+   _sh1106_write_byte(0x30) -- valid value for SH1106 and SSD1306. 0x20 for SSD1306.
+   _sh1106_write_byte(_SH1106_DISPLAY_RESUME)
+   _sh1106_write_byte(_SH1106_DISPLAY_NORMAL)
+   _sh1106_stop_transmission()     
+
+   -- First clear screen before putting the display on again.
+   sh1106_clear_screen()
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_ON)
+   _sh1106_stop_transmission()     
+  
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Set the display to given coordinates
+-- Parameters: 
+-- - x - x-coordinate in range 0..SH1106_MAX_X_PIXELS - 1
+-- - y - page number in 0..SH1106_MAX_PAGES - 1
+-- Notes:
+-- - Used in text mode. Text is positioned on page boundaries.
+-- -----------------------------------------------------------------------------
+procedure sh1106_goto(byte in x, byte in y) is
+
+   var byte x_fix -- Needed to correct 132 pixels --> 128 pixels.
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+
+   -- Set column addresses. High address first. Since the controller assumes 
+   -- 132 pixels horizontal instead of 128 we need to add 2 pixels 
+   -- (assuming 2 left and 2 right) to the x_coordinate.
+   x_fix = x + 2
+   _sh1106_write_byte(_SH1106_COLUMN_ADDRESS_HIGH + (x_fix >> 4))
+   _sh1106_write_byte(_SH1106_COLUMN_ADDRESS_LOW + (x_fix & 0x0F)) 
+   -- Set page address.
+   _sh1106_write_byte(_SH1106_PAGE_START_ADDRESS + y)
+   _sh1106_stop_transmission()
+
+   -- When using font, set x and y from glcd_common in pixels for x and y.
+   -- Note that y always maps on pages not pixels using the height of the font.
+   if defined(GLCD_FONT_USAGE) then 
+      glcd_char_x_pos = x -- We tell glcd that we are still at x, not x-fix.
+      glcd_char_y_pos = y * glcd_font_current_height_ 
+   end if
+   
+end procedure
+
+
+if !defined(SH1106_TEXT_ONLY) then 
+-- -----------------------------------------------------------------------------
+-- Description: Set the display to given pixel coordinates
+-- Parameters: 
+-- - x - x-coordinate in range 0..SH1106_MAX_X_PIXELS - 1
+-- - y - y-coordinate in range 0..SH1106_MAX_Y_PIXELS - 1
+-- Notes:
+-- - Used in graphics mode. Text is positioned on pixel coordinates.
+-- -----------------------------------------------------------------------------
+procedure sh1106_goto_pixel(byte in x, byte in y) is
+
+   sh1106_goto(x, y / SH1106_MAX_PAGES)
+
+   -- When using font, set x and y from glcd_common in pixels for x and y.
+   if defined(GLCD_FONT_USAGE) then 
+      glcd_char_x_pos = x 
+      glcd_char_y_pos = y 
+   end if
+   
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Description: Clear the graphics cache
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Only used for graphics mode; sh1106_update_display() must be called next. 
+-- -----------------------------------------------------------------------------
+procedure sh1106_clear_cache() is
+
+   var word i
+
+   for CACHE_SIZE using i loop
+      glcd_cache[i] = 0x00
+   end loop
+
+   -- Reset watermark pointers.
+   glcd_hi_watermark = CACHE_SIZE - 1
+   glcd_lo_watermark = 0
+   glcd_cache_changed = TRUE
+
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Copy the changed area of the graphics cache to the display
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Only used for graphics mode. This procedure is to be used when using 
+-- - graphics features like pixes, lines, circles, etc. to send the contents
+-- - of the cache to the display. 
+-- -----------------------------------------------------------------------------
+procedure sh1106_update_display() is
+
+   -- Graphics implementation, using cache.
+   var word y_address, x_address, index
+   var byte column, row
+      
+   -- Don't do unnecessary updates.
+   if glcd_cache_changed then 
+      
+      -- Set base address(cursor) to low water mark.
+      x_address = glcd_lo_watermark % word(GLCD_X_PIXELS) 
+      y_address = (glcd_lo_watermark / word(GLCD_X_PIXELS)) * 8
+
+      -- Since the column start address when using goto is kept when moving
+      -- to the next row, we need to reset that start address when moving
+      -- to the next row.  
+      column = byte(x_address)
+      row = byte(y_address)     
+      index = glcd_lo_watermark
+      while index <= glcd_hi_watermark loop
+         sh1106_goto_pixel(column, row)
+         _sh1106_start_transmission(_SH1106_DATA_TRANSMISSION)
+         while (index <= glcd_hi_watermark) & (column < GLCD_X_PIXELS) loop
+            _sh1106_write_byte(glcd_cache[index])
+            index = index + 1
+            column = column + 1
+         end loop
+         _sh1106_stop_transmission()
+         -- Next row, reset the column start address.
+         column = 0
+         row = row + 8  
+      end loop
+         
+      -- Reset water mark pointers to no area to write.
+      glcd_lo_watermark = CACHE_SIZE -1
+      glcd_hi_watermark = 0
+      glcd_cache_changed = false
+   end if
+      
+   end procedure
+
+end if -- !defined(SH1106_TEXT_ONLY)
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Clear the screen
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Cursor is set to the position 0,0.
+-- -----------------------------------------------------------------------------
+procedure sh1106_clear_screen() is
+
+   var byte y_coord
+
+   if defined(SH1106_TEXT_ONLY) then
+      -- If there is no chache we cannot use the graphics way of clearing the
+      -- screen so as fallback we just write 0x00.     
+       for (GLCD_Y_PIXELS / 8) using y_coord loop
+         -- Clearing per page. We can use the regular goto.
+         sh1106_goto(0, y_coord)
+         -- Send data for all columns
+         _sh1106_start_transmission(_SH1106_DATA_TRANSMISSION)
+         for (GLCD_X_PIXELS) loop
+            -- The column address auto-increments.
+            _sh1106_write_byte(0x00)
+         end loop
+        _sh1106_stop_transmission()
+     end loop
+   else
+      -- Graphics implementation, clear cache and update display.
+      sh1106_clear_cache()
+      sh1106_update_display()
+   end if
+
+   sh1106_goto(0,0)
+
+end procedure
+
+
+if defined(SH1106_TEXT_ONLY) then
+-- -----------------------------------------------------------------------------
+-- Description: Not implemented for text only mode
+-- Notes:
+-- - Only defined as dummy procedure for the glcd_common library.
+-- -----------------------------------------------------------------------------
+procedure sh1106_write_pixel(byte in x, byte in y) is
+   -- Empty body.
+end procedure 
+
+else -- defined(SH1106_TEXT_ONLY) then
+-- -----------------------------------------------------------------------------
+-- Description: Plot a pixel at the given absolute (x, y) location.
+-- Parameters: 
+-- - x - x-coordinate in range 0..SH1106_MAX_X_PIXELS - 1
+-- - y - y-coordinate in range 0..SH1106_MAX_Y_PIXELS - 1
+-- Notes:
+-- - Variable 'glcd_pen_color' should be set before calling to plot the used
+-- - pixel color. The display is not updated with the changed pixel so 
+-- - make sure to call sh1106_update_display() after all pixels are done. 
+-- -----------------------------------------------------------------------------
+procedure sh1106_write_pixel(byte in x, byte in y) is
+
+   -- Graphics implementation, using cache.
+   var byte pdata, offset
+   var word index
+
+   if (x < GLCD_X_PIXELS) & (y < GLCD_Y_PIXELS) then   
+
+      index = word((word(y/8) * GLCD_X_PIXELS)) + word(x)
+      offset = y % 8 
+
+      pdata = glcd_cache[ index ] 
+      if glcd_pen_color == GLCD_BLACK then
+         pdata = pdata | (0x01 << offset)
+      elsif glcd_pen_color == GLCD_WHITE then
+         pdata = pdata & (255 ^ (0x01 << offset))
+      elsif glcd_pen_color == GLCD_XOR then
+         pdata = pdata ^ (0x01 << offset)
+      end if 
+      glcd_cache[ index ] = pdata
+
+      if index < glcd_lo_watermark then
+         -- update low water mark
+         glcd_lo_watermark = index
+      end if
+      if index > glcd_hi_watermark then
+         -- update high water mark
+         glcd_hi_watermark = index
+      end if
+      glcd_cache_changed = TRUE
+
+   end if
+      
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Draw a bitmap image from a byte array
+-- - Draws the image using vertical mode, 1 bit per pixel. 
+-- Parameters: 
+-- - image[] - array of bytes with the image
+-- - x       - x-coordinate in range 0..SH1106_MAX_X_PIXELS - 1
+-- - y       - y-coordinate in range 0..SH1106_MAX_Y_PIXELS - 1
+-- - width   - width of image in number of pixels
+-- - height  - height of image in number of pixels
+-- Notes:
+-- - This procedure only fills the cache with the image. To send the contents of 
+-- - the cache to the screen call sh1106_update_display() next.
+-- -----------------------------------------------------------------------------
+procedure sh1106_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height) is
+
+   var word image_index
+   var byte x_coord, y_coord, pixel_mask, data, pen_color
+
+   -- We have to write the image in the selected pen color.
+   pen_color = glcd_pen_color
+   for height using y_coord loop
+      pixel_mask = y_coord % 8
+      for width using x_coord loop
+         -- Calculate location of the data in the image array.
+         image_index = word(x_coord) + (word(y_coord/8) * word(width))
+         data = image[image_index]
+         -- Always write a pixel but clearing the pixel depends on
+         -- the chosen pen color.
+         if (data & (1<<pixel_mask)) == 0 then
+            -- Write in the inverted pen color (clear pixel).
+            if (pen_color == GLCD_BLACK) then
+               glcd_pen_color = GLCD_WHITE
+            elsif (pen_color == GLCD_WHITE) then
+               glcd_pen_color = GLCD_BLACK
+            end if 
+         end if
+         -- Always write the pixel (nice for animations).
+         glcd_write_pixel(x + x_coord, y + y_coord)
+         -- Restore pen color.
+         glcd_pen_color = pen_color
+     end loop
+   end loop
+end procedure
+end if -- defined(SH1106_TEXT_ONLY)
+ 
+
+if defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE) then
+ -- -----------------------------------------------------------------------------
+-- Description: Write a character at position (x,y)
+-- - It uses the font previously selected with glcd_font_use(FONT_ID) and honors
+-- - glcd_background_color variable, and glcd_pen_color.
+-- Parameters: 
+-- - x    - x-coordinate in range 0..SH1106_MAX_X_PIXELS - 1
+-- - y    - y-coordinate in range 0..SH1106_MAX_Y_PIXELS - 1
+-- - char - ASCII character
+-- Notes:
+-- - Although x and y are given in pixels, the y coordindate will be mapped on
+-- - display lines (pages) using glcd_font_current_height_. So when called y must
+-- - always be defined in steps of glcd_font_current_height_. 
+-- - When using glcd_common library, a glcd'put pseudo-variable will be defined,
+-- - and can be called as an OUTPUT device (eg. glcd = "x").
+-- - Only available when using fonts.
+-- -----------------------------------------------------------------------------
+procedure sh1106_write_char(byte in x, byte in y, byte in char) is
+
+  var word index
+   var byte offset, y_offset, buffer_offset
+   var byte ch, mask, bit_count 
+
+   -- Select the right character from the font table.
+   offset = char - 32 -- Fix for ascii value.
+   index = word(glcd_font_current_byte_per_char_) * word(offset)  
+
+   -- The SH1106 uses vertical writing of pixels. 
+   if (glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL) then
+      -- First perform a range check to prevent buffer overflow.
+      if (glcd_font_current_byte_per_char_ <= SH1106_CHAR_BUFFER_SIZE) then
+         -- Fill the buffer with the character pixel data.
+          for glcd_font_current_byte_per_char_ using offset loop
+            _sh1106_char_buffer[offset] = glcd_font_lookup(index)
+            index = index + 1
+         end loop 
+         -- Horizontal orientation means we have to rotate the character
+         -- ninety degrees to the left and keep top left horizontal. 
+         mask = 0 
+         for glcd_font_current_width_ using offset loop
+            -- Preset mask again when used. 
+            if (mask == 0) then
+               mask = 0b1000_0000 -- Start with left most significant bit.
+            end if 
+            -- Set the starting position buffer pointer.
+            buffer_offset = offset / 8
+            bit_count = 0
+            y_offset = 0
+            ch = 0
+            for glcd_font_current_height_ loop
+               ch = ch >> 1
+               if (_sh1106_char_buffer[buffer_offset] & mask) != 0 then
+                  ch = ch | 0b1000_0000
+               end if 
+               bit_count = bit_count + 1
+               -- If 8 bits are done, write the byte and go to next bit.
+               if (bit_count == 8) then
+                  -- Invert if needed. 
+                  if (glcd_background_color == GLCD_BLACK) then
+                     ch = ch ^ 0xFF
+                  end if
+                  sh1106_goto(x + offset, (y / 8) + y_offset)
+                  _sh1106_write_one_data_byte(ch)
+                  ch = 0
+                  bit_count = 0
+                  y_offset = y_offset + 1
+               end if 
+               -- Next byte from buffer for next column. 
+               buffer_offset = buffer_offset + ((glcd_font_current_width_ - 1) / 8) + 1
+            end loop
+            -- If the height is not a full byte, complete the last part.
+            if ((glcd_font_current_height_ % 8) != 0) then
+               if (bit_count != 0) then
+                  ch = ch >> (8 - bit_count)
+                  if (glcd_background_color == GLCD_BLACK) then
+                     ch = ch ^ 0xFF
+                  end if
+                  sh1106_goto(x + offset, (y / 8) + y_offset)
+                  _sh1106_write_one_data_byte(ch)   
+               end if            
+            end if 
+            -- Next bit.
+            mask = mask >> 1
+         end loop
+         -- We need to restore the x- and y-coordinate for the next write.
+         glcd_char_x_pos = x 
+         glcd_char_y_pos = y
+      end if 
+
+   elsif glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+
+      -- Position cursor but map Y-coordindate on pages (lines) not pixels.
+      sh1106_goto(x, y / glcd_font_current_height_)
+    
+      _sh1106_start_transmission(_SH1106_DATA_TRANSMISSION)
+      for glcd_font_current_byte_per_char_ loop
+         ch = glcd_font_lookup(index)
+         if (glcd_background_color == GLCD_BLACK) then
+            ch = ch ^ 0xFF
+         end if
+         _sh1106_write_byte(ch)
+         index = index + 1
+      end loop
+      _sh1106_stop_transmission()
+
+   end if 
+end procedure
+end if -- defined(SH1106_TEXT_ONLY) & defined(GLCD_FONT_USAGE)
+
+-- -----------------------------------------------------------------------------
+-- Description: Set the display contrast
+-- Parameters: 
+-- - contrast - 0x00..0xFF
+-- -----------------------------------------------------------------------------
+procedure sh1106_set_contrast(byte in contrast) is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_SET_CONTRAST)
+   _sh1106_write_byte(contrast)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put all segments of the display on
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_all_on() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_ALL_ON)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Resume the display
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_resume() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_RESUME)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put the display in normal (non-inverse) mode
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_normal() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_NORMAL)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put the display in inverse mode
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_inverse() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_INVERSE)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Switch the display on
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_on() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_ON)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Switch the display off
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure sh1106_display_off() is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_DISPLAY_OFF)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Set the display start line.
+-- - The procedure can be used to implement a vertical scroll feature.
+-- Parameters: 
+-- - start_line - 0..SH1106_MAX_Y_PIXELS - 1
+-- -----------------------------------------------------------------------------
+procedure sh1106_set_start_line(byte in start_line) is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(_SH1106_SET_STARTLINE | (start_line & 0x3F))
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+-- ----------------------------- Advanced functions ---------------------------
+
+-- -----------------------------------------------------------------------------
+-- Description: Send a command to the sh1106
+-- Parameters: 
+-- - command - instruction for the sh1106 from the datasheet
+-- -----------------------------------------------------------------------------
+procedure sh1106_send_command(byte in command) is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(command)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Send a command to the sh1106 with the given parameter 
+-- Parameters: 
+-- - command   - instruction for the sh1106 from the datasheet
+-- - parameter - data for the sh1106 as described in the datasheet
+-- -----------------------------------------------------------------------------
+procedure sh1106_send_command_parameter(byte in command, byte in parameter) is
+
+   _sh1106_start_transmission(_SH1106_COMMAND_TRANSMISSION)
+   _sh1106_write_byte(command)
+   _sh1106_write_byte(parameter)
+   _sh1106_stop_transmission()     
+   
+end procedure
+
+
+-- ---------------------- Private procedures & functions -----------------------
+
+-- -----------------------------------------------------------------------------
+-- Description: Start an IIC transmission or SPI data or command transmission 
+-- Parameters: 
+-- - transmission - TRUE is data transmission, FALSE is command transmission
+-- -----------------------------------------------------------------------------
+procedure _sh1106_start_transmission(bit in transmission) is
+
+   if defined(_SH1106_SPI_CONTROL) then 
+      sh1106_csn = LOW
+      sh1106_dc  = transmission
+   else
+
+      var bit _trash 
+
+      _sh1106_start()
+      _trash = _sh1106_interface(SH1106_IIC_ADDRESS)
+      if transmission then
+         _trash = _sh1106_interface(0x40)
+      else
+         _trash = _sh1106_interface(0x00)
+      end if
+
+   end if
+    
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Stop an IIC transmission or SPI transmission
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure _sh1106_stop_transmission() is
+
+   if defined(_SH1106_SPI_CONTROL) then 
+      sh1106_csn = HIGH
+   else
+      _sh1106_stop()
+   end if
+    
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Write a byte to the SH1106
+-- Parameters: 
+-- - data - data byte to be written.
+-- Notes:
+-- - Used to send a number of data bytes in one transmission.
+-- - Transmission must have been started using _sh1106_start_transmission() and
+-- - must be stopped when done by using _sh1106_stop_transmission().
+-- -----------------------------------------------------------------------------
+procedure _sh1106_write_byte(byte in data) is
+
+   var byte _trash
+
+   _trash = _sh1106_interface(data)
+
+end procedure
+
+     
+-- -----------------------------------------------------------------------------
+-- Description: Write one data byte to the SH1106
+-- Parameters: 
+-- - data - data byte to be written.
+-- Notes:
+-- - Used to send one data byte in one transmission. 
+-- -----------------------------------------------------------------------------
+procedure _sh1106_write_one_data_byte(byte in data) is
+
+   _sh1106_start_transmission(_SH1106_DATA_TRANSMISSION)
+   _sh1106_write_byte(data)
+   _sh1106_stop_transmission()
+
+end procedure
+
+
+if defined(_SH1106_SPI_CONTROL) & defined(SH1106_SOFTWARE_SPI) then 
+-- -----------------------------------------------------------------------------
+-- Description: Software SPI interface.
+-- Parameters: 
+-- - data -  data byte to be transmitted
+-- Returns:
+-- - 0x00
+-- Notes: 
+-- - There is no data read in this SPI variant, only data written.
+-- -----------------------------------------------------------------------------
+function _sh1106_spi_sw_exchange(byte in data) return byte is
+
+   var bit data_bit_out at data:7
+
+   for 8 loop
+      sh1106_sdo = data_bit_out
+      data = data << 1 
+      sh1106_sck = HIGH
+      _usec_delay(1)
+      sh1106_sck = LOW
+   end loop
+   sh1106_sdo = LOW -- Not needed but nicer to keep output low when done.
+
+   return 0x00 -- Nothing to return so return 0x00.   
+
+end function
+end if -- defined(_SH1106_SPI_CONTROL) & defined(SH1106_SOFTWARE_SPI)

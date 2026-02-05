@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
-
-Author: Rob Hamerling, Copyright (c) 2014..2024, all rights reserved.
-        Rob Jansen,    Copyright (c) 2020..2025, all rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2014..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -72,12 +67,6 @@ Notes:
 
 """
 
-from pic2jal_environment import check_and_set_environment
-
-base, mplabxversion = check_and_set_environment()  # obtain environment variables
-if (base == ""):
-    exit(1)
-
 import sys
 import os
 import fnmatch
@@ -88,9 +77,15 @@ import time
 import xml.etree.ElementTree as et
 from concurrent import futures
 
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
+
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "2.2"       # script version
+scriptversion = "2.3"       # script version
 compilerversion = "2.5r9"   # latest JalV2 compiler version
 
 # Additional file specifications

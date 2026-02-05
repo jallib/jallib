@@ -1,0 +1,313 @@
+-- Title: Library for communicating with SD memory cards
+-- Author: Matthew Schinkel, copyright (c) 2009..2022, all rights reserved.
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: this library provides functions for SD memory cards.
+--
+-- Notes: SD card SPI mode is 1,1
+--
+--        This version works with standard capacity sd cards up to 4gb and
+--        high capacity up to 32 gb. Extended Capacity up to 2TB
+--        may be supported later on.
+--
+-- Sources:
+-- SanDisk Secure Digital Card - http://www.cs.ucr.edu/~amitra/sdcard/ProdManualSDCardv1.9.pdf
+-- How to use MMC/SDC - http://forums.parallax.com/forums/attach.aspx?a=32012
+-- http://www.rjhcoding.com/avrc-sd-interface-3.php
+--
+
+
+const byte CRC7_POLYNOMIAL = 0x89
+
+-- CRC7 state variables
+var bit  _crc7_calculation_complete_crc = FALSE
+var byte _crc7_final_result_crc = 0
+var word _crc7_bytes_processed_crc = 0
+var byte _crc7_accumulator_crc = 0
+var word _crc7_total_bytes_expected_crc = 0
+
+var bit  _crc_error_occurred_crc = FALSE
+var byte _crc_error_type_crc = CRC_ERROR_SUCCESS
+
+if !defined(crc_large_array_byte) then
+   const word crc_large_array_byte[1] = {0}
+end if
+
+if !defined(crc_large_array_word) then
+   const word crc_large_array_word[1] = {00}
+end if
+
+if !defined(crc_large_array_dword) then
+   const word crc_large_array_dword[1] = {0000}
+end if
+
+--------------------------------------------------------------------------------
+-- Start CRC7 calculation with expected byte count
+-- Parameters: expected_bytes - total number of bytes to be processed
+-- Initializes CRC calculation state and sets up for incremental processing
+--------------------------------------------------------------------------------
+procedure crc7_start(word in expected_bytes) is
+   _crc7_accumulator_crc = 0
+   _crc7_bytes_processed_crc = 0
+   _crc7_total_bytes_expected_crc = expected_bytes
+   _crc7_calculation_complete_crc = FALSE
+   _crc7_final_result_crc = 0
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+end procedure
+
+--------------------------------------------------------------------------------
+-- Calculate CRC7 for a single byte (incremental processing)
+-- Parameters: data - single byte to process
+-- Updates internal CRC state with new data byte
+--------------------------------------------------------------------------------
+procedure crc7_calculate_bytes(byte in data) is
+   var byte i
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+   for 8 using i loop
+      _crc7_accumulator_crc = _crc7_accumulator_crc << 1
+      if ((_crc7_accumulator_crc >> 7) ^ ((data >> 7) & 0x01)) != 0 then
+         _crc7_accumulator_crc = _crc7_accumulator_crc ^ CRC7_POLYNOMIAL
+      end if
+      _crc7_accumulator_crc = _crc7_accumulator_crc & 0x7F
+      data = data << 1
+   end loop
+   _crc7_bytes_processed_crc = _crc7_bytes_processed_crc + 1
+   if _crc7_bytes_processed_crc >= _crc7_total_bytes_expected_crc then
+      _crc7_final_result_crc = (_crc7_accumulator_crc << 1) | 0x01
+      _crc7_calculation_complete_crc = TRUE
+   end if
+end procedure
+
+--------------------------------------------------------------------------------
+-- Get final CRC7 result
+-- Returns: calculated CRC7 value
+-- Marks calculation as complete and returns the final CRC result
+--------------------------------------------------------------------------------
+function crc7_get_result() return byte is
+   if _crc7_calculation_complete_crc then
+      return _crc7_final_result_crc
+   else
+      _crc_error_occurred_crc = TRUE
+      _crc_error_type_crc = CRC_ERROR_NOT_READY
+      return 0xFF
+   end if
+end function
+
+--------------------------------------------------------------------------------
+-- Check if CRC7 calculation is complete
+-- Returns: TRUE if calculation is complete, FALSE otherwise
+-- Indicates whether the CRC calculation has been finalized
+--------------------------------------------------------------------------------
+function crc7_is_complete() return bit is
+   return _crc7_calculation_complete_crc
+end function
+
+--------------------------------------------------------------------------------
+-- Calculate CRC7 for byte array (one-shot calculation)
+-- Parameters: data[] - array of bytes to process, length - number of bytes
+-- Returns: calculated CRC7 value
+-- Processes entire array in one operation
+--------------------------------------------------------------------------------
+function crc7_calculate_array_bytes(byte in data[], word in length) return byte is
+   var word i
+   crc7_start(length)
+   for length using i loop
+      crc7_calculate_bytes(data[i])
+   end loop
+   return crc7_get_result()
+end function
+
+--------------------------------------------------------------------------------
+-- Calculate CRC7 for large array (bytes)
+-- Parameters: length - number of bytes to process from large_array_4
+-- Returns: calculated CRC7 value
+-- Processes bytes from large_array_4 alias
+--------------------------------------------------------------------------------
+function crc7_calculate_large_array_bytes(word in length) return byte is
+   var word i
+   var byte j
+   var byte crc = 0
+   var byte byte_data
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+   if length == 0 then
+      _crc_error_occurred_crc = TRUE
+      _crc_error_type_crc = CRC_ERROR_INVALID_PARAMETER
+      return 0xFF
+   end if
+   for length using i loop
+      byte_data = crc_large_array_bytes[i]
+      for 8 using j loop
+         crc = crc << 1
+         if ((crc >> 7) ^ ((byte_data >> 7) & 0x01)) != 0 then
+            crc = crc ^ CRC7_POLYNOMIAL
+         end if
+         crc = crc & 0x7F
+         byte_data = byte_data << 1
+      end loop
+   end loop
+   return (crc << 1) | 0x01
+end function
+
+--------------------------------------------------------------------------------
+-- Calculate CRC7 for large array (words)
+-- Parameters: length - number of words to process from large_array_5
+-- Returns: calculated CRC7 value
+-- Processes words from large_array_5 alias (MSB first)
+--------------------------------------------------------------------------------
+function crc7_calculate_large_array_words(word in length) return byte is
+   var word i
+   var byte j
+   var word word_data
+   var byte crc = 0
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+   for length using i loop
+      word_data = crc_large_array_word[i]
+      for 8 using j loop
+         crc = crc << 1
+         if ((crc >> 7) ^ ((word_data >> 15) & 0x01)) != 0 then
+            crc = crc ^ CRC7_POLYNOMIAL
+         end if
+         crc = crc & 0x7F
+         word_data = word_data << 1
+      end loop
+      for 8 using j loop
+         crc = crc << 1
+         if ((crc >> 7) ^ ((word_data >> 7) & 0x01)) != 0 then
+            crc = crc ^ CRC7_POLYNOMIAL
+         end if
+         crc = crc & 0x7F
+         word_data = word_data << 1
+      end loop
+   end loop
+   return (crc << 1) | 0x01
+end function
+
+--------------------------------------------------------------------------------
+-- Calculate CRC7 for large array (dwords)
+-- Parameters: length - number of dwords to process from large_array_6
+-- Returns: calculated CRC7 value
+-- Processes dwords from large_array_6 alias (MSB first)
+--------------------------------------------------------------------------------
+function crc7_calculate_large_array_dwords(word in length) return byte is
+   var word i
+   var byte j
+   var byte k
+   var dword dword_data
+   var byte crc = 0
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+   for length using i loop
+      dword_data = crc_large_array_dword[i]
+      for 4 using j loop
+         var byte byte_data = byte((dword_data >> (24 - (j * 8))) & 0xFF)
+         for 8 using k loop
+            crc = crc << 1
+            if ((crc >> 7) ^ ((byte_data >> 7) & 0x01)) != 0 then
+               crc = crc ^ CRC7_POLYNOMIAL
+            end if
+            crc = crc & 0x7F
+            byte_data = byte_data << 1
+         end loop
+      end loop
+   end loop
+   return (crc << 1) | 0x01
+end function
+
+--------------------------------------------------------------------------------
+-- Verify CRC7 result
+-- Parameters: calculated - computed CRC value, expected - expected CRC value
+-- Returns: TRUE if CRC values match, FALSE otherwise
+-- Compares calculated CRC against expected value for validation
+--------------------------------------------------------------------------------
+function crc7_verify(byte in calculated, byte in expected) return bit is
+   return (calculated == expected)
+end function
+
+--------------------------------------------------------------------------------
+-- Verify CRC7 for data array
+-- Parameters: data[] - array to verify, length - number of bytes, expected - expected CRC
+-- Returns: TRUE if calculated CRC matches expected, FALSE otherwise
+-- Calculates CRC for array and compares with expected value
+--------------------------------------------------------------------------------
+function crc7_verify_data(byte in data[], word in length, byte in expected) return bit is
+   var byte calculated
+   calculated = crc7_calculate_array_bytes(data, length)
+   return crc7_verify(calculated, expected)
+end function
+
+--------------------------------------------------------------------------------
+-- Verify CRC7 for large array (bytes)
+-- Parameters: length - number of bytes to verify, expected - expected CRC
+-- Returns: TRUE if calculated CRC matches expected, FALSE otherwise
+-- Calculates CRC for bytes from large_array_4 and compares with expected value
+--------------------------------------------------------------------------------
+function crc7_verify_large_array(word in length, byte in expected) return bit is
+   var byte calculated
+   calculated = crc7_calculate_large_array_bytes(length)
+   return crc7_verify(calculated, expected)
+end function
+
+--------------------------------------------------------------------------------
+-- Verify CRC7 for large array (words)
+-- Parameters: length - number of words to verify, expected - expected CRC
+-- Returns: TRUE if calculated CRC matches expected, FALSE otherwise
+-- Calculates CRC for words from large_array_5 and compares with expected value
+--------------------------------------------------------------------------------
+function crc7_verify_large_array_words(word in length, byte in expected) return bit is
+   var byte calculated
+   calculated = crc7_calculate_large_array_words(length)
+   return crc7_verify(calculated, expected)
+end function
+
+--------------------------------------------------------------------------------
+-- Verify CRC7 for large array (dwords)
+-- Parameters: length - number of dwords to verify, expected - expected CRC
+-- Returns: TRUE if calculated CRC matches expected, FALSE otherwise
+-- Calculates CRC for dwords from large_array_6 and compares with expected value
+--------------------------------------------------------------------------------
+function crc7_verify_large_array_dwords(word in length, byte in expected) return bit is
+   var byte calculated
+   calculated = crc7_calculate_large_array_dwords(length)
+   return crc7_verify(calculated, expected)
+end function
+
+--------------------------------------------------------------------------------
+-- Check if CRC7 calculation has an error
+-- Returns: TRUE if error occurred, FALSE otherwise
+-- Indicates whether an error was detected during CRC calculation
+--------------------------------------------------------------------------------
+function crc7_has_error() return bit is
+   return _crc_error_occurred_crc
+end function
+
+--------------------------------------------------------------------------------
+-- Get CRC7 error type
+-- Returns: error type code
+-- Returns the specific type of error that occurred during calculation
+--------------------------------------------------------------------------------
+function crc7_get_error_type() return byte is
+   return _crc_error_type_crc
+end function
+
+--------------------------------------------------------------------------------
+-- Reset CRC7 calculation state
+-- Clears all internal state and error flags
+-- Call this to start fresh after an error or to reuse the library
+--------------------------------------------------------------------------------
+procedure crc7_reset() is
+   _crc7_accumulator_crc = 0
+   _crc7_bytes_processed_crc = 0
+   _crc7_total_bytes_expected_crc = 0
+   _crc7_calculation_complete_crc = FALSE
+   _crc7_final_result_crc = 0
+   _crc_error_occurred_crc = FALSE
+   _crc_error_type_crc = CRC_ERROR_SUCCESS
+end procedure
+

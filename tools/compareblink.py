@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
 """
 Title: Compare new device blink samples with previous committed blink samples
-
-Author: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
-
+Author: Rob Jansen, Copyright (c) 2018..2015, all rights reserved.
 Adapted-by:
-
-Compiler: N/A
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
-
 
 Description:
    Compare new blink sample files with previous committed blink sample files
@@ -28,42 +23,35 @@ Notes:
 
 """
 
-from pic2jal_environment import check_and_set_environment
-
-base, mplabxversion = check_and_set_environment()  # obtain environment variables
-if (base == ""):
-    exit(1)
-
 import sys
 import os
 import glob
 import fnmatch
-import subprocess
 import platform
 
-platform_name = platform.system()
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
-# --- system dependent paths
-if (platform_name == "Linux"):
-    olddir = os.path.join("/", "media", "nas", "picdevices", "blink")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
-    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
-elif (platform_name == "Windows"):
-    olddir = os.path.join("D:\\", "GitHub", "jallib", "sample")  # previous device files, current Master
-    kdiff = os.path.join("C:\\", "Program Files", "KDiff3", "kdiff3.exe")  # full path
-    cpy = os.path.join(base, "compareblink_copy.cmd")  # copy commandfile
-elif (platform_name == "Darwin"):  # Mac
-    olddir = os.path.join("/", "media", "nas", "picdevices", "blink")  # previous device files
-    kdiff = "kdiff3"  # assumed to be in path
-    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
-else:
-    print("Please add platform specific info to this script!")
-    exit(1)
-
+olddir = os.path.join(jallib, "sample", "blink")
 newdir = os.path.join(base, "blink")  # new blink sample files
 log = os.path.join(base, "compareblink_devices.log")  # list with changed sample files
 log_d = os.path.join(base, "compareblink_details.log")  # list with detailed information
 
+platform_name = platform.system()
+
+# --- system dependent copy command
+if (platform_name == "Linux"):
+    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
+elif (platform_name == "Windows"):
+    cpy = os.path.join(base, "compareblink_copy.cmd")  # copy commandfile
+elif (platform_name == "Darwin"):  # Mac
+    cpy = os.path.join(base, "compareblink_copy.sh")  # copy commandfile
+else:
+    print("Please add platform specific info to this script!")
+    exit(1)
 
 # -----------------------------------------------------
 

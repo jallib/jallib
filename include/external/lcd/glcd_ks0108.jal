@@ -1,44 +1,35 @@
+-- ----------------------------------------------------------------------------
 -- Title: glcd_ks0108 - Library for KS0108 compatible graphic LCDs
--- Author: Serkan Ayyldz Copyright (c) 2006..2009, all rights reserved.
--- Adapted-by: Sebastien Lelong, Rob Hamerling.
--- Compiler: 2.4o
+-- Author: Serkan Ayyldz Copyright (c) 2006..2026, all rights reserved.
+-- Adapted-by: Sebastien Lelong, Rob Hamerling, Rob Jansen
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Sources:
+-- Sources: LCD MODULE SPECIFICATION, BG12864A series Bolymin, Inc. 2005-05-21.
 --
 -- Description: Library for KS0108 compatible graphic lcds with 128x64 resolution
 --              for example the GDM12864A.
 --
--- Notes: Modifications by Rob Hamerling (nov/dec 2011):
---        - Minor timing changes in ks0108_read_() and ks0108_write_()
---          according to datasheet schemes for MPU Write timing and Read timing.
---          Replaced hard coded ASM NOPs by _usec_delay()
---        - Private procedures/function prefixed with underscore
---        - Added procedure glcd_clear_screen() and use it in glcd_init().
---          Uses the reset line to set Z-address to zero.
---        - Modified procedures to be able to write characters with
---          y-coordinates NOT on page (8-bit) boundaries.
---          Works probably only with max 8 bits high font (5x7 and 6x8)
---        - Replaced absolute values for loops and offsets by symbolic values
---        - Code optimisations, incl add/remove of some 'pragma inline'
---        - Fixed some bugs with external fonts
---        - Comments extended, corrected, aligned (for JALAPI docs)
---        Modifications by Rob Hamerling (May 2015)
---        - Added procedure to support remap (reverse) databit sequence
---          for more wiring flexibility (pin sequence: D7..D0 in stead of D0..D7)
---          Controlled by constant GLCD_REVERSE_DATABITS = FALSE / TRUE.
--- .
---        Technical (library internal) details
---        - A 128x64 graphic LCD consists with 2 controllers (KS0108_LEFT and
+-- Notes:- A 128x64 graphic LCD consists with 2 controllers (KS0108_LEFT and
 --          KS0108_RIGHT), each take care of 64x64 bits.
 --        - Addressing: upper left corner is coordinate (0,0)
 --        - A byte of data represents a column of 8 pixels, so the vertical
 --          64 pixels are represented by 8 bytes (a row of 8 bits is called
 --          'page' in the datasheet).
 --
--- ----------------------------------------------------------------------------
+--         The display is vertical oriented.When using a horizontal oriented 
+--         character font, a character buffer is needed with the size of the 
+--         used font, also see FONT_xxxx_BYTE_PER_CHAR in the font library you 
+--         are using. The default size of this buffer is 64 bytes and can be 
+--         reduced to save data space if a smaller font, or no font, is used.
+--         For example the 12x16 horizontal font uses 32 bytes for one character 
+--         and so we can set the character buffer to this size by:
+--         -) const KS0180_CHAR_BUFFER_SIZE = 32 
+--         If no buffer is used (e.g. for vertical oriented fonts), the buffer
+--         size is set to the minimum value of 1.
+--
 
 const byte GLCD_X_PIXELS       = 128               -- display x-dimension
 const byte GLCD_Y_PIXELS       = 64                -- display y-dimension
@@ -57,11 +48,47 @@ const byte GLCD_BLACK          = 0x01              -- normal pen color
 const byte GLCD_WHITE          = 0x00              -- alternate pen color
 
 -- data/instruction selection of DI line
-const byte GLCD_DI_DATA        = high              -- select data to display
-const byte GLCD_DI_INST        = low               -- select command
+const bit GLCD_DI_DATA        = high              -- select data to display
+const bit GLCD_DI_INST        = low               -- select command
 
 var byte glcd_background_color = GLCD_WHITE        -- default background color
 var byte glcd_pen_color        = GLCD_BLACK        -- default pen color
+
+
+-- Define some glcd aliases for the available procedures. See glcd_common.
+procedure glcd_write_pixel(byte in x, byte in y)  
+procedure glcd_clear_screen()
+procedure ks0108_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height)
+alias glcd_draw_image is ks0108_draw_image  
+
+-- The display does not support autowrap.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\t
+              the default behavior for this GLCD controller"
+   end if
+else
+    const bit FONT_AUTO_WRAP = TRUE
+end if
+
+-- When using horizontal fonts we need a buffer to store one character.
+if defined(GLCD_FONT_USAGE) then
+   -- Define the buffer for writing characters using bigger fonts.
+   if !defined(KS0108_CHAR_BUFFER_SIZE) then
+      -- Reserve the minimum size of 1. Note that for a font of 16x32
+      -- you need 64 bytes. 
+      const KS0108_CHAR_BUFFER_SIZE = 1
+   end if 
+   var byte _ks0108_char_buffer[KS0108_CHAR_BUFFER_SIZE]
+
+   procedure ks0108_write_char(byte in x, byte in y, byte in char)
+   -- Define the glcd alias for this procedure.
+   alias glcd_write_char is ks0108_write_char  
+   -- Must include glcd_common in this case for glcd_write_char to work.
+   include glcd_common  
+end if
 
 
 -- ----------------------------------------------------------------------------
@@ -124,10 +151,12 @@ procedure  ks0108_write_(bit in side, byte in data) is
 
    GLCD_E = low                                    -- start cycle in low state
    _usec_delay(1)                                  -- Twl/2
-   if side == KS0108_LEFT then
-      GLCD_CS1 = high                              -- select left half
-   else
-      GLCD_CS2 = high                              -- select right half
+   if side == KS0108_LEFT then                     -- select left half
+      GLCD_CS2 = low
+      GLCD_CS1 = high
+   else                                            -- select right half
+      GLCD_CS1 = low
+      GLCD_CS2 = high
    end if
    GLCD_RW = low                                   -- clear for writing
    _usec_delay(1)                                  -- Twl/2 (Tasu)
@@ -138,7 +167,8 @@ procedure  ks0108_write_(bit in side, byte in data) is
    GLCD_E = low                                    -- data to display
    _usec_delay(1)                                  -- Tah
    GLCD_CS1 = low                                  -- deselect both halves
-   GLCD_CS2 = low                                  -- (Tdhw)
+   GLCD_CS2 = low
+   GLCD_E = high                                 
 
 end procedure
 
@@ -161,20 +191,22 @@ function ks0108_read_(bit in side) return byte  is
    GLCD_E = low                                    -- start cycle in low state
    _usec_delay(1)                                  -- Twl/2
    if side == KS0108_LEFT then                     -- select left half
+      GLCD_CS2 = low
       GLCD_CS1 = high
    else                                            -- select right half
+      GLCD_CS1 = low
       GLCD_CS2 = high
    end if
+   GLCD_DATAPRT_DIR = all_input                    -- Set port to input, before RW low
    GLCD_RW = high                                  -- set for reading
    _usec_delay(1)                                  -- Twl/2 (Tasu)
-   GLCD_E = high                                   -- make E high
-   _usec_delay(2)                                  -- Twh (Td)
-   GLCD_E = low                                    -- latch/read
-   _usec_delay(1)                                  -- Twl/2 (Td)
-   GLCD_DATAPRT_DIR = all_input                    -- Set port to input
+   GLCD_E = high                                   -- make E high, data is set-up
+   _usec_delay(3)                                  -- Twh (Td), data delay time
    data = remap_bits(GLCD_DATAPRT)                 -- latch/read data
+   GLCD_E = low                                    -- stop cycle
    GLCD_CS1 = low                                  -- deselect both halves
    GLCD_CS2 = low
+   GLCD_E = high                                 
 
    return data                                     -- return the data
 end function
@@ -245,7 +277,34 @@ end procedure
 
 
 -- ----------------------------------------------------------------------------
--- Purpose:    Write (modify) a single pixel of the display
+-- Purpose:   Goto the given pixel coordinates.
+-- Arguments: - x, 0..127
+--            - y, 0..63 
+-- ----------------------------------------------------------------------------
+procedure ks0108_goto_pixel(byte in x, byte in y) is
+   var bit side = KS0108_LEFT                      -- default: select left half
+
+   if defined(GLCD_FONT_USAGE) then 
+      -- For font usage, set x and y from glcd_common in pixels for x and y.
+      glcd_char_x_pos = x
+      glcd_char_y_pos = y
+   end if 
+
+   if x >= (GLCD_X_PIXELS / 2) then                -- check for right half
+      x = x - (GLCD_X_PIXELS / 2)                  -- correct offset
+      side = KS0108_RIGHT                          -- select right half
+   end if
+
+   ks0108_inst_()                                  -- set for instruction
+   ks0108_column_(side,x)                          -- set the horizontal address
+   ks0108_page_(side, y / 8)                       -- set the page address
+   ks0108_data_()                                  -- assume data is written
+
+end procedure
+
+
+-- ----------------------------------------------------------------------------
+-- Purpose:    Write a single pixel to the display
 -- Arguments:  - x-coordinate of the pixel
 --             - y-coordinate of the pixel
 -- ----------------------------------------------------------------------------
@@ -269,7 +328,7 @@ procedure glcd_write_pixel(byte in x, byte in y) is
    if glcd_pen_color == GLCD_BLACK then  
       data = data |   (1 << (y % 8))               -- set pixel
    else
-      data = data & ! (1 << (y % 8))               -- clear pixel-
+      data = data & ! (1 << (y % 8))               -- clear pixel
    end if
    ks0108_inst_()                                  -- set for instruction
    ks0108_column_(side,x)                          -- set the horizontal address
@@ -440,133 +499,6 @@ procedure glcd_init() is
 end procedure
 
 
--- ----------------------------------------------------------------------------
--- font_5x7_table_[] - character table
--- ----------------------------------------------------------------------------
-const byte font_5x7_table_[] = {
-   0x00, 0x00, 0x00, 0x00, 0x00,    -- space, 32 (decimal)
-   0x00, 0x00, 0x2f, 0x00, 0x00,    -- !,  33
-   0x00, 0x07, 0x00, 0x07, 0x00,    --     34
-   0x14, 0x7f, 0x14, 0x7f, 0x14,    -- #,  35
-   0x24, 0x2a, 0x7f, 0x2a, 0x12,    -- $,  36
-   0xc4, 0xc8, 0x10, 0x26, 0x46,    -- %,  37
-   0x36, 0x49, 0x55, 0x22, 0x50,    -- &,  38
-   0x00, 0x05, 0x03, 0x00, 0x00,    -- ,  39
-   0x00, 0x1c, 0x22, 0x41, 0x00,    -- (,  40
-   0x00, 0x41, 0x22, 0x1c, 0x00,    -- ),  41
-   0x14, 0x08, 0x3E, 0x08, 0x14,    -- *,  42
-   0x08, 0x08, 0x3E, 0x08, 0x08,    -- +,  43
-   0x00, 0x00, 0x50, 0x30, 0x00,    -- ,,  44
-   0x10, 0x10, 0x10, 0x10, 0x10,    -- -,  45
-   0x00, 0x60, 0x60, 0x00, 0x00,    -- .,  46
-   0x20, 0x10, 0x08, 0x04, 0x02,    -- /,  47
-   0x3E, 0x51, 0x49, 0x45, 0x3E,    -- 0,  48
-   0x00, 0x42, 0x7F, 0x40, 0x00,    -- 1,  49
-   0x42, 0x61, 0x51, 0x49, 0x46,    -- 2,  50
-   0x21, 0x41, 0x45, 0x4B, 0x31,    -- 3,  51
-   0x18, 0x14, 0x12, 0x7F, 0x10,    -- 4,  52
-   0x27, 0x45, 0x45, 0x45, 0x39,    -- 5,  53
-   0x3C, 0x4A, 0x49, 0x49, 0x30,    -- 6,  54
-   0x01, 0x71, 0x09, 0x05, 0x03,    -- 7,  55
-   0x36, 0x49, 0x49, 0x49, 0x36,    -- 8,  56
-   0x06, 0x49, 0x49, 0x29, 0x1E,    -- 9,  57
-   0x00, 0x36, 0x36, 0x00, 0x00,    -- :,  58
-   0x00, 0x56, 0x36, 0x00, 0x00,    -- ;,  59
-   0x08, 0x14, 0x22, 0x41, 0x00,    -- <,  60
-   0x14, 0x14, 0x14, 0x14, 0x14,    -- =,  61
-   0x00, 0x41, 0x22, 0x14, 0x08,    -- >,  62
-   0x02, 0x01, 0x51, 0x09, 0x06,    -- ?,  63
-   0x32, 0x49, 0x59, 0x51, 0x3E,    -- @,  64
-   0x7E, 0x01, 0x01, 0x01, 0x7E,    -- A,  65
-   0x7F, 0x49, 0x49, 0x49, 0x36,    -- B,  66
-   0x3E, 0x41, 0x41, 0x41, 0x22,    -- C,  67
-   0x7F, 0x41, 0x41, 0x22, 0x1C,    -- D,  68
-   0x7F, 0x49, 0x49, 0x49, 0x41,    -- E,  69
-   0x7F, 0x09, 0x09, 0x09, 0x01,    -- F,  70
-   0x3E, 0x41, 0x49, 0x49, 0x7A,    -- G,  71
-   0x7F, 0x08, 0x08, 0x08, 0x7F,    -- H,  72
-   0x00, 0x41, 0x7F, 0x41, 0x00,    -- I,  73
-   0x20, 0x40, 0x41, 0x3F, 0x01,    -- J,  74
-   0x7F, 0x08, 0x14, 0x22, 0x41,    -- K,  75
-   0x7F, 0x40, 0x40, 0x40, 0x40,    -- L,  76
-   0x7F, 0x02, 0x0C, 0x02, 0x7F,    -- M,  77
-   0x7F, 0x04, 0x08, 0x10, 0x7F,    -- N,  78
-   0x3E, 0x41, 0x41, 0x41, 0x3E,    -- O,  79
-   0x7F, 0x09, 0x09, 0x09, 0x06,    -- P,  80
-   0x3E, 0x41, 0x51, 0x21, 0x5E,    -- Q,  81
-   0x7F, 0x09, 0x19, 0x29, 0x46,    -- R,  82
-   0x46, 0x49, 0x49, 0x49, 0x31,    -- S,  83
-   0x01, 0x01, 0x7F, 0x01, 0x01,    -- T,  84
-   0x3F, 0x40, 0x40, 0x40, 0x3F,    -- U,  85
-   0x1F, 0x20, 0x40, 0x20, 0x1F,    -- V,  86
-   0x3F, 0x40, 0x38, 0x40, 0x3F,    -- W,  87
-   0x63, 0x14, 0x08, 0x14, 0x63,    -- X,  88
-   0x07, 0x08, 0x70, 0x08, 0x07,    -- Y,  89
-   0x61, 0x51, 0x49, 0x45, 0x43,    -- Z,  90
-   0x00, 0x7F, 0x41, 0x41, 0x00,    -- [,  91
-   0x55, 0x2A, 0x55, 0x2A, 0x55,    -- 5,  92
-   0x00, 0x41, 0x41, 0x7F, 0x00,    -- ],  93
-   0x04, 0x02, 0x01, 0x02, 0x04,    -- ^,  94
-   0x40, 0x40, 0x40, 0x40, 0x40,    -- _,  95
-   0x00, 0x01, 0x02, 0x04, 0x00,    -- ',  96
-   0x20, 0x54, 0x54, 0x54, 0x78,    -- a,  97
-   0x7F, 0x48, 0x44, 0x44, 0x38,    -- b,  98
-   0x38, 0x44, 0x44, 0x44, 0x20,    -- c,  99
-   0x38, 0x44, 0x44, 0x48, 0x7F,    -- d, 100
-   0x38, 0x54, 0x54, 0x54, 0x18,    -- e, 101
-   0x08, 0x7E, 0x09, 0x01, 0x02,    -- f, 102
-   0x0C, 0x52, 0x52, 0x52, 0x3E,    -- g, 103
-   0x7F, 0x08, 0x04, 0x04, 0x78,    -- h, 104
-   0x00, 0x44, 0x7D, 0x40, 0x00,    -- i, 105
-   0x20, 0x40, 0x44, 0x3D, 0x00,    -- j, 106
-   0x7F, 0x10, 0x28, 0x44, 0x00,    -- k, 107
-   0x00, 0x41, 0x7F, 0x40, 0x00,    -- l, 108
-   0x7C, 0x04, 0x18, 0x04, 0x78,    -- m, 109
-   0x7C, 0x08, 0x04, 0x04, 0x78,    -- n, 110
-   0x38, 0x44, 0x44, 0x44, 0x38,    -- o, 111
-   0x7C, 0x14, 0x14, 0x14, 0x08,    -- p, 112
-   0x08, 0x14, 0x14, 0x18, 0x7C,    -- q, 113
-   0x7C, 0x08, 0x04, 0x04, 0x08,    -- r, 114
-   0x48, 0x54, 0x54, 0x54, 0x20,    -- s, 115
-   0x04, 0x3F, 0x44, 0x40, 0x20,    -- t, 116
-   0x3C, 0x40, 0x40, 0x20, 0x7C,    -- u, 117
-   0x1C, 0x20, 0x40, 0x20, 0x1C,    -- v, 118
-   0x3C, 0x40, 0x30, 0x40, 0x3C,    -- w, 119
-   0x44, 0x28, 0x10, 0x28, 0x44,    -- x, 120
-   0x0C, 0x50, 0x50, 0x50, 0x3C,    -- y, 121
-   0x44, 0x64, 0x54, 0x4C, 0x44     -- z, 122
-}
-
--- ----------------------------------------------------------------------------
--- Purpose:   Write character to the display using internal font definition.
--- Arguments: - x- and y-coordinates (upper left corner of character pattern)
---            - character to display
--- Notes:     For characters the display is 8 lines, each 8 bits high;
---            specify for y-coordinate a multiple of 8.
--- ----------------------------------------------------------------------------
-procedure ks0108_write_char_(byte in x, byte in y, byte in ch) is
-   var word indx
-   var byte cx
-   if (ch <  32) | (ch > 122) then                 -- not in supported range
-      ch = " "                                     -- replace it by a space
-   end if
-   indx = 5 * word(ch - 32)                        -- non proportional font, 5 pixels wide
-   for 5 loop                                      -- 5 colums per character
-      if (x >= GLCD_X_PIXELS) then                 -- check max x value
-         exit loop                                 -- clip text beyond display
-      end if
-      cx = font_5x7_table_[indx]                   -- obtain bit pattern column
-      if glcd_pen_color == GLCD_WHITE then         -- white on black
-         cx = !cx                                  -- invert bit pattern
-      end if
-      ks0108_write_byte_(x, y, cx)                 -- write vertical pixel pattern
-      indx = indx + 1                              -- next byte in font table
-      x = x + 1                                    -- next display column
-   end loop
-end procedure
-
-
-
 if defined(GLCD_FONT_USAGE) then                   -- when using a font library
 
 -- ----------------------------------------------------------------------------
@@ -577,26 +509,141 @@ if defined(GLCD_FONT_USAGE) then                   -- when using a font library
 -- Notes:     When y-coordinate is a multiple of 8 (0,8,16,etc.): single write,
 --            otherwise two read-modify-write cycles needed: slower!
 -- ----------------------------------------------------------------------------
-procedure glcd_write_char(byte in x, byte in y, byte in ch ) is
-   var word indx                                   -- position of bit pattern
-   var byte cx                                     -- bit pattern
-   if (ch <  32) | (ch > 122) then                 -- unsupported char
-      ch = " "                                     -- replace it by a space
-   end if
-   indx = glcd_font_current_width_ * word(ch - 32)  -- non proportional font
-   for glcd_font_current_width_ loop               -- whole character
-      if (x >= GLCD_X_PIXELS) then                 -- check for maximum x value
-         exit loop                                 -- clip text beyond display
-      end if
-      cx = glcd_font_lookup(indx)                  -- obtain bit pattern
-      if glcd_pen_color == GLCD_WHITE then         -- white pen
-         cx = !cx                                  -- invert bit pattern
-      end if
-      ks0108_write_byte_(x, y, cx)                 -- write vertical pixel pattern
-      indx = indx + 1                              -- next byte in font table
-      x = x + 1                                    -- position of next pixel row
+   procedure ks0108_write_char(byte in x, byte in y, byte in char) is
+
+      var word index
+      var byte offset, y_offset, buffer_offset
+      var byte ch, mask, bit_count 
+
+      -- Select the right character from the font table.
+      offset = char - 32 -- Fix for ascii value.
+      index = word(glcd_font_current_byte_per_char_) * word(offset) 
+ 
+      -- The ks0108 uses vertical writing of pixels. 
+      if (glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL) then
+         -- First perform a range check to prevent buffer overflow.
+         if (glcd_font_current_byte_per_char_ <= KS0108_CHAR_BUFFER_SIZE) then
+            -- Fill the buffer with the character pixel data.
+             for glcd_font_current_byte_per_char_ using offset loop
+               _ks0108_char_buffer[offset] = glcd_font_lookup(index)
+               index = index + 1
+            end loop 
+            -- Horizontal orientation means we have to rotate the character
+            -- ninety degrees to the left and keep top left horizontal. 
+            mask = 0 
+            for glcd_font_current_width_ using offset loop
+               -- Preset mask again when used. 
+               if (mask == 0) then
+                  mask = 0b1000_0000 -- Start with left most significant bit.
+               end if 
+               -- Set the starting position buffer pointer.
+               buffer_offset = offset / 8
+               bit_count = 0
+               y_offset = 0
+               ch = 0
+               for glcd_font_current_height_ loop
+                  ch = ch >> 1
+                  if (_ks0108_char_buffer[buffer_offset] & mask) != 0 then
+                     ch = ch | 0b1000_0000
+                  end if 
+                  bit_count = bit_count + 1
+                  -- If 8 bits are done, write the byte and go to next bit.
+                  if (bit_count == 8) then
+                     -- Invert if needed. 
+                     if (glcd_background_color == GLCD_BLACK) then
+                        ch = ch ^ 0xFF
+                     end if
+                     ks0108_write_byte_(x + offset, y + y_offset, ch) 
+                     ch = 0
+                     bit_count = 0
+                     y_offset = y_offset + 8
+                  end if 
+                  -- Next byte from buffer for next column. 
+                  buffer_offset = buffer_offset + ((glcd_font_current_width_ - 1) / 8) + 1
+               end loop
+               -- If the height is not a full byte, complete the last part.
+               if ((glcd_font_current_height_ % 8) != 0) then
+                  ch = ch >> (8 - bit_count)
+                  if (glcd_background_color == GLCD_BLACK) then
+                     ch = ch ^ 0xFF
+                  end if
+                  ks0108_write_byte_(x + offset, y + y_offset, ch) 
+               end if 
+               -- Next bit.
+               mask = mask >> 1
+            end loop
+            -- We need to restore the x- and y-coordinate for the next write.
+            glcd_char_x_pos = x 
+            glcd_char_y_pos = y
+         end if 
+
+      elsif glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
+
+         for glcd_font_current_width_ loop               -- whole character
+            if (x >= GLCD_X_PIXELS) then                 -- check for maximum x value
+               exit loop                                 -- clip text beyond display
+            end if
+            ch = glcd_font_lookup(index)                  -- obtain bit pattern
+            if glcd_pen_color == GLCD_WHITE then         -- white pen
+               ch = !ch                                  -- invert bit pattern
+            end if
+            ks0108_write_byte_(x, y, ch)                 -- write vertical pixel pattern
+            index = index + 1                            -- next byte in font table
+            x = x + 1                                    -- position of next pixel row
+         end loop
+
+      end if 
+
+
+   end procedure
+
+
+end if     -- (using a font library)
+
+-- -----------------------------------------------------------------------------
+-- Description: Draw an bitmap image from a byte array.
+-- - Draws in vertical mode, 1 bit per pixel. 
+-- Parameters: 
+-- - image[] byte array with image
+-- - x in range 0..127
+-- - y in range 0..63
+-- - width of image in number of pixels
+-- - height of image in number of pixels
+-- Notes:
+-- - This procedure only fills the cache with the image. To send the contents of 
+-- - the cache to the screen call sh1106_update_display()
+-- -----------------------------------------------------------------------------
+procedure ks0108_draw_image(byte in image[],
+                            byte in x, byte in y,
+                            byte in width, byte in height) is
+
+   var word image_index
+   var byte x_coord, y_coord, pixel_mask, data, pen_color
+
+   -- We have to write the image in the selected pen color.
+   pen_color = glcd_pen_color
+   for height using y_coord loop
+      pixel_mask = y_coord % 8
+      for width using x_coord loop
+         -- Calculate location of the data in the image array.
+         image_index = word(x_coord) + (word(y_coord/8) * word(width))
+         data = image[image_index]
+         -- Always write a pixel but clearing the pixel depends on
+         -- the chosen pen color.
+         if (data & (1<<pixel_mask)) == 0 then
+            -- Write in the inverted pen color (clear pixel).
+            if (pen_color == GLCD_BLACK) then
+               glcd_pen_color = GLCD_WHITE
+            elsif (pen_color == GLCD_WHITE) then
+               glcd_pen_color = GLCD_BLACK
+            end if 
+         end if
+         -- Always write the pixel (nice for animations).
+         glcd_write_pixel(x + x_coord, y + y_coord)
+         -- Restore pen color.
+         glcd_pen_color = pen_color
+     end loop
    end loop
 end procedure
 
-end if     -- (using a font library)
 

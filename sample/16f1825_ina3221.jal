@@ -1,5 +1,5 @@
 -----------------------------------------------------------------------------
--- Title: Sample and test program INA3221 Tripple Channel Shunt and Bus Voltage Monitor
+-- Title: Sample and test program INA3221 Triple Channel Shunt and Bus Voltage Monitor
 -- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
 -- Adapted-by:
 -- Compiler: 2.5r9
@@ -7,8 +7,8 @@
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 --
--- Description: Sample and program showing how to use the INA3221 Tripple 
---              Channel Shunt and Bus Votage Monitor
+-- Description: Sample and program showing how to use the INA3221 Triple 
+--              Channel Shunt and Bus Voltage Monitor including alert.
 --              This device is controlled via an IIC interface. The serial 
 --              interface is used to show the result of the measurement. 
 --              There are two ways to use the ina3221 library, with floats or
@@ -72,7 +72,7 @@ i2c_initialize()
 
 -- Now include the ina3221 library and initialize.
 -- Remove the comment below if you want to use floats instead of word/dword.
-const INA3221_USE_FLOAT = TRUE
+-- const INA3221_USE_FLOAT = TRUE
 include ina3221
 ina3221_init() 
 
@@ -82,19 +82,32 @@ if defined(INA3221_USE_FLOAT) then
    var float current -- In Ampere
 else
    var word bus_voltage   -- In mV
-   var dword shunt_voltage -- In uV
-   var dword current      -- In uA
+   var sdword shunt_voltage -- In uV
+   var sdword current      -- In uA
 end if 
 
+var word flags
 var byte channel
 -- ------------------------------ Main program ---------------------------------
-print_string(serial, "Sample program for the INA3221 Tripple Channel Shunt and Bus Votage Monitor.\r\n\n")
+print_string(serial, "Sample program for the INA3221 Triple Channel Shunt and Bus Voltage Monitor.\r\n\n")
 
 -- The default IIC address is set to INA3221_IIC_DEFAULT_ADDRESS which is 
 -- A0 connected to GND which is address 0x40. If A0 is connected to VCC  the 
 -- address can be changed by using:
 -- ina3321_set_iic_address(0x41)
 
+-- Set alerts on channel 1 and 3. Change to your specific volltage
+if defined(INA3221_USE_FLOAT) then
+   print_string(serial, "Setting shunt voltage warning alert limit for channel 2 to +18.5 mV.\r\n")
+   ina3221_set_warning_alert_limit(INA3221_CHANNEL_2, 18.5E-3)
+   print_string(serial, "Setting shunt voltage critical alert limit for channel 3 to -3 mV.\r\n\n")
+   ina3221_set_critical_alert_limit(INA3221_CHANNEL_3, -3.0E-3)
+else
+   print_string(serial, "Setting shunt voltage warning alert limit for channel 2 to +18.5 mV.\r\n")
+   ina3221_set_warning_alert_limit(INA3221_CHANNEL_2, 18_500) -- uV
+   print_string(serial, "Setting shunt voltage critical alert limit for channel 3 to -3 mV.\r\n\n")
+   ina3221_set_critical_alert_limit(INA3221_CHANNEL_3, -3_000) -- uV
+end if 
 
 forever loop 
 
@@ -165,7 +178,7 @@ forever loop
             print_string(serial, "The shunt voltage on channel ")
             print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
             print_string(serial, " is (uV):  ")
-            print_dword_dec(serial, shunt_voltage)
+            print_sdword_dec(serial, shunt_voltage)
             print_crlf(serial)
          end if 
 
@@ -177,14 +190,29 @@ forever loop
             print_string(serial, "The current on channel ")
             print_byte_dec(serial, channel + 1) -- Module uses channel names 1..3.
             print_string(serial, " is (uA):  ")
-            print_dword_dec(serial, current)
+            print_sdword_dec(serial, current)
             print_crlf(serial)
          end if 
     
       end if 
 
    end loop
-      print_crlf(serial)
+
+   ; Check for alerts.
+   flags = ina3221_get_flags()
+   for INA3221_NR_OF_CHANNELS using channel loop
+      if ina3221_critical_alert(flags, channel) then
+         print_string(serial, "Critical Alert on channel:")
+         print_byte_dec(serial, channel + 1)
+         print_crlf(serial)
+      end if
+      if ina3221_warning_alert(flags, channel) then
+         print_string(serial, "Warning Alert on channel:")
+         print_byte_dec(serial, channel + 1)
+         print_crlf(serial)
+      end if
+   end loop
+   print_crlf(serial)
 
    _usec_delay(1_000_000)
 

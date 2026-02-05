@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Convert XML file into a simple tree structure
-
-Author: Rob Hamerling, Copyright (c) 2014..2024, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2014..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -29,12 +24,6 @@ Notes:
     - some related changes
 """
 
-from pic2jal_environment import check_and_set_environment
-
-base, mplabxversion = check_and_set_environment()    # obtain environment variables
-if (base == ""):
-   exit(1)
-
 import sys
 import os
 import re
@@ -42,6 +31,12 @@ import time
 import fnmatch
 from concurrent import futures
 import xml.etree.ElementTree as et
+
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 xmldir = os.path.join(base, "mplabx")                   # location of xml .PIC files
 

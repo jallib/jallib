@@ -1,74 +1,52 @@
 #!/usr/bin/env python3
 """
- Title: Analyze TORELEASE and check consistency with Jallib
+Title: Analyze TORELEASE and check consistency with Jallib
+Author: Rob Hamerling, Copyright (c) 2008..2015, all rights reserved.
+Adapted-by: Rob Jansen
 
- Author: Rob Hamerling, Copyright (c) 2008..2017, all rights reserved.
+This file is part of jallib  https://github.com/jallib/jallib
+Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
 
- Adapted-by: Rob Jansen, Copyright (c) 2018..2018, all rights reserved.
+Description:
+- Read TORELEASE and collect entries on a per-directory basis
+  (2nd level subdirectory for includes, 1st level for others).
+- Collect PICnames used in filenames of sample programs.
+  Check if there is at least 1 blink-a-led sample for each PIC.
+- Check if every sample uses a released device file.
+- Collect and list some statistics for every main library group.
+- Collect Jallib contents (directory tree) and
+   - list unreleased samples
+   - list released samples which include one or more unreleased libraries
+- Sort each of the parts and create a new TORELEASE
+  (report and comment-out duplicate entries)
 
- Revision: $Revision$
+ - Check if requirements for this script are satisfied:
+   - Python version: at least Python 3.5
+   - Environment variable:
+     - JALLIB  - path to your local GitHub Jallib directory
 
- Compiler: N/A
+Sources: none
 
- This file is part of jallib  http://jallib.googlecode.com
- Released under the BSD license
-              http://www.opensource.org/licenses/bsd-license.php
-
- Description:
- - Read TORELEASE and collect entries on a per-directory basis
-   (2nd level subdirectory for includes, 1st level for others).
- - Collect PICnames used in filenames of sample programs.
-   Check if there is at least 1 blink-a-led sample for each PIC.
- - Check if every sample uses a released device file.
- - Collect and list some statistics for every main library group.
- - Collect Jallib contents (directory tree) and
-    - list unreleased samples
-    - list released samples which include one or more unreleased libraries
- - Sort each of the parts and create a new TORELEASE
-   (report and comment-out duplicate entries)
-
- Sources: none
-
- Notes:
-  - When a commandline argument 'runtype' is specified a slightly more
-    extensive listing is produced: ALL unreleased files are listed.
-    By default unreleased device files and unreleased basic blink-a-led
-    samples are not listed, only counted.
+Notes:
+ - When a commandline argument 'runtype' is specified a slightly more
+   extensive listing is produced: ALL unreleased files are listed.
+   By default unreleased device files and unreleased basic blink-a-led
+   samples are not listed, only counted.
 
 """
-
 import os, sys
 import re
 import time
-import string
-import platform
 
+# obtain environment variables
 from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()              # obtain environment variables
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
 if (base == ""):
    exit(1)
 
-platform_name = platform.system()
-
-   # --- platform dependent paths
-if (platform_name == "Linux"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
-elif (platform_name == "Windows"):
-#   jallib   = os.path.join("D:\\", "jallib-master")                   # local copy jallib master
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")                   # local copy jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
-elif (platform_name == "Darwin"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2osx")            # compiler (in current directory)
-else:
-   print("Please add platform specific info to this script!")
-   exit(1)
-
-
-
 libdir     = os.path.join(jallib, "include")                # device files and function libraries
-smpdir     = os.path.join(jallib, "sample")                 # samples
+smpdir     = os.path.join(jallib, "sample")                 # Standard samples
+blinkdir   = os.path.join(jallib, "sample", "blink")        # Blink samples
 projdir    = os.path.join(jallib, "project")                # projects
 torelease  = os.path.join(jallib, "TORELEASE")              # TORELEASE
 newrelease = "./TORELEASE.NEW"                              # New TORELEASE
@@ -97,7 +75,7 @@ def read_torelease():
    print("Reading", torelease)
    global lines
    try:
-      with open(torelease, "r") as ft:
+      with open(torelease, "r", encoding='utf-8') as ft:
          for ln in ft:
             ln = ln.strip()
             if (len(ln) > 0):
@@ -137,13 +115,17 @@ def analyze_torelease():
             part = dirs[1]                                  # part is 2nd level subdirectory
             libs.append(os.path.split(ln)[1])               # add to list of device files and libraries
          else:                                              # sample / project / doc
+            # Check for blink samples.
             part = dirs[0]                                  # part is 1st level subdirectory
          if (part == "sample"):
-            word = ln.split("_")
-            picname = word[0][7:]                           # strip 'sample/'
+            # Check for blink sample
+            element = ln.split("/")
+            sample = element[-1]                            # get name of the sample file 
+            word = sample.split("_")
+            picname = word[0]                               # get device name
             if (picname != ""):
                smppic[picname] = picname                    # PIC with at least 1 sample
-               if (word[1] == "blink"):
+               if (element[1] == "blink"):
                   blinkpic[picname] = picname               # blink sample found for this PIC
          if (f.get(part) == None):                          # new part
             f[part] = []
@@ -160,9 +142,10 @@ def list_counts(fr):
    print("Classify and count released samples in major groups")
    global f
    for smp in f["sample"]:                                  # all samples
-      smp = smp[7:-4]                                       # sample name
+      smp = smp.split("/")                                  
+      smp = smp[-1]                                         # sample name
       word = smp.split("_")
-      picname = word[0]
+      picname = word[0]                                     # device name
       if (picname != dev.get(picname)):                     # not released device file
          fr.write("  Device file of " + picname + \
                   " for sample " + smp + " not released\n")
@@ -258,13 +241,6 @@ def list_unreleased_libraries(fr):
          fs = fs[(len(jallib) + 1):]                        # remove base prefix
          fs = fs.translate(xslash)                          # backward to forward slash
          if (fs not in lines):
-#           if (unlisted == 0):
-#             for x in lines:
-#                print x
-#           elif (unlisted > 5):
-#             return
-#           print "fs ", fs
-#           print "   ", os.path.join(root,file)
             unlisted = unlisted + 1
             if (fs.startswith("include/device/")):          # unreleased device file
                unlisteddevice = unlisteddevice + 1
@@ -285,8 +261,8 @@ def list_unreleased_libraries(fr):
 # ---------------------------------------------
 def list_unreleased_samples(fr):
    """ List unreleased samples or use of unreleased libraries or device files
-       - Walk the sample directory tree
-         to find unreleased samples
+       - Walk the sample directory tree to find unreleased standard samples
+       - Walk the sample/blink directory to find unreleased blink samples
        - Check if sample name and included device file are matching
        - Check if unreleased libraries are included
    """
@@ -324,7 +300,7 @@ def list_unreleased_samples(fr):
                fr.write(fs + "\n")                          # list file
          else:                                              # found sample in torelease
             try:
-               with open(os.path.join(root, file), "r") as fi:       # full pathspec
+               with open(os.path.join(root, file), "r", encoding='utf-8') as fi:       # full pathspec
                   lncount = 0
                   for ln in fi:
                      lncount = lncount + 1                        # line number

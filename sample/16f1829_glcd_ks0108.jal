@@ -1,0 +1,170 @@
+-- ----------------------------------------------------------------------------
+-- Title: Graphics sample for the LCD module BG12864A using a ks0108 controller
+-- Author: Rob Jansen, Copyright (c) 2025..2025, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description:  Sample program for use with 128x64 graphics LCD with KS0108 chipset, 
+--               like the GDM12864A or BG12864A, using two different external fonts.
+--
+-- Sources: Based on the 18f6310_glcd_ks0108.jal sample program of Rob Hamerling.
+--
+-- ----------------------------------------------------------------------------
+
+include 16f1829                 
+
+-- This program uses the internal oscillator at 32 MHz.
+pragma target clock    32_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    ENABLED         -- PLL used for 32 MHz
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      ENABLED         -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset external
+-- Set the internal clock frequency to 32 MHz.
+OSCCON_IRCF   = 0b1110                 -- Set 32 MHz, 8 MHz source
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC 
+
+-- Enable weak pull up for unused pins.
+WPUA = 0b0000_0111 -- Only A0-A2 not used.    
+WPUB = 0b0000_0000
+WPUC = 0b0000_0000       
+OPTION_REG_WPUEN = FALSE  
+
+enable_digital_io()
+
+-- GRAPHIC_LCD IO definition ------------------------
+var volatile byte GLCD_DATAPRT     is portC
+var volatile byte GLCD_DATAPRT_DIR is portC_direction
+
+var volatile bit GLCD_DI  is pin_b4
+var volatile bit GLCD_RW  is pin_b5
+var volatile bit GLCD_E   is pin_b6
+var volatile bit GLCD_CS1 is pin_b7
+var volatile bit GLCD_CS2 is pin_a4
+var volatile bit GLCD_RST is pin_a5
+
+var volatile bit GLCD_DI_DIRECTION  is pin_b4_direction
+var volatile bit GLCD_RW_DIRECTION  is pin_b5_direction
+var volatile bit GLCD_E_DIRECTION   is pin_b6_direction
+var volatile bit GLCD_CS1_DIRECTION is pin_b7_direction
+var volatile bit GLCD_CS2_DIRECTION is pin_a4_direction
+var volatile bit GLCD_RST_DIRECTION is pin_a5_direction
+
+const GLCD_CLIPPING = TRUE                         -- enable clipping (of ellipse)
+
+enable_digital_io()                                -- all pins digital I/O
+
+include delay
+include math
+include print
+
+-- Use a small font. This is a vertical font.
+include glcd_6x8_font                              -- vertical font to be used
+-- Also use a bigger font. This is a horizontal font so we have to set the
+-- character buffer for the ks0101.
+include glcd_12x16_font                            -- horizontal font to be used
+const byte KS0108_CHAR_BUFFER_SIZE = FONT_12X16_BYTE_PER_CHAR
+include glcd_font                                  -- common font stuff
+
+-- Now we can include the ks0108 library.
+include glcd_ks0108                                -- glcd device dependent library
+glcd_init()                                        -- initialize display
+
+const byte str[] = "GLCD_TEST"
+
+var byte i = 0
+var sword dy = 0
+
+forever loop
+
+   glcd_background_color = GLCD_WHITE               -- background color
+   glcd_pen_color = GLCD_BLACK                      -- pixel color
+   glcd_font_use(FONT_12X16)                        -- activate big font
+   glcd_clear_screen()
+   ks0108_goto_pixel(10,0)
+   print_string(glcd, str)
+   glcd_background_color = GLCD_BLACK               -- background color
+   glcd_pen_color = GLCD_WHITE                      -- pixel color
+   glcd_font_use(FONT_6X8)                          -- activate small font
+   ks0108_goto_pixel(35,100)
+   print_string(glcd, str)
+   delay_100ms(30)
+
+   -- Write alphabet capital letters.
+   glcd_background_color = GLCD_WHITE               -- background color
+   glcd_pen_color = GLCD_BLACK                      -- pixel color
+   glcd_clear_screen()
+   ks0108_goto_pixel(0,0)
+   for 26 using i loop
+      glcd = "A" + i
+   end loop
+   ks0108_goto_pixel(0,20)
+  -- Write alphabet small letters.
+   for 26 using i loop
+      glcd = "a" + i
+   end loop
+   delay_100ms(30)
+
+   glcd_clear_screen()
+   glcd_box(GLCD_X_PIXELS / 4, GLCD_Y_PIXELS / 4,
+            GLCD_X_PIXELS / 4 * 3, GLCD_Y_PIXELS / 4 * 3)     -- draw a box
+   delay_100ms(10)
+   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 8)
+   print_string(glcd, str)                                    -- draw a string
+   delay_100ms(10)
+   glcd_char_goto(GLCD_X_PIXELS/4 + 5, GLCD_Y_PIXELS/4 + 16)
+   print_string(glcd, PICTYPE)                                -- another string
+   delay_100ms(10)
+
+   glcd_clear_screen()                                             -- full circle
+   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   glcd_clear_screen()                                             -- half a circle
+   glcd_circle(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS, GLCD_Y_PIXELS - 1)
+   delay_100ms(10)
+
+   glcd_clear_screen()                                             -- another half circle
+   glcd_circle(0, GLCD_Y_PIXELS / 2, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   glcd_clear_screen()
+   glcd_ellipse(GLCD_X_PIXELS / 2, GLCD_Y_PIXELS / 2,         -- full ellipse
+                GLCD_X_PIXELS / 2 - 1, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   glcd_clear_screen()
+   glcd_ellipse(0, GLCD_Y_PIXELS / 2,                         -- half ellipse
+                GLCD_X_PIXELS - 1, GLCD_Y_PIXELS / 2 - 1)
+   delay_100ms(10)
+
+   glcd_clear_screen()
+   for GLCD_X_PIXELS using i loop                             -- sine wave
+      dy = rsin8(sword(GLCD_Y_PIXELS / 2 - 1), sword(i) * 3)
+      glcd_write_pixel(i, byte(GLCD_Y_PIXELS / 2 - dy))
+   end loop
+   delay_100ms(10)
+
+   glcd_clear_screen()
+   for 2 loop
+      for ((GLCD_X_PIXELS / 2) - 1) using i loop              -- line animation
+         glcd_line(i * 2, 0, GLCD_X_PIXELS - i * 2 - 1, GLCD_Y_PIXELS - 1)
+         delay_1ms(10)
+      end loop
+      for (GLCD_Y_PIXELS - 1) using i loop
+         glcd_line(GLCD_X_PIXELS - 1, i, 0, GLCD_Y_PIXELS - i)
+         delay_1ms(10)
+      end loop
+      glcd_pen_color = GLCD_WHITE                  -- 'erase' first pattern
+   end loop
+   delay_100ms(10)
+
+end loop
+

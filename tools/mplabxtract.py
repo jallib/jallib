@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Collect .PIC files of JALV2 supported PICs
-
-Author: Rob Hamerling, Copyright (c) 2014..2018, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2014..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -30,32 +25,19 @@ Notes:
 
 """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()    # obtain environment variables
-if (base == ""):
-   exit(1)
-
 import os
 import sys
 import fnmatch
-import platform
 import shutil
 
-platform_name = platform.system()
-
-# platform specific path prefix (Linux, Windows, OSX (Darwin))
-if (platform_name == "Linux"):
-   xml_pfx = os.path.join("/", "opt", "microchip", "mplabx", "v" + mplabxversion)
-elif (platform_name == "Windows"):
-   # When using the Windows MPLABX installation from the original location use this:
-   xml_pfx = os.path.join("C:\\", "Program Files", "microchip", "mplabx", "v" + mplabxversion)
-elif (platform_name == "Darwin"):
-   xml_pfx = os.path.join("/", "Applications", "microchip", "mplabx", "v" + mplabxversion)
-else:
-   sys.stderr.write(f"Please add proper environment settings for {platform_name}=\n")
+## obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
    exit(1)
 
-# xml path prefixes
+# xml paths.
+xml_pfx = os.path.join(mplabxinstall, "v" + mplabxversion)
 xml_prefix = os.path.join(xml_pfx, "packs", "Microchip")
 
 # destination of extracted .pic files:

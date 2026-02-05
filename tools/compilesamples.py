@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Compile all Jallib samples
-
-Author: Rob Hamerling, Copyright (c) 2015..2017, all rights reserved.
-        Rob Jansen,    Copyright (c) 2018..2024, all rights reserved.
-
-Adapted-by: 
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2015..2012, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -23,8 +18,8 @@ Notes: - For the samples and libraries the latest jallib 'bee' package
          Howover the new device files are used in stead of those of jallib bee
          by putting its include path in front of the bee include path.
          (Include sequence dependency is a JalV2 compiler property).
-       - Blink-a-led samples are skipped: supposedly already validated/compiled
-         with the generation of new device files.
+       - Blink-a-led samples are skipped and not compiled: supposedly 
+         already validated/compiled with the generation of new blink sample files.
        - Sample source and compiler output are preserved when any errors or
          warnings are reported in log files in the 'log' directory
          Otherwise output is discarded.
@@ -34,38 +29,22 @@ Notes: - For the samples and libraries the latest jallib 'bee' package
          for an unknown reason.
 """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()              # obtain environment variables
-if (base == ""):
-   exit(1)
-
-import os
+import os, sys
 import time
 import subprocess
 import queue
 import multiprocessing as mp
 import fnmatch
 import shutil
-import platform
 
-scriptversion   = "1.0"
-scriptauthor    = "Rob Hamerling"
-
-platform_name = platform.system()
-
-# --- platform dependent paths
-if (platform_name == "Linux"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2-x86-64")        # compiler (in current directory)
-elif (platform_name == "Windows"):
-   jallib   = os.path.join("D:\\", "GitHub", "jallib")         # local copy jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2.exe")           # compiler (in current directory)
-elif (platform_name == "Darwin"):
-   jallib   = os.path.join("/", "media", "ramdisk", "jallib-master")      # local copy Jallib master
-   compiler = os.path.join(os.getcwd(), "jalv2osx")            # compiler (in current directory)
-else:
-   print("Please add platform specific info to this script!")
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
    exit(1)
+
+scriptversion   = "1.2"
+scriptauthor    = "Rob Hamerling, Rob Jansen"
 
 # --- common
 smpdir  = os.path.join(jallib, "sample")                       # directory with Jallib samples

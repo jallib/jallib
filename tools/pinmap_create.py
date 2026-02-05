@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Create new pinmap.py from MPLABX.
-
-Author: Rob Hamerling, Copyright (c) 2009..2024. All rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2009..2025. All rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -30,6 +26,12 @@ Description:
    This script handles issues with MPLABX (version see below).
    for newer MPLABX versions it will probably have to be adapted
    because of corrections made by Microchip or with new .pic files.
+ 
+   Check if requirements for this script is satisfied:
+    - Python version: at least Python 3.5
+    - Environment variables:
+      - PIC2JAL        - path of destination directory 
+      - MPLABXVERSION  - latest version number of MPLABX, e.g.: 6.25
 
 Sources: N/A
 
@@ -50,10 +52,6 @@ Notes: - Last checked for corrections/errors/omisions with MPLABX 4.05
       for processing xml content
     """
 
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()           # obtain environment variables
-if (base == ""):
-   exit(1)
 
 import os
 import sys
@@ -61,6 +59,12 @@ import fnmatch
 import re
 import xml.etree.ElementTree as et
 from concurrent import futures
+
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 picdir     = os.path.join(base, "mplabx")                   # place of .pic files
 
@@ -118,14 +122,6 @@ def create_pinmap_pic(filespec):
 
    for pin in pinsection.findall('Pin'):                     # select pin nodes
       pinnumber = pinnumber + 1                             # calculated next pin
-      # for pinc in pin.childNodes:                           # possibly corrected by comment node
-         #if pinc.nodeType == pinc.COMMENT_NODE:
-         #   wlist = pinc.nodeValue.split()
-         #   if wlist[0].isdigit() == True:
-         #      pinnumber = int(wlist[0])
-         #   elif wlist[1].isdigit() == True:
-         #      pinnumber = int(wlist[1])
-
       aliaslist = []                                        # new aliaslist this pin
       for vpin in pin.findall('VirtualPin'):
          alias = vpin.get('name').upper().strip('_').split()[0]  # first word
@@ -140,10 +136,6 @@ def create_pinmap_pic(filespec):
             print(picname, "  Renamed pin", alias, "to RA" + alias[-1])
             aliaslist.append("GP" + alias[-1])              # add GPx
             print(picname, "  Added alias GP" + alias[-1])
-#         elif alias in("RB1AN10", "RC7AN9"):                # MPLABX errors
-#            aliaslist.append(alias[0:3])
-#            aliaslist.append(alias[3:])
-#            print(picname "  Splitted alias", alias, "into", alias[0:3], "and", alias[3:], "for pin", pinnumber)
          elif (alias == "DAC1VREF+N"):                      # MPLABX typo(?)
             aliaslist.append("DAC1VREF+")
             print(picname, "  Replaced", alias, "by DAC1VREF+ for pin", pinnumber)
@@ -168,24 +160,11 @@ def create_pinmap_pic(filespec):
          if not "AN1" in aliaslist:
             aliaslist.append("AN1")                         # missing in MPLABx 2.30
             print(picname, "  Added missing alias AN1 to pin", pinnumber)
-#     elif (picname in ("16F1618", "16LF1618", "16F1619", "16LF1619")) & (pinnumber == 19):
-#        if not "AN0" in aliaslist:
-#           aliaslist.append("AN0")                         # missing in MPLABx 2.30
-#           print(picname, "  Added missing alias AN0 to pin", pinnumber)
       elif (picname.startswith(("16F1919", "16LF1919")) &
            ("RF2" in aliaslist) & ("ANF1" in aliaslist) ) :
          aliaslist.remove("ANF1")
          aliaslist.append("ANF2")
          print(picname, "  Replaced alias ANF1 by ANF2 for pin", pinnumber)
-#     elif (picname in ("18F2331", "18F2431")) & (pinnumber == 26):
-#        aliaslist = ["RE3"] + aliaslist                    # missing pin name
-#        print(picname, "  Added RE3 to pin", pinnumber)
-#     elif (picname in ("18F4220", "18F4320")) & (pinnumber == 36):
-#        aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
-#        print(picname, "  Aliaslist of pin", pinnumber, "copied from old pinmap")
-#     elif (picname in ("18F86J11", "18F86J16", "18F87J11"))  & (pinnumber == 55):
-#        aliaslist = pinmap[picname].get("RB3", ["RB3"])    # copy from old pinmap if present
-#        print(picname, "  Aliaslist of pin", pinnumber, "copied from old pinmap")
 
       portbit = None
       for alias in aliaslist:

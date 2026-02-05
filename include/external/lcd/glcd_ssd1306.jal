@@ -1,8 +1,8 @@
 -- -----------------------------------------------------------------------------
 -- Title: Library for GLCD using the SSD1306 display controller.
--- Author: Rob Jansen, Copyright (c) 2020..2022, all rights reserved.
+-- Author: Rob Jansen, Copyright (c) 2020..2026, all rights reserved.
 -- Adapted-by:
--- Compiler: 2.5r6
+-- Compiler: 2.5r9
 --
 -- This file is part of jallib (https://github.com/jallib/jallib)
 -- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
@@ -16,59 +16,68 @@
 --          Adafruit_SSD1306 library and some others.         
 --
 -- Notes: This library supports the control of the display via one of two
---        interfaces IIC or 4-wire SPI which depends om the module that is used. 
---        The default is hardware IIC control but this can be overruled using 
---        software IIC control by defining the following constant:
---        -) const SSD1306_SOFTWARE_IIC = TRUE 
---
---        When SPI needs to be used instead of IIC, this can be controlled by
---        using the following constant:
---        -) const SSD1306_SPI_CONTROL = TRUE  
---        By default the SPI hardware is used. This library also implements
---        a software SPI interface. In order to use this define the following:
+--        interfaces IIC or 4-wire SPI which depends on the interface that is 
+--        included by the main program before including this library. 
+--        This library supports control of the module using I2C software, 
+--        I2C hardware, I2C hardware2, SPI hardware and SPI hardware2. 
+--        Next to that the user can select a software SPI interface. In order 
+--        to use this define the following:
 --        -) const SSD1306_SOFTWARE_SPI = TRUE 
 --
 --        The default display pixel size is 128 x 64 but can be changed to
 --        128 x 32 using the following:
 --        -) const SSD1306_Y_32_PIXELS = TRUE 
 --
---        The following pins must be defined by the main program before 
---        including this library. Common pins for using IIC or SPI:
---        -) alias ssd1306_sck             -- For SPI to D0 of SSD1306, 
---        -) alias ssd1306_sck_direction   -- for IIC to sck of SSD1306  
---        -) alias ssd1306_sdo             -- For SPI to D1 of SSD1306,  
---        -) alias ssd1306_sdo_direction   -- for IIC to sda of SSD1306
---        These extra pins are needed when using SPI:
---        -) alias ssd1306_csn             -- For SPI to CS of SSD1306,  
---        -) alias ssd1306_csn_direction   -- not available for IIC   
---        -) alias ssd1306_dc              -- For SPI to CS of SSD1306, 
---        -) alias ssd1306_dc_direction    -- not available for IIC 
+--        The main program must include the required interface library and
+--        initialize it. 
+--        -) For IIC the maximum clock is 400 kHz. 
+--        -) For SPI use SPI_MODE_00 with a maximum clock of 10 MHz.
+--
+--        For IIC, the main program has to define the required IIC pins. 
+--        Nex to that the following SPI pins must be defined by the main
+--        main before including this library. 
+--        Only when using SSD1306_SOFTWARE_SPI:
+--        -) alias ssd1306_sck             -- For SPI to D0 of SSD1306. 
+--        -) alias ssd1306_sck_direction  
+--        -) alias ssd1306_sdo             -- For SPI to D1 of SSD1306.  
+--        -) alias ssd1306_sdo_direction   
+--        Additonal Required pins:
+--        -) alias ssd1306_csn             -- For SPI to CS of SSD1306.  
+--        -) alias ssd1306_csn_direction   
+--        -) alias ssd1306_dc              -- For SPI to CS of SSD1306. 
+--        -) alias ssd1306_dc_direction    
+--
 --        The SPI version of the SSD1306 uses a hardware reset pin for its reset. 
---        This feature can be used by defining the following: pin
---        -) alias ssd1306_res             -- For SPI to RES of SSD1306, 
---        -) alias ssd1306_res_direction   -- not available for IIC  
+--        This optional feature can be used by defining the following: pin
+--        -) alias ssd1306_res             -- For SPI to RES of SSD1306.
+--        -) alias ssd1306_res_direction   
 --        If not defined the RES pin of the module must be connected to another
 --        reset circuit. It is active low.
 -- 
---        This graphic display library needs quite a large data space for 
---        maintaining a cache. The PIC must have more than 1024 bytes of data
---        memory available as to be able to use the grapics features.
+--        The graphic display library needs a large data space for maintaining
+--        a cache. The PIC must have more than 1024 bytes of data memory
+--        available as to be able to use the grapics features.
 --        If only text needs to be displayed, this cache is not needed. The
---        text only use can be enabled by defining the following:
+--        text only mode can be enabled by defining the following:
 --        -) const SSD1306_TEXT_ONLY = TRUE     
+--        In this mode, characters can only be placed on certain rows (pages).
+--        When using a horizontal oriented character font a character buffer 
+--        is needed with the size of the used font, see the font library value
+--        FONT_xxxx_BYTE_PER_CHAR for the font you are using.
+--        The default size of this buffer is set to the minimum value of 1.
+--        For example the 12x16 horizontal font uses 32 bytes for one character 
+--        and so we can set the character buffer to this size by:
+--        -) const SSD1306_CHAR_BUFFER_SIZE = 32 
+--        No buffer is required for vertical oriented fonts and when using
+--        graphics mode. In graphics mode, characters can be postioned on
+--        any y-coordinate, bypassing the row (pages) limitation.
 --
 --        The default IIC address can be overruled by defining it in the main
 --        program. Note that this is not needed since the default is already set
 --        to the default module IIC address of 0b0111_1000:
 --        -) const byte SSD1306_IIC_ADDRESS = <IIC Address>
 --
---        If IIC hardware interface problems occurs this may be fixed by 
---        swtiching to SMB level signals by defining:
---        const bit _i2c_level = FALSE
-
--- -----------------------------------------------------------------------------
--- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
--- -----------------------------------------------------------------------------
+-- ---------------------------- Public constants -------------------------------
 
 -- Number of pixels on the screen. Number of Y pixels is default 64 but can be 
 -- changed to 32 pixels. 
@@ -79,116 +88,42 @@ if defined(SSD1306_Y_32_PIXELS) then
    else
       const byte SSD1306_MAX_Y_PIXELS = 64  -- 0..63
 end if
--- -----------------------------------------------------------------------------
--- -------------------------- Public API ---------------------------------------
--- -----------------------------------------------------------------------------
 
--- -------- General functions of usage with text and graphics ------------------
+-- Vertically the device uses pages of 8 pixels high.
+const byte SSD1306_MAX_PAGES = 8 -- 0..7
 
--- Initialize the control pins, the IIC or SPI interface and the initialize the 
--- SSD1306 module. When SPI is used and the reset pin is defined then the module 
--- will also be hardware reset.
-procedure ssd1306_init()
+-- ---------------- Private constants and function prototypes ------------------
 
--- Set the current position for the data to be written, x = 0->127, y = 0->7.
-procedure ssd1306_goto(byte in x, byte in y)
-
--- Clear the cache; glcd_cache_update() must be called next.
-procedure glcd_clear_cache()
-
--- Clear the screen and move the cursor to position 0,0.
--- Alias is glcd_clear_screen()
+-- Function prototypes.
 procedure ssd1306_clear_screen()
-
--- Set display contrast, value from 0x00 to 0xFF.
-procedure ssd1306_set_contrast(byte in contrast)
-
--- Put all segments of the display on.
-procedure ssd1306_display_all_on()
-
--- Resume the display.
-procedure ssd1306_display_resume()
-
--- Put the display in normal (non-inverse) mode.
-procedure ssd1306_display_normal()
-
--- Put the display in inverse mode.
-procedure ssd1306_display_inverse()
- 
--- Put the display on.
-procedure ssd1306_display_on() 
-
--- Switch the display off.
-procedure ssd1306_display_off()
-
--- Scroll the whole display right. For scrolling the whole display 'start' 
--- must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_right(byte in start, byte in stop)
-
--- Scroll the whole display left. For scrolling the whole display 'start' 
--- must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_left(byte in start, byte in stop)
-
--- Scroll the whole display diagonal right. For scrolling the whole display 
--- 'start' must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_diagonal_right(byte in start, byte in stop)
-
--- Scroll the whole display diagonal left. For scrolling the whole display 
--- 'start' must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_diagonal_left(byte in start, byte in stop)
-
--- Stop the scroll feature.
-procedure ssd1306_stop_scroll()
-
--- Set the display start line. The procedure can be used to implement a 
--- vertical scroll feature. Start line is in range 0..(SSD1306_MAX_Y_PIXELS - 1)
-procedure ssd1306_set_start_line(byte in start_line)
-
--- ------- Graphics specific function, not available in text only mode ----------
-
--- Copy the changed area of the cache to the lcd. This procedure is to be
--- used when using graphics features like pixes, lines, circles, etc. and is 
--- not available in text only mode.
-procedure ssd1306_update_display()
-  
--- Plot a pixel at given absolute (x, y) location. x and y are absolute pixel 
--- coordinates. Variable 'glcd_pen_color' should be set before calling, to plot 
--- appropriate pixel colors. This display is not updated with the changed
--- pixel so make sure to call ssd1306_update_display() after all pixels are done. 
--- Alias is glcd_write_pixel()
 procedure ssd1306_write_pixel(byte in x, byte in y)
-
--- Draw an bitmap image from a byte array. Draws in vertical mode, 1 bit per pixel. 
--- This procedure only fills the cache with the image. To send the contents of the cache
--- to the screen call ssd1306_update_display()
--- Alias is glcd_draw_image()
 procedure ssd1306_draw_image(byte in image[],
-                             byte in x, byte in y,
-                             byte in width, byte in height)
+                            byte in x, byte in y,
+                            byte in width, byte in height)
+function _ssd1306_spi_sw_exchange(byte in data) return byte
+procedure _ssd1306_start_transmission(bit in transmission)
+procedure _ssd1306_stop_transmission()
+procedure _ssd1306_write_byte(byte in data)
+procedure _ssd1306_write_one_data_byte(byte in data)
+if defined(_SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
+   function _ssd1306_spi_sw_exchange(byte in data) return byte
+end if 
 
--- ---------------------- Advanced procedures ----------------------------------
-
--- Send a command to the ssd1306 without a paramater. It is up to the user to 
--- set the correct command as described in the datasheet.
-procedure ssd1306_send_command(byte in command) 
-
--- Send a command to the ssd1306 with a paramater. It is up to the user to 
--- set the correct command and parameter as described in the datasheet.
-procedure ssd1306_send_command_parameter(byte in command, byte in parameter)
- 
--- -----------------------------------------------------------------------------
--- ---------------------------- Implementation ---------------------------------
--- -----------------------------------------------------------------------------
-
--- Define the IIC address. Given address is the module default.
+-- Define the IIC address. Given address is the IIC module default address << 1.
 if !defined(SSD1306_IIC_ADDRESS) then
-   const byte SSD1306_IIC_ADDRESS = 0b0111_1000
+   const byte SSD1306_IIC_ADDRESS = 0b0111_1000 -- 7-bit IIC address is 0x3C.
 end if
 
 -- Define some glcd aliases for the available procedures. See glcd_common.
 alias glcd_clear_screen is ssd1306_clear_screen  
 alias glcd_write_pixel is ssd1306_write_pixel   
 alias glcd_draw_image  is ssd1306_draw_image  
+if !defined(SSD1306_TEXT_ONLY) then
+   -- For graphics we also need to declare procedure for updating the display 
+   -- with the cache since characters are then written as pixels.
+   procedure ssd1306_update_display()
+   alias glcd_update_display is ssd1306_update_display
+end if
 
 -- GLCD specifications.
 const byte GLCD_X_PIXELS   = SSD1306_MAX_X_PIXELS
@@ -212,31 +147,11 @@ var byte glcd_pen_color = GLCD_BLACK
 -- so we musn't interfere with its logic.
 if defined(FONT_AUTO_WRAP) then
    if FONT_AUTO_WRAP == FALSE then
-       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\tthe default behavior for this GLCD controller"
+      _warn "FONT_AUTO_WRAP must be set to TRUE since not supported by controller"
    end if
 else
-    const bit FONT_AUTO_WRAP = TRUE
+   const bit FONT_AUTO_WRAP = TRUE
 end if
-
-
--- Cache definition only needed when using graphics.
-if !defined(SSD1306_TEXT_ONLY) then
-   const word CACHE_SIZE = word(GLCD_X_PIXELS) * word(GLCD_Y_PIXELS/8)
-   -- Cache array, defaulting when not previously defined.
-   if !defined(glcd_cache) then
-      -- Large array definition needed for cache.
-      const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
-      const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
-      include large_array_1
-      alias glcd_cache is large_array_1
-   end if 
-   -- Track current changed (dirty) area. Set to no area to write.
-   var word glcd_lo_watermark = CACHE_SIZE - 1  -- Points to start of write area.
-   var word glcd_hi_watermark = 0               -- Points to end of write area.
-   var bit  glcd_cache_changed = TRUE
-end if 
- 
--- -------------- Private constants and function prototypes ---------------------
 
 -- SSD1306 commands.
 const byte _SSD1306_MEM_ADDRESS_MODE     = 0x20
@@ -270,129 +185,100 @@ const byte _SSD1306_SET_DISPLAY_CLOCKDIV = 0xD5
 const bit _SSD1306_DATA_TRANSMISSION    = 1
 const bit _SSD1306_COMMAND_TRANSMISSION = 0
 
--- Private procedures.
-procedure _ssd1306_start_transmission(bit in data_transmission)
-procedure _ssd1306_stop_transmission()
-procedure _ssd1306_write_byte(byte in data)
+-- --------------------------- Private variables -------------------------------
 
-if defined(GLCD_FONT_USAGE) then
+if defined(SSD1306_TEXT_ONLY) then
+   -- When using horizontal fonts we need a buffer to store one character.
+   -- Define the buffer for writing characters using horizontal fonts.
+   if !defined(SSD1306_CHAR_BUFFER_SIZE) then
+      -- Set buffer size to the minimum size.
+      const SSD1306_CHAR_BUFFER_SIZE = 1
+   end if 
+   var byte _ssd1306_char_buffer[SSD1306_CHAR_BUFFER_SIZE]
+
    procedure ssd1306_write_char(byte in x, byte in y, byte in char)
    -- Define the glcd alias for this procedure.
    alias glcd_write_char is ssd1306_write_char  
-   -- Must include glcd_common in this case for glcd_write_char to work.
-   include glcd_common  
-end if
-
--- ------------------------------- Final implemenation -------------------------
-
--- Define required settings for the SPI or IIC interface, depending on the
--- selection done by the main program.
-if defined(SSD1306_SPI_CONTROL) then
-   -- In case of doing SPI in software we will not include the SPI library but
-   -- replace the used function by the software implementation with the same name.
-   if defined(SSD1306_SOFTWARE_SPI) then  
-      function spi_master_hw_exchange(byte in data) return byte
-   else
-     -- Use the spi_master_hw_exchange function from hardware SPI library.
-     include spi_master_hw
-   end if
 else
-   -- Use IIC control. Set the clock speed to 400kHz which is the absolute 
-   -- maximum for this chip. 
-   if !defined(_i2c_bus_speed) then
-      const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz clock speed) 
-   end if
-   if defined(SSD1306_SOFTWARE_IIC) then 
-      if !defined(i2c_scl) then
-         alias i2c_scl is ssd1306_sck
-      end if
-      if !defined(i2c_sda) then
-         alias i2c_sda is ssd1306_sdo
-      end if
-      if !defined(i2c_scl_direction) then
-         alias i2c_scl_direction is ssd1306_sck_direction
-      end if
-      if !defined(i2c_sda_direction) then
-         alias i2c_sda_direction is ssd1306_sdo_direction
-      end if
-      include i2c_software
-   else
-      -- Hardware IIC. In some device files, the IIC pins are already defined 
-      -- and assigned to a specific hardware pin (see datasheet of your PIC).
-      if !defined(pin_scl_direction) then
-         alias pin_scl_direction  is ssd1306_sck_direction
-      end if
-      if !defined(pin_sda_direction) then
-         alias pin_sda_direction is ssd1306_sdo_direction
-      end if
-      -- I2C level setting. For SMB levels use: const bit _i2c_level = FALSE
-      if !defined(_i2c_level) then 
-         const bit _i2c_level = TRUE -- i2c levels (not SMB)
-      end if
-      include i2c_hardware
-   end if
+   -- Cache definition only needed when using graphics.
+   const word CACHE_SIZE = word(GLCD_X_PIXELS) * word(GLCD_Y_PIXELS/8)
+   -- Cache array, defaulting when not previously defined.
+   if !defined(glcd_cache) then
+      -- Large array definition needed for cache.
+      const dword LARGE_ARRAY_1_SIZE = CACHE_SIZE -- number of array variables
+      const dword LARGE_ARRAY_1_VARIABLE_SIZE = 1 -- size of variables (byte*1)
+      include large_array_1
+      alias glcd_cache is large_array_1
+   end if 
+   -- Track current changed (dirty) area. Set to no area to write.
+   var word glcd_lo_watermark = CACHE_SIZE - 1  -- Points to start of write area.
+   var word glcd_hi_watermark = 0               -- Points to end of write area.
+   var bit  glcd_cache_changed = TRUE
+end if 
+ 
+-- Now we can include glcd_common.
+include glcd_common
+
+-- Check which interface is used and map it to one ssd1306 interface.
+if defined(SSD1306_SOFTWARE_SPI) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is _ssd1306_spi_sw_exchange
+elsif defined(spi_master_hw_exchange) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is spi_master_hw_exchange
+elsif defined(spi_master_hw2_exchange) then
+   const _SSD1306_SPI_CONTROL = TRUE
+   alias _ssd1306_interface is spi_master_hw2_exchange
+elsif defined(i2c_transmit_byte) then
+   alias _ssd1306_interface is i2c_transmit_byte 
+   alias _ssd1306_start is i2c_start
+   alias _ssd1306_stop is i2c_stop
+elsif defined(i2c_transmit_byte2) then
+   alias _ssd1306_interface is i2c_transmit_byte2
+   alias _ssd1306_start is i2c_start2
+   alias _ssd1306_stop is i2c_stop2
 end if 
 
+-- ---------------------- Public procedures & functions ------------------------
 
-if defined(SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
--- SPI interface done in software using same the function name as hardware SPI.
--- Note: There is no data in used in this SPI variant, only data out.
-  function spi_master_hw_exchange(byte in data) return byte is
-
-     var bit data_bit_out at data:7
-
-     for 8 loop
-        ssd1306_sdo = data_bit_out
-        data = data << 1 
-        ssd1306_sck = HIGH
-        _usec_delay(1)
-        ssd1306_sck = LOW
-     end loop
-     ssd1306_sdo = LOW -- Not needed but nicer to keep output low when done.
-
-     return data  -- Nothing to return so return the data sent.      
-
-  end function
-end if 
-
-
--- Initialize the control pins, the IIC or SPI interface and the initialize the 
--- SSD1306 module. When SPI is used and the reset pin is defined then the module 
--- will also be hardware reset.
+-- -----------------------------------------------------------------------------
+-- Description: Initialize the SSD1306 library and display
+-- - When SPI is used and the reset pin is defined then the module will also be 
+-- - hardware reset.
+-- Parameters: 
+-- - None
+-- Notes:
+-- - The use IIC interface or SPI interface must be initialized.
+-- -----------------------------------------------------------------------------
 procedure ssd1306_init() is
 
-   if defined(SSD1306_SPI_CONTROL) then
-      -- Initialize SPI pins.
-      ssd1306_sck_direction = output
-      ssd1306_sdo_direction = output
-      ssd1306_csn_direction = output
-      ssd1306_dc_direction  = output
+   if defined(_SSD1306_SPI_CONTROL) then
+
+      -- Initialize common SPI pins.
+      ssd1306_sck_direction = OUTPUT
+      ssd1306_sdo_direction = OUTPUT
+      ssd1306_csn_direction = OUTPUT
+      ssd1306_dc_direction  =OUTPUT
       ssd1306_csn = HIGH
       ssd1306_dc  = _SSD1306_COMMAND_TRANSMISSION
 
       if defined(SSD1306_SOFTWARE_SPI) then
-         -- SPI done in software, initialize the relevant pins.
+         -- SPI done in software, initialize additonal pins.
          ssd1306_sck = LOW
          ssd1306_sdo = LOW 
-      else 
-         -- SPI done in hardware, slow down clock a bit.
-         spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
-      end if
+      end if  
 
       -- Reset the device if a hardware reset pin is present. Only available in
       -- the SPI version of the module.
-      if defined(ssd1306_rst) then
-         ssd1306_rst_direction = OUTPUT
-         ssd1306_rst = HIGH
+      if defined(ssd1306_res) then
+         ssd1306_res_direction = OUTPUT
+         ssd1306_res = HIGH
          _usec_delay(1_000)
-         ssd1306_rst = LOW
+         ssd1306_res = LOW
          _usec_delay(10_000)
-         ssd1306_rst = HIGH     
+         ssd1306_res = HIGH     
       end if 
       
-   else
-      -- Use IIC interface, can be hardware IIC or software IIC.
-      i2c_initialize()
    end if 
 
    -- Initialize the module. Most values are reset defaults. See datasheet for 
@@ -407,7 +293,7 @@ procedure ssd1306_init() is
    _ssd1306_write_byte(_SSD1306_COMSCANDEC)
    _ssd1306_write_byte(_SSD1306_MEM_ADDRESS_MODE)
    _ssd1306_write_byte(0x00) -- Horizontal addressing mode.
-   _ssd1306_write_byte(_SSD1306_SET_STARTLINE)
+    _ssd1306_write_byte(_SSD1306_SET_STARTLINE)
    _ssd1306_write_byte(_SSD1306_SET_DISPLAY_OFFSET)
    _ssd1306_write_byte(0x00)
    _ssd1306_write_byte(_SSD1306_SET_CHARGEPUMP)
@@ -438,7 +324,14 @@ procedure ssd1306_init() is
 end procedure
 
 
--- Set the current position for the data to be written, x = 0->127, y = 0->7.
+-- -----------------------------------------------------------------------------
+-- Description: Set the display to given coordinates
+-- Parameters: 
+-- - x - x-coordinate in range 0..SSD1306_MAX_X_PIXELS - 1
+-- - y - page number in range 0..SSD1306_MAX_PAGES - 1
+-- Notes:
+-- - Used in text mode. Text is positioned on page boundaries.
+-- -----------------------------------------------------------------------------
 procedure ssd1306_goto(byte in x, byte in y) is
 
   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
@@ -447,7 +340,7 @@ procedure ssd1306_goto(byte in x, byte in y) is
   _ssd1306_write_byte(GLCD_X_PIXELS - 1)       -- Column end address   
   _ssd1306_write_byte(_SSD1306_PAGE_ADDRESS) 
   _ssd1306_write_byte(y & 0x07)                -- Page start address. 
-  _ssd1306_write_byte((GLCD_Y_PIXELS / 8) - 1) -- Page end address.
+  _ssd1306_write_byte((GLCD_Y_PIXELS / SSD1306_MAX_PAGES) - 1) -- Page end address.
   _ssd1306_stop_transmission()
 
   -- When using font, set x and y from glcd_common in pixels for x and y.
@@ -461,22 +354,57 @@ end procedure
 
 
 if !defined(SSD1306_TEXT_ONLY) then 
-   -- Clear the cache; glcd_cache_update() must be called next.
-   procedure glcd_clear_cache() is
-      var word i
-      for CACHE_SIZE using i loop
-         glcd_cache[i] = 0x00
-      end loop
-      -- reset watermark pointers
-      glcd_hi_watermark = CACHE_SIZE - 1
-      glcd_lo_watermark = 0
- 
-      glcd_cache_changed = TRUE
-   end procedure
+-- -----------------------------------------------------------------------------
+-- Description: Set the display to given pixel coordinates
+-- Parameters: 
+-- - x - x-coordinate in range 0..SSD1306_MAX_X_PIXELS - 1
+-- - y - y-coordinate in range 0..SSD1306_MAX_Y_PIXELS - 1
+-- Notes:
+-- - Used in graphics mode. Text is positioned on pixel coordinates.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_goto_pixel(byte in x, byte in y) is
 
-   -- Copy the changed area of the cache to the lcd. This procedure is to be
-   -- used when using graphics features like pixes, lines, circles, etc. and is 
-   -- not available in text only mode.
+   ssd1306_goto(x, y / SSD1306_MAX_PAGES)
+
+   -- When using font, set x and y from glcd_common in pixels for x and y.
+   if defined(GLCD_FONT_USAGE) then 
+      glcd_char_x_pos = x  
+      glcd_char_y_pos = y
+   end if
+   
+end procedure
+
+
+ -- -----------------------------------------------------------------------------
+-- Description: Clear the graphics cache
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Only used for graphics mode; sdd1306_update_display() must be called next. 
+-- -----------------------------------------------------------------------------
+procedure ssd1306_clear_cache() is
+
+   var word i
+
+   for CACHE_SIZE using i loop
+      glcd_cache[i] = 0x00
+   end loop
+   -- reset watermark pointers
+   glcd_hi_watermark = CACHE_SIZE - 1
+   glcd_lo_watermark = 0
+   glcd_cache_changed = TRUE
+
+end procedure
+
+-- -----------------------------------------------------------------------------
+-- Description: Copy the changed area of the graphics cache to the display
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Only used for graphics mode. This procedure is to be used when using 
+-- - graphics features like pixes, lines, circles, etc. to send the contents
+-- - of the cache to the display. 
+-- -----------------------------------------------------------------------------
    procedure ssd1306_update_display() is
       -- Graphics implementation, using cache.
       var word y_address, x_address, index
@@ -518,32 +446,35 @@ if !defined(SSD1306_TEXT_ONLY) then
 end if
 
 
--- Clear the screen and move the cursor to position 0,0.
+-- -----------------------------------------------------------------------------
+-- Description: Clear the screen
+-- Parameters: 
+-- - None
+-- Notes:
+-- - Cursor is set to the position 0,0.
+-- -----------------------------------------------------------------------------
 procedure ssd1306_clear_screen() is
+
+   var byte y_coord
 
    if defined(SSD1306_TEXT_ONLY) then
       -- If there is no chache we cannot use the graphics way of clearing the
-      -- screen so as fallback we just write spaces.
-      
+      -- screen so as fallback we just write 0x00.
       ssd1306_goto(0,0)
-      _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
-      for (GLCD_Y_PIXELS / 8) loop
+      for (GLCD_Y_PIXELS / 8) using y_coord loop
+         -- Clearing per page. We can use the regular goto.
+         ssd1306_goto(0, y_coord)
+         -- Send data for all columns
+         _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
          for (GLCD_X_PIXELS) loop
+            -- The column address auto-increments.
             _ssd1306_write_byte(0)
          end loop
+         _ssd1306_stop_transmission()
       end loop
-      _ssd1306_stop_transmission()
    else
-      -- Graphics implementation, using cache.
-      var word index
-
-      for CACHE_SIZE using index loop
-         glcd_cache[index] = 0x00
-      end loop 
-      -- Set watermark pointers to full screen (complete update of screen).
-      glcd_hi_watermark = CACHE_SIZE - 1
-      glcd_lo_watermark = 0 
-      glcd_cache_changed = TRUE
+      -- Graphics implementation, clear cache and update display.
+      ssd1306_clear_cache()
       ssd1306_update_display()
    end if
 
@@ -558,48 +489,75 @@ end procedure
 -- pixel so make sure to call ssd1306_update_display() after all pixels are done. 
 -- Not implement in text only mode.
 if defined(SSD1306_TEXT_ONLY) then
-   procedure ssd1306_write_pixel(byte in x, byte in y) is
-   end procedure 
-else
-   procedure ssd1306_write_pixel(byte in x, byte in y) is
+-- -----------------------------------------------------------------------------
+-- Description: Not implemented for text only mode
+-- Notes:
+-- - Only defined as dummy procedure for the glcd_common library.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_write_pixel(byte in x, byte in y) is
+   -- Not implemented for text only mode. 
+end procedure 
 
-      -- Graphics implementation, using cache.
-      var byte pdata, offset
-      var word index
+else -- defined(SSD1306_TEXT_ONLY) then
+ -- -----------------------------------------------------------------------------
+-- Description: Plot a pixel at the given absolute (x, y) location.
+-- Parameters: 
+-- - x - x-coordinate in range 0..SSD1306_MAX_X_PIXELS - 1
+-- - y - y-coordinate in range 0..SSD1306_MAX_Y_PIXELS - 1
+-- Notes:
+-- - Variable 'glcd_pen_color' should be set before calling to plot the used
+-- - pixel color. The display is not updated with the changed pixel so 
+-- - make sure to call ssd1306_update_display() after all pixels are done. 
+-- -----------------------------------------------------------------------------
+procedure ssd1306_write_pixel(byte in x, byte in y) is
 
-      if (x < GLCD_X_PIXELS) & (y < GLCD_Y_PIXELS) then   
+   -- Graphics implementation, using cache.
+   var byte pdata, offset
+   var word index
 
-         index = word((word(y/8) * GLCD_X_PIXELS)) + word(x)
-         offset = y % 8 
+   if (x < GLCD_X_PIXELS) & (y < GLCD_Y_PIXELS) then   
 
-          pdata = glcd_cache[ index ] 
-         if glcd_pen_color == GLCD_BLACK then
-            pdata = pdata | (0x01 << offset)
-         elsif glcd_pen_color == GLCD_WHITE then
-            pdata = pdata & (255 ^ (0x01 << offset))
-         elsif glcd_pen_color == GLCD_XOR then
-            pdata = pdata ^ (0x01 << offset)
-         end if 
-         glcd_cache[ index ] = pdata
+      index = word((word(y/8) * GLCD_X_PIXELS)) + word(x)
+      offset = y % 8 
 
-         if index < glcd_lo_watermark then
-            -- update low water mark
-            glcd_lo_watermark = index
-         end if
-         if index > glcd_hi_watermark then
-            -- update high water mark
-            glcd_hi_watermark = index
-         end if
-         glcd_cache_changed = TRUE
+      pdata = glcd_cache[ index ] 
+      if glcd_pen_color == GLCD_BLACK then
+         pdata = pdata | (0x01 << offset)
+      elsif glcd_pen_color == GLCD_WHITE then
+         pdata = pdata & (255 ^ (0x01 << offset))
+      elsif glcd_pen_color == GLCD_XOR then
+         pdata = pdata ^ (0x01 << offset)
+      end if 
+      glcd_cache[ index ] = pdata
+
+      if index < glcd_lo_watermark then
+         -- update low water mark
+         glcd_lo_watermark = index
+      end if
+      if index > glcd_hi_watermark then
+         -- update high water mark
+         glcd_hi_watermark = index
+      end if
+      glcd_cache_changed = TRUE
 
       end if
       
    end procedure
 
 
--- Draw an bitmap image from a byte array. Draws in vertical mode, 1 bit per pixel. 
--- This procedure only fills the cache with the image. To send the contents of the cache
--- to the screen call ssd1306_update_display()
+-- -----------------------------------------------------------------------------
+-- Description: Draw a bitmap image from a byte array
+-- - Draws the image using vertical mode, 1 bit per pixel. 
+-- Parameters: 
+-- - image[] - array of bytes with the image
+-- - x       - x-coordinate in range 0..SSD1306_MAX_X_PIXELS - 1
+-- - y       - y-coordinate in range 0..SSD1306_MAX_Y_PIXELS - 1
+-- - width   - width of image in number of pixels
+-- - height  - height of image in number of pixels
+-- Notes:
+-- - This procedure only fills the cache with the image. To send the contents of 
+-- - the cache to the screen call ssd1306_update_display() next.
+-- -----------------------------------------------------------------------------
 procedure ssd1306_draw_image(byte in image[],
                             byte in x, byte in y,
                             byte in width, byte in height) is
@@ -635,191 +593,94 @@ procedure ssd1306_draw_image(byte in image[],
 end if -- SSD1306_TEXT_ONLY
  
 
--- Set display contrast, value from 0x00 to 0xFF.
-procedure ssd1306_set_contrast(byte in contrast) is
+if defined(SSD1306_TEXT_ONLY) & defined(GLCD_FONT_USAGE) then
+ -- -----------------------------------------------------------------------------
+-- Description: Write a character at position (x,y)
+-- - It uses the font previously selected with glcd_font_use(FONT_ID) and honors
+-- - glcd_background_color variable, and glcd_pen_color.
+-- Parameters: 
+-- - x    - x-coordinate in range 0..SSD1306_MAX_X_PIXELS - 1
+-- - y    - y-coordinate in range 0..SSD1306_MAX_Y_PIXELS - 1
+-- - char - ASCII character
+-- Notes:
+-- - Although x and y are given in pixels, the y coordindate will be mapped on
+-- - display lines (pages) using glcd_font_current_height_. So when called y must
+-- - always be defined in steps of glcd_font_current_height_. 
+-- - When using glcd_common library, a glcd'put pseudo-variable will be defined,
+-- - and can be called as an OUTPUT device (eg. glcd = "x").
+-- - Only available when using fonts.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_write_char(byte in x, byte in y, byte in char) is
 
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SET_CONTRAST)
-   _ssd1306_write_byte(contrast)
-   _ssd1306_stop_transmission()     
-   
-end procedure
+   var word index
+   var byte offset, y_offset, buffer_offset
+   var byte ch, mask, bit_count 
 
--- Put all segments of the display on.
-procedure ssd1306_display_all_on() is
+   -- Select the right character from the font table.
+   offset = char - 32 -- Fix for ascii value.
+   index = word(glcd_font_current_byte_per_char_) * word(offset)   
 
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_ALL_ON)
-   _ssd1306_stop_transmission()     
-   
-end procedure
+   -- The SSD1306 uses vertical writing of pixels. 
+   if (glcd_font_current_bit_direction_ == FONT_TOP_LEFT_HORIZONTAL) then
+      -- First perform a range check to prevent buffer overflow.
+      if (glcd_font_current_byte_per_char_ <= SSD1306_CHAR_BUFFER_SIZE) then
+         -- Fill the buffer with the character pixel data.
+          for glcd_font_current_byte_per_char_ using offset loop
+            _ssd1306_char_buffer[offset] = glcd_font_lookup(index)
+            index = index + 1
+         end loop 
+         -- Horizontal orientation means we have to rotate the character
+         -- ninety degrees to the left and keep top left horizontal. 
+         mask = 0 
+         for glcd_font_current_width_ using offset loop
+            -- Preset mask again when used. 
+            if (mask == 0) then
+               mask = 0b1000_0000 -- Start with left most significant bit.
+            end if 
+            -- Set the starting position buffer pointer.
+            buffer_offset = offset / 8
+            bit_count = 0
+            y_offset = 0
+            ch = 0
+            for glcd_font_current_height_ loop
+               ch = ch >> 1
+               if (_ssd1306_char_buffer[buffer_offset] & mask) != 0 then
+                  ch = ch | 0b1000_0000
+               end if 
+               bit_count = bit_count + 1
+               -- If 8 bits are done, write the byte and go to next bit.
+               if (bit_count == 8) then
+                  -- Invert if needed. 
+                  if (glcd_background_color == GLCD_BLACK) then
+                     ch = ch ^ 0xFF
+                  end if
+                  ssd1306_goto(x + offset, (y / 8) + y_offset)
+                  _ssd1306_write_one_data_byte(ch)
+                  ch = 0
+                  bit_count = 0
+                  y_offset = y_offset + 1
+               end if 
+               -- Next byte from buffer for next column. 
+               buffer_offset = buffer_offset + ((glcd_font_current_width_ - 1) / 8) + 1
+            end loop
+            -- If the height is not a full byte, complete the last part.
+           if ((glcd_font_current_height_ % 8) != 0) then
+               ch = ch >> (8 - bit_count)
+               if (glcd_background_color == GLCD_BLACK) then
+                  ch = ch ^ 0xFF
+               end if
+               ssd1306_goto(x + offset, (y / 8) + y_offset)
+               _ssd1306_write_one_data_byte(ch)              
+            end if 
+            -- Next bit.
+            mask = mask >> 1
+         end loop
+         -- We need to restore the x- and y-coordinate for the next write.
+         glcd_char_x_pos = x 
+         glcd_char_y_pos = y
+      end if 
 
--- Resume the display.
-procedure ssd1306_display_resume() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_RESUME)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
--- Put the display in normal (non-inverse) mode.
-procedure ssd1306_display_normal() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_NORMAL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Put the display in inverse mode.
-procedure ssd1306_display_inverse() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_INVERSE)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Put the display on.
-procedure ssd1306_display_on() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_ON)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Switch the display off.
-procedure ssd1306_display_off() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_DISPLAY_OFF)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Scroll the whole display right. For scrolling the whole display 'start' 
--- must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_right(byte in start, byte in stop) is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SCROLL_HOR_RIGHT)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(start & 0x07)
-   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
-   _ssd1306_write_byte(stop & 0x07)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(0xFF) -- Dummy byte.
-   _ssd1306_write_byte(_SSD1306_START_SCROLL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Scroll the whole display left. For scrolling the whole display 'start' 
--- must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_left(byte in start, byte in stop) is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SCROLL_HOR_LEFT)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(start & 0x07)
-   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
-   _ssd1306_write_byte(stop & 0x07)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(0xFF) -- Dummy byte.
-   _ssd1306_write_byte(_SSD1306_START_SCROLL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Scroll the whole display diagonal right. For scrolling the whole display 
--- 'start' must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_diagonal_right(byte in start, byte in stop) is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SET_VER_SCROLL_AREA)
-   _ssd1306_write_byte(0x00)
-   _ssd1306_write_byte(GLCD_Y_PIXELS) -- Whole area scrolls.
-   _ssd1306_write_byte(_SSD1306_SCROLL_VER_HOR_RIGHT)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(start & 0x07)
-   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
-   _ssd1306_write_byte(stop & 0x07)
-   _ssd1306_write_byte(0x01) -- Scroll 1 row.
-   _ssd1306_write_byte(_SSD1306_START_SCROLL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-  
--- Scroll the whole display diagonal left. For scrolling the whole display 
--- 'start' must be 0x00 and 'stop' must be 0x07.
-procedure ssd1306_start_scroll_diagonal_left(byte in start, byte in stop) is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SET_VER_SCROLL_AREA)
-   _ssd1306_write_byte(0x00)
-   _ssd1306_write_byte(GLCD_Y_PIXELS) -- Whole area scrolls.    
-   _ssd1306_write_byte(_SSD1306_SCROLL_VER_HOR_LEFT)
-   _ssd1306_write_byte(0x00) -- Dummy byte.
-   _ssd1306_write_byte(start & 0x07)
-   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
-   _ssd1306_write_byte(stop & 0x07)
-   _ssd1306_write_byte(0x01) -- Scroll 1 row.
-   _ssd1306_write_byte(_SSD1306_START_SCROLL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Stop the scroll feature.
-procedure ssd1306_stop_scroll() is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_STOP_SCROLL)
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- Set the display start line. The procedure can be used to implement a 
--- vertical scroll feature. Start line is in range 0..(SSD1306_MAX_Y_PIXELS - 1)
-procedure ssd1306_set_start_line(byte in start_line) is
-
-   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
-   _ssd1306_write_byte(_SSD1306_SET_STARTLINE | (start_line & 0x3F))
-   _ssd1306_stop_transmission()     
-   
-end procedure
-
-
--- This procedure should only be available if using fonts. It is used by the 
--- glcd_common library for writing character on a graphical display but can
--- also be used directly.
-if defined(GLCD_FONT_USAGE) then
-   -- Write a char at position (x,y), using font previously selected with
-   -- glcd_font_use(FONT_ID). Honor glcd_background_color variable, and indirectly
-   -- glcd_pen_color, such as:
-   --    * glcd_background_color can be GLCD_BLACK. If so, pen color will be white (inverted)
-   --    * if glcd_background_color isn't GLCD_BLACK, then background color will be white, and
-   --      pen color will be white ("normal").
-   -- When using glcd_common library, a glcd'put pseudo-variable will be defined,
-   -- and can be called as an output device (eg. glcd = "x")
-   -- Note that x and y are given in pixels but the y coordindate will be mapped
-   -- on lines (pages) using glcd_font_current_height_. So when called y must always
-   -- be defined in steps of glcd_font_current_height_. 
-   procedure ssd1306_write_char(byte in x, byte in y, byte in char) is
-
-      var word index
-      var byte offset
-      var byte ch
+   elsif glcd_font_current_bit_direction_ == FONT_BOTTOM_LEFT_VERTICAL then
 
       -- Position cursor but map Y-coordindate on pages (lines) not pixels.
       ssd1306_goto(x, y / glcd_font_current_height_)
@@ -839,17 +700,248 @@ if defined(GLCD_FONT_USAGE) then
          _ssd1306_write_byte(ch)
          index = index + 1
       end loop
-      -- Add blank space between characters
-      _ssd1306_write_byte(byte(glcd_background_color) ^ 0xFF)
-      _ssd1306_stop_transmission()
+       _ssd1306_stop_transmission()
+   end if 
+end procedure
+end if -- defined(SSD1306_TEXT_ONLY) & defined(SSD1306_FONT_USAGE) then
 
-   end procedure
-end if
+
+-- -----------------------------------------------------------------------------
+-- Description: Set the display contrast
+-- Parameters: 
+-- - contrast - 0x00..0xFF
+-- -----------------------------------------------------------------------------
+procedure ssd1306_set_contrast(byte in contrast) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SET_CONTRAST)
+   _ssd1306_write_byte(contrast)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put all segments of the display on
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_all_on() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_ALL_ON)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Resume the display
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_resume() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_RESUME)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put the display in normal (non-inverse) mode
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_normal() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_NORMAL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Put the display in inverse mode
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_inverse() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_INVERSE)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Switch the display on
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_on() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_ON)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Switch the display off
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_display_off() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_DISPLAY_OFF)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Scroll the whole display right
+-- Parameters: 
+-- - start - starting point
+-- - stop  - ending point
+-- Notes:
+-- - For scrolling the whole display start must be 0x00 and stop must be 0x07.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_start_scroll_right(byte in start, byte in stop) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SCROLL_HOR_RIGHT)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(start & 0x07)
+   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
+   _ssd1306_write_byte(stop & 0x07)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(0xFF) -- Dummy byte.
+   _ssd1306_write_byte(_SSD1306_START_SCROLL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Scroll the whole display left
+-- Parameters: 
+-- - start - starting point
+-- - stop  - ending point
+-- Notes:
+-- - For scrolling the whole display start must be 0x00 and stop must be 0x07.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_start_scroll_left(byte in start, byte in stop) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SCROLL_HOR_LEFT)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(start & 0x07)
+   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
+   _ssd1306_write_byte(stop & 0x07)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(0xFF) -- Dummy byte.
+   _ssd1306_write_byte(_SSD1306_START_SCROLL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Scroll the whole display right diagonal
+-- Parameters: 
+-- - start - starting point
+-- - stop  - ending point
+-- Notes:
+-- - For scrolling the whole display start must be 0x00 and stop must be 0x07.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_start_scroll_diagonal_right(byte in start, byte in stop) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SET_VER_SCROLL_AREA)
+   _ssd1306_write_byte(0x00)
+   _ssd1306_write_byte(GLCD_Y_PIXELS) -- Whole area scrolls.
+   _ssd1306_write_byte(_SSD1306_SCROLL_VER_HOR_RIGHT)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(start & 0x07)
+   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
+   _ssd1306_write_byte(stop & 0x07)
+   _ssd1306_write_byte(0x01) -- Scroll 1 row.
+   _ssd1306_write_byte(_SSD1306_START_SCROLL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+  
+-- -----------------------------------------------------------------------------
+-- Description: Scroll the whole display left diagonal
+-- Parameters: 
+-- - start - starting point
+-- - stop  - ending point
+-- Notes:
+-- - For scrolling the whole display start must be 0x00 and stop must be 0x07.
+-- -----------------------------------------------------------------------------
+procedure ssd1306_start_scroll_diagonal_left(byte in start, byte in stop) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SET_VER_SCROLL_AREA)
+   _ssd1306_write_byte(0x00)
+   _ssd1306_write_byte(GLCD_Y_PIXELS) -- Whole area scrolls.    
+   _ssd1306_write_byte(_SSD1306_SCROLL_VER_HOR_LEFT)
+   _ssd1306_write_byte(0x00) -- Dummy byte.
+   _ssd1306_write_byte(start & 0x07)
+   _ssd1306_write_byte(0x00) -- Time interval 5 frames.
+   _ssd1306_write_byte(stop & 0x07)
+   _ssd1306_write_byte(0x01) -- Scroll 1 row.
+   _ssd1306_write_byte(_SSD1306_START_SCROLL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Stop scrolling the display
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
+procedure ssd1306_stop_scroll() is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_STOP_SCROLL)
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
+-- -----------------------------------------------------------------------------
+-- Description: Set the display start line.
+-- - The procedure can be used to implement a vertical scroll feature.
+-- Parameters: 
+-- - start_line - 0..SSD1305_MAX_Y_PIXELS - 1
+-- -----------------------------------------------------------------------------
+procedure ssd1306_set_start_line(byte in start_line) is
+
+   _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
+   _ssd1306_write_byte(_SSD1306_SET_STARTLINE | (start_line & 0x3F))
+   _ssd1306_stop_transmission()     
+   
+end procedure
+
+
 
 -- ----------------------------- Advanced functions ---------------------------
 
--- Send a command to the ssd1306 without paramater. It is up to the user to 
--- set the correct command as described in the datasheet.
+-- -----------------------------------------------------------------------------
+-- Description: Send a command to the 
+-- Parameters: 
+-- - command - instruction for the SSD1306 from the datasheet
+-- -----------------------------------------------------------------------------
 procedure ssd1306_send_command(byte in command) is
 
    _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
@@ -858,8 +950,13 @@ procedure ssd1306_send_command(byte in command) is
    
 end procedure
 
--- Send a command to the ssd1306 with a paramater. It is up to the user to 
--- set the correct command and parameter as described in the datasheet.
+
+-- -----------------------------------------------------------------------------
+-- Description: Send a command to the SSD1306 with the given parameter 
+-- Parameters: 
+-- - command   - instruction for the SSD1306 from the datasheet
+-- - parameter - data for the SSD1306 as described in the datasheet
+-- -----------------------------------------------------------------------------
 procedure ssd1306_send_command_parameter(byte in command, byte in parameter) is
 
    _ssd1306_start_transmission(_SSD1306_COMMAND_TRANSMISSION)
@@ -870,55 +967,110 @@ procedure ssd1306_send_command_parameter(byte in command, byte in parameter) is
 end procedure
 
 
--- ----------------------------- Private functions ---------------------------
+-- ---------------------- Private procedures & functions -----------------------
 
--- Start an IIC or SPI data or command transmission. SPI uses 4 wires.
-procedure _ssd1306_start_transmission(bit in data_transmission) is
+-- -----------------------------------------------------------------------------
+-- Description: Start an IIC transmission or SPI data or command transmission 
+-- Parameters: 
+-- - transmission - TRUE is data transmission, FALSE is command transmission
+-- -----------------------------------------------------------------------------
+procedure _ssd1306_start_transmission(bit in transmission) is
 
-   if defined(SSD1306_SPI_CONTROL) then 
+   if defined(_SSD1306_SPI_CONTROL) then 
       ssd1306_csn = LOW
-      ssd1306_dc  = data_transmission
+      ssd1306_dc  = transmission
    else
+
       var bit _trash 
-      i2c_start()
-      _trash = i2c_transmit_byte(SSD1306_IIC_ADDRESS)
-      if data_transmission then
-         _trash = i2c_transmit_byte(0x40)
+
+      _ssd1306_start()
+      _trash = _ssd1306_interface(SSD1306_IIC_ADDRESS)
+      if transmission then
+         _trash = _ssd1306_interface(0x40)
       else
-         _trash = i2c_transmit_byte(0x00)
+         _trash = _ssd1306_interface(0x00)
       end if
+
    end if
     
 end procedure
 
 
--- Stop an IIC or SPI transmission.
+-- -----------------------------------------------------------------------------
+-- Description: Stop an IIC transmission or SPI transmission
+-- Parameters: 
+-- - None
+-- -----------------------------------------------------------------------------
 procedure _ssd1306_stop_transmission() is
 
-   if defined(SSD1306_SPI_CONTROL) then 
+   if defined(_SSD1306_SPI_CONTROL) then 
       ssd1306_csn = HIGH
-    else
-      i2c_stop()
+   else
+      _ssd1306_stop()
    end if
     
 end procedure
 
 
--- Write a byte to the SSD1306.
+-- -----------------------------------------------------------------------------
+-- Description: Write a byte to the SSD1306
+-- Parameters: 
+-- - data - data byte to be written.
+-- Notes:
+-- - Used to send a number of data bytes in one transmission.
+-- - Transmission must have been started using _ssd1306_start_transmission() and
+-- - must be stopped when done by using _ssd1306_stop_transmission().
+-- -----------------------------------------------------------------------------
 procedure _ssd1306_write_byte(byte in data) is
 
-   if defined(SSD1306_SPI_CONTROL) then 
-      var byte _trash
-      _trash = spi_master_hw_exchange(data)
-   else
-      var bit _trash 
-     _trash = i2c_transmit_byte(data)
-   end if
+   var byte _trash
+
+   _trash = _ssd1306_interface(data)
 
 end procedure
 
      
+-- -----------------------------------------------------------------------------
+-- Description: Write one data byte to the SSd1306
+-- Parameters: 
+-- - data - data byte to be written.
+-- Notes:
+-- - Used to send one data byte in one transmission. 
+-- -----------------------------------------------------------------------------
+procedure _ssd1306_write_one_data_byte(byte in data) is
 
- 
+   _ssd1306_start_transmission(_SSD1306_DATA_TRANSMISSION)
+   _ssd1306_write_byte(data)
+   _ssd1306_stop_transmission()
 
+end procedure
+
+
+if defined(_SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
+-- -----------------------------------------------------------------------------
+-- Description: Software SPI interface.
+-- Parameters: 
+-- - data -  data byte to be transmitted
+-- Returns:
+-- - 0x00
+-- Notes: 
+-- - There is no data read in this SPI variant, only data written.
+-- -----------------------------------------------------------------------------
+function _ssd1306_spi_sw_exchange(byte in data) return byte is
+
+   var bit data_bit_out at data:7
+
+   for 8 loop
+      ssd1306_sdo = data_bit_out
+      data = data << 1 
+      ssd1306_sck = HIGH
+      _usec_delay(1)
+      ssd1306_sck = LOW
+   end loop
+   ssd1306_sdo = LOW -- Not needed but nicer to keep output low when done.
+
+   return 0x00 -- Nothing to return so return 0x00.   
+
+end function
+end if -- defined(_SSD1306_SPI_CONTROL) & defined(SSD1306_SOFTWARE_SPI) then 
 

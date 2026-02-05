@@ -1,13 +1,8 @@
 #!/usr/bin/env python3
 """
 Title: Generate Jallib device files and blink-a-led samples.
-
-Author: Rob Hamerling, Copyright (c) 2017..2024, all rights reserved.
-        Rob Jansen,    Copyright (c) 2020..2024, all rights reserved.
-
-Adapted-by:
-
-Compiler: N/A
+Author: Rob Hamerling, Copyright (c) 2017..2025, all rights reserved.
+Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
 Released under the ZLIB license http://www.opensource.org/licenses/zlib-license.html
@@ -16,6 +11,13 @@ Description:
    Run all scripts to create device files and blink samples,
    incl. validation and compilation of blink-a-led samples.
    Several intermediate steps take care of the required support files.
+
+   Check if requirements for pic2jal scripts are satisfied:
+    - Python version: at least Python 3.5
+    - Environment variables:
+     - PIC2JAL        - path of destination directory 
+     - JALCOMPILER    - used JAL compiler (platform specific)
+     - MPLABXVERSION  - latest version number of MPLABX, e.g.: 6.25
 
 Sources: N/A
 
@@ -28,17 +30,17 @@ Notes:
 
 
 """
-
-from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()    # obtain environment variables
-if ((base == "") | (mplabxversion == "")):
-   exit(1)
-
 import sys
 import os
 import time
 import subprocess
 import shutil
+
+# obtain environment variables
+from pic2jal_environment import check_and_set_environment
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
+if (base == ""):
+   exit(1)
 
 if (base == os.getcwd()):                             # cwd must be different than base
    print("This script should not be run in the destination directory\n   <",

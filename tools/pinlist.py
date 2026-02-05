@@ -20,8 +20,9 @@ Notes:
 
 """
 
+# obtain environment variables
 from pic2jal_environment import check_and_set_environment
-base, mplabxversion = check_and_set_environment()           # obtain environment variables
+base, mplabxinstall, mplabxversion, jallib, compiler, kdiff3 = check_and_set_environment()            
 if (base == ""):
    exit(1)
 
