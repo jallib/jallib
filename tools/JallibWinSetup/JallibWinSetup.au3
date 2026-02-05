@@ -21,7 +21,7 @@ Dim $Folder = "C:\JallibWorkplace" ; NO TRAILING /
 
 FileInstall(	"files\7za.exe"											,@tempdir & "\7za.exe",1)
 FileInstall(	"files\jaledit0.9.0.9.zip"								,@tempdir & "\jaledit.zip",1)
-FileInstall(	"files\jallib-pack-jalv25r2-1.4.0beta2.zip"				,@tempdir & "\jallib.zip",1)
+FileInstall(	"files\jallib-pack.zip"								,@tempdir & "\jallib.zip",1)
 ;FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
 FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 

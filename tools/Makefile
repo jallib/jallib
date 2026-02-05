@@ -5,107 +5,78 @@
 # This file is part of jallib (https://github.com/jallib/jallib)
 # Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
 #
-# Usage: make [target] [VERSION=version_name]
-# Available targets: help, dev, beta, release, bee, maketest, clean, etc.
+# VERSION defaults to 'alpha' if not set (e.g. make release VERSION=2.0.0).
+# Override JALV2 for compiler path (e.g. JALV2=../compiler/jalv2-x86-64 on 64-bit Linux).
+#
 
-# Enable strict error handling
-SHELL := /bin/bash
-.SHELLFLAGS := -euo pipefail -c
+all : alpha
 
-# =============================================================================
-# VARIABLES
-# =============================================================================
+help:
+	@echo "Main targets:"
+	@echo "  alpha        - alpha build (default): jallib_full-alpha.zip"
+	@echo "  bee          - weekly build: jallib-pack-bee-jalv<ver>-<date>.zip"
+	@echo "  bee-win      - bee build + Windows installer (Wine; times out after WIN_INSTALLER_TIMEOUT s, default 1800)"
+	@echo "  release      - release zips: jallib-\$$(VERSION).zip, jallib_full-\$$(VERSION).zip"
+	@echo "  release-win  - release zips + Windows installer .exe"
+	@echo "  beta         - beta build (same as release, VERSION=beta)"
+	@echo "  maketest     - quick test of Makefile (VERSION=maketest, no PDFs)"
+	@echo "  clean        - remove build artifacts and distrib/"
+	@echo "  win-installer - build jallib_full_win_setup-\$$(VERSION).exe (Wine; WIN_INSTALLER_TIMEOUT s)"
+	@echo "  publish-release - copy distrib/*.zip and *.exe to PUBLISH_DIR_RELEASE (builds/release)"
+	@echo "  publish-bee     - copy distrib/*.zip and *.exe to PUBLISH_DIR_BEE (builds/bee)"
+	@echo "  download-compiler   - fetch compiler from jalv2compiler (used by export)"
+	@echo "  download-win-includes - fetch AutoIt includes to Include/ (used by bee-win, win-installer under Wine)"
+	@echo ""
+	@echo "Examples: make release VERSION=2.0.0   make publish-release   make publish-bee   make publish PUBLISH_DIR_RELEASE=/path"
 
-# Version and Build Configuration
-VERSION ?= dev
-WEEKLYBUILDCODENAME ?= bee
-MAX_PROCESSES ?= 16
-ENABLE_PDFS ?= true
-
-# Directory Configuration
-SAMPLIR_DIR ?= ../sample
-TEST_DIR ?= ../test
-INCLUDE_DIR ?= ../include
-BASEDIR ?= ~
+WEEKLYBUILDCODENAME=bee
+VERSION ?= alpha
+SAMPLE_DIR=../sample
+TEST_DIR=../test
+INCLUDE_DIR=../include
+JALV2 ?= ../compiler/jalv2-i686
+PUBLISH_DIR_RELEASE ?= /var/www/html/jal/jal.prod/sites/default/files/ftp_server/builds/release
+PUBLISH_DIR_BEE ?= /var/www/html/jal/jal.prod/sites/default/files/ftp_server/builds/bee
+PUBLISH_DEST ?= $(PUBLISH_DIR_RELEASE)
+# Timeout for Wine+Aut2exe (seconds); if it hangs, build the .exe on Windows. Override: make bee-win WIN_INSTALLER_TIMEOUT=3600
+WIN_INSTALLER_TIMEOUT ?= 1800
+# AutoIt standard includes for Wine build (Aut2exe looks for ..\Include relative to itself; tools/Include = JallibWinSetup/../Include)
+# Downloaded once; stored in Include/. If AUTOIT_INCLUDES_CACHE is set, copy from cache when possible and fill cache after download.
+AUTOIT_INCLUDES_URL ?= https://github.com/310ken1/AutoItSciTEj/archive/refs/heads/master.zip
+AUTOIT_INCLUDES_CACHE ?= $(HOME)/.cache/jallib/autoit-includes
+JALV2COMPILER_URL ?= https://github.com/jallib/jalv2compiler/archive/refs/heads/master.zip
+JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686
+# JALV2_VERSION: extract at runtime in bee-archive; avoid $(shell) here due to make parsing of )
+JALV2_VERSION :=
 DITA_HOME ?= ~/3rdparty/dita-ot-3.7.2
 
-# Tool Configuration
-JALV2_BIN := $(abspath $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686)
-JALV2_VERSION := $(shell bash -c '${JALV2_BIN} 2>/dev/null | head -1 | cut -d" " -f2' || echo "unknown")
-
-
-# Export variables for sub-makes
-export BASEDIR
-export DITA_HOME
-
-# =============================================================================
-# PHONY TARGETS
-# =============================================================================
-.PHONY: all help clean compile jsg pwmlib adclib doc vimdoc matrix generate-docs export prepare prepare-quick jallib-pack-base jallib-pack jallib-pack-quick archive check bee-archive bee-check check-quick maketest dev beta release bee pdfbooks
-
-# =============================================================================
-# MAIN TARGETS
-# =============================================================================
-
-all : dev
-
-help: ## Show this help message
-	@echo "Jallib Makefile - Available targets:"
-	@echo ""
-	@echo "Main Build Targets:"
-	@echo "  dev        - Development build (fast, no PDFs)"
-	@echo "  beta       - Beta release build (with PDFs)"
-	@echo "  release    - Full release build (with PDFs)"
-	@echo "  bee        - Weekly build (with PDFs)"
-	@echo "  maketest   - For Makefile testing only"
-	@echo ""
-	@echo "Utility Targets:"
-	@echo "  clean      - Clean generated files"
-	@echo "  help       - Show this help"
-	@echo "  compile    - Compile sample files"
-	@echo "  doc        - Generate API documentation"
-	@echo ""
-	@echo "Usage: make [target] [VERSION=version_name]"
-	@echo "Example: make dev VERSION=myversion"
-	@echo ""
-	@echo "Current configuration:"
-	@echo "  VERSION: $(VERSION)"
-	@echo "  MAX_PROCESSES: $(MAX_PROCESSES)"
-	@echo "  ENABLE_PDFS: $(ENABLE_PDFS)"
-
-clean : ## Clean generated files and build artifacts
-	@echo "Cleaning generated files..."
-	@echo "Cleaning JAL compilation artifacts..."
-	@find ${SAMPLIR_DIR} -name \*.cod -exec rm {} \; 2>/dev/null || true
-	@find ${SAMPLIR_DIR} -name \*.lst -exec rm {} \; 2>/dev/null || true
-	@find ${SAMPLIR_DIR} -name \*.hex -exec rm {} \; 2>/dev/null || true
-	@find ${SAMPLIR_DIR} -name \*.err -exec rm {} \; 2>/dev/null || true
-	@find ${SAMPLIR_DIR} -name \*.obj -exec rm {} \; 2>/dev/null || true
-	@find ${SAMPLIR_DIR} -name \*.asm -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.cod -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.lst -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.hex -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.err -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.obj -exec rm {} \; 2>/dev/null || true
-	@find ${TEST_DIR} -name \*.asm -exec rm {} \; 2>/dev/null || true
-	@echo "Cleaning Python bytecode..."
-	@find ./ -name \*.pyc -exec rm {} \; 2>/dev/null || true
-	@echo "Cleaning distribution directory..."
-	@rm -fr distrib 2>/dev/null || true
-	@echo "Clean completed successfully"
+clean :
+	# clean what jal produces
+	find ${SAMPLE_DIR} -name \*.cod -exec rm {} \;
+	find ${SAMPLE_DIR} -name \*.lst -exec rm {} \;
+	find ${SAMPLE_DIR} -name \*.hex -exec rm {} \;
+	find ${SAMPLE_DIR} -name \*.err -exec rm {} \;
+	find ${SAMPLE_DIR} -name \*.obj -exec rm {} \;
+	find ${SAMPLE_DIR} -name \*.asm -exec rm {} \;
+	find ${TEST_DIR} -name \*.cod -exec rm {} \;
+	find ${TEST_DIR} -name \*.lst -exec rm {} \;
+	find ${TEST_DIR} -name \*.hex -exec rm {} \;
+	find ${TEST_DIR} -name \*.err -exec rm {} \;
+	find ${TEST_DIR} -name \*.obj -exec rm {} \;
+	find ${TEST_DIR} -name \*.asm -exec rm {} \;
+	# clean python bytecode
+	find ./ -name \*.pyc -exec rm {} \;
+	# clean distrib dir
+	-rm -fr distrib
 		
-compile: ## Compile sample files (single-threaded, use check_package_parallel.sh for faster builds)
-	@echo "Compiling sample files (single-threaded)..."
-	@echo "Note: For faster compilation, use check_package_parallel.sh instead"
-	@for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
+compile:
+	for f in `find ${SAMPLE_DIR} -name \*.jal`; \
 	do \
-		echo "Compiling $$f..."; \
-		../compiler/jalv2-i686 -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || ( echo "ERROR: Compilation failed for $$f" && exit 255; ) \
+		$(JALV2) -no-variable-reuse -s "`find ${INCLUDE_DIR} -type d | grep -v \.svn | tr '\n' ';'`" $$f | grep '^0 errors, 0 warnings' && true || { echo problem with $$f; exit 255; }; \
 	done
-	@echo "Compilation completed successfully" 
 
 jsg:
-	for f in `find ${SAMPLIR_DIR} -name \*.jal`; \
+	for f in `find ${SAMPLE_DIR} -name \*.jal`; \
 	do \
 		./jallib.py validate $$f ;\
 	done 
@@ -136,50 +107,25 @@ vimdoc: ## Generate Vim documentation files
 matrix:
 	./jallib_matrix_generate.sh ../
 
-generate-docs:
-	# doc
-	for f in `cat distrib/jallib-export/TORELEASE | grep ^include | grep -v include.device | tr -d '\r'` ; \
-	do \
-		libfile=`basename $$f`; \
-		htmlfile=`echo $$libfile | sed "s#\.jal#.html#"`; \
-		python2.7 jallib.py jalapi -l -d distrib/jallib-${VERSION}/sample -t jalapi_html.tmpl -o distrib/jallib-${VERSION}/doc/html/$$htmlfile distrib/jallib-${VERSION}/lib/$$libfile ;\
-	done
-	# doc menu...
-	echo '<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Frameset//EN" "http://www.w3.org/TR/html4/frameset.dtd"><html><head><title>Libraries - jallib API doc</title></head><body>' > distrib/jallib-${VERSION}/doc/html/menu.html
-	# manually include device files doc, as it's not generated from a lib
-	echo "<a href='https://github.com/jallib/jallib' target='_parent'><i>back to jallib</i></a><br/><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	echo "<a href='devicefiles.html' target='lib_desc'>device files</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	# generate html from lib included in the release, and specifcy to create local links to samples (-l option)
-	for htmlfile in `ls distrib/jallib-${VERSION}/doc/html/*.html | egrep -v menu\.html\|welcome\.html\|index\.html\|devicefiles\.html | sort  `; \
-	do \
-		htmlfile=`basename $$htmlfile`; \
-		libname=`echo $$htmlfile | sed "s#\.html##"`; \
-		echo "<a href='$$htmlfile' target='lib_desc'>$$libname</a><br/>" >> distrib/jallib-${VERSION}/doc/html/menu.html; \
-	done
-	echo "</body></html>" >> distrib/jallib-${VERSION}/doc/html/menu.html
-	cp distrib/jallib-export/doc/html/welcome.html distrib/jallib-${VERSION}/doc/html/
-	cp distrib/jallib-export/doc/html/index.html distrib/jallib-${VERSION}/doc/html/
-	# doc for all_devices
-	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-${VERSION}/doc/html
-	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-${VERSION}/doc/html
-
 export:
 	# prepare distrib dir
 	mkdir distrib
 	mkdir distrib/jallib-${VERSION}
 	mkdir distrib/jallib-${VERSION}/lib
-	mkdir -p distrib/jallib-${VERSION}/doc/html
-	mkdir distrib/jallib-all_devices-${VERSION}
-	mkdir distrib/jallib-all_devices-${VERSION}/lib
-	mkdir distrib/jallib-all_devices-${VERSION}/blink
-	mkdir -p distrib/jallib-all_devices-${VERSION}/doc/html
-	# special dir with all libs, except device files, for "one page" doc
-	mkdir distrib/jallib-libnodevice
-	# generate VERSION file for each
+	# generate VERSION file
 	echo ${VERSION} > distrib/jallib-${VERSION}/VERSION
-	echo ${VERSION} > distrib/jallib-all_devices-${VERSION}/VERSION
 	# get clean source from repos
 	git clone --depth 1 https://github.com/jallib/Jallib.git distrib/jallib-export
+	$(MAKE) download-compiler
+
+download-compiler:
+	# download compiler from https://github.com/jallib/jalv2compiler (bin/) and merge into jallib-export/compiler
+	@test -d distrib/jallib-export || (echo "Run export first." && exit 1)
+	curl -sL -o distrib/jalv2compiler.zip $(JALV2COMPILER_URL)
+	unzip -q -o distrib/jalv2compiler.zip -d distrib
+	cp -r distrib/jalv2compiler-master/bin/* distrib/jallib-export/compiler/
+	rm -rf distrib/jalv2compiler-master distrib/jalv2compiler.zip
+	@echo "Compiler downloaded from jalv2compiler and merged into jallib-export/compiler"
 
 prepare:
 	# flatten library files
@@ -187,12 +133,6 @@ prepare:
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^include\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f lib || (echo problem with $$f ) \
-	done | grep problem && exit 255 || true
-	# same but no device
-	cd  distrib/jallib-libnodevice && \
-	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep -v ^include\/device | grep ^include\/ | tr -d '\r'`; \
-	do \
-		cp ../jallib-export/$$f . || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
 	# keep sample structure, but only for those in TORELEASE
 	# Create directory structure including subdirectories like sample/blink
@@ -209,21 +149,8 @@ prepare:
 	do \
 		mkdir -p `dirname $$f`; cp ../jallib-export/$$f `dirname $$f`/ || (echo problem with $$f ) \
 	done
-	# for all_devices package, keep everything...
-	find distrib/jallib-export/include/device -type f -exec cp {} distrib/jallib-all_devices-${VERSION}/lib \;
-	# Search recursively for blink samples including sample/blink subdirectory
-	for f in `find distrib/jallib-export/sample -type f -name '*_blink*.jal' | grep -v canopen`; \
-	do \
-		cp $$f distrib/jallib-all_devices-${VERSION}/blink;\
-	done
-
-	# also add dependencies
-	cp distrib/jallib-export/include/jal/constants_jallib.jal distrib/jallib-all_devices-${VERSION}/lib
-	cp distrib/jallib-export/include/jal/delay.jal distrib/jallib-all_devices-${VERSION}/lib
-
-ifneq ($(GENERATE_DOCS),false)
-	$(MAKE) generate-docs
-endif
+	# include compiler in jallib package (same structure as original release)
+	cp -rp distrib/jallib-export/compiler distrib/jallib-${VERSION}/
 
 	# license, readme, install, ...
 	# 	jallib
@@ -232,99 +159,153 @@ endif
 	cp distrib/jallib-export/tools/README.release distrib/jallib-${VERSION}/README
 	cp distrib/jallib-export/tools/README.device distrib/jallib-${VERSION}/README.device
 	cp distrib/jallib-export/tools/README.blink distrib/jallib-${VERSION}/README.blink
-	# 	jallib-all_devices
-	cp distrib/jallib-export/LICENSE.bsd distrib/jallib-all_devices-${VERSION}/
-	cp distrib/jallib-export/LICENSE.zlib distrib/jallib-all_devices-${VERSION}/
-	cp distrib/jallib-export/tools/README.device distrib/jallib-all_devices-${VERSION}/README
-	cp distrib/jallib-export/tools/README.blink distrib/jallib-all_devices-${VERSION}/README.blink
-	cp -r distrib/jallib-export/doc/html/devicefiles.html distrib/jallib-all_devices-${VERSION}/doc/html
-	cp -r distrib/jallib-export/doc/html/jallib.css distrib/jallib-all_devices-${VERSION}/doc/html
 	# include CHANGELOG
 	cp distrib/jallib-export/CHANGELOG distrib/jallib-${VERSION}/
-	cp distrib/jallib-export/CHANGELOG distrib/jallib-all_devices-${VERSION}/
-	echo DONE: release directory distrib/jallib-${VERSION}/ and distrib/jallib-all_devices-${VERSION}/
+	echo DONE: release directory distrib/jallib-${VERSION}/
 
 prepare-quick:
-	$(MAKE) prepare GENERATE_DOCS=false
+	$(MAKE) prepare
 
-jallib-pack-base:
-	# now include compiler binaries
-	# guess compiler version
-	mkdir -p distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
-	# generate VERSION file (jallib version)
-	echo ${VERSION} > distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/VERSION
-	# include CHANGELOG
-	cp distrib/jallib-export/CHANGELOG distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/
-	cp -rp distrib/jallib-export/compiler distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
-	cp -rp distrib/jallib-${VERSION}/* distrib/jallib-pack-${JALV2_VERSION}-${VERSION}
-	# include static docs
-	cd  distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && \
+jallib_full-base:
+	# full package: libraries + compiler + doc + jaledit (same structure as original)
+	mkdir -p distrib/jallib_full-${VERSION}
+	echo ${VERSION} > distrib/jallib_full-${VERSION}/VERSION
+	cp distrib/jallib-export/CHANGELOG distrib/jallib_full-${VERSION}/
+	cp -rp distrib/jallib-export/compiler distrib/jallib_full-${VERSION}
+	cp -rp distrib/jallib-${VERSION}/* distrib/jallib_full-${VERSION}
+	# include static docs (doc/pdf from TORELEASE)
+	cd  distrib/jallib_full-${VERSION} && mkdir -p doc && \
 	for f in `cat ../jallib-export/TORELEASE | grep -v ^\# | grep ^doc\/ | tr -d '\r'`; \
 	do \
 		cp ../jallib-export/$$f doc/ || (echo problem with $$f ) \
 	done | grep problem && exit 255 || true
+	# include jaledit (from Release_Files) to match original jallib_full structure
+	@if [ -f ../../Release_Files/jaledit0.9.0.9.zip ]; then \
+		mkdir -p distrib/jallib_full-${VERSION}/jaledit; \
+		unzip -q -o ../../Release_Files/jaledit0.9.0.9.zip -d distrib/jallib_full-${VERSION}/jaledit; \
+		echo "JalEdit added to jallib_full"; \
+	fi
 
-jallib-pack: pdfbooks jallib-pack-base
+jallib_full: pdfbooks jallib_full-base
 	# include PDF books (generated)
-	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/doc/ 
-	echo DONE: jallib pack ready
+	cp $$HOME/tmp/pdfbooks_${VERSION}/*.pdf distrib/jallib_full-${VERSION}/doc/
+	echo DONE: jallib_full ready
 
-jallib-pack-quick: jallib-pack-base
-	echo DONE: jallib pack ready - quick version
+jallib_full-quick: jallib_full-base
+	echo DONE: jallib_full ready - quick version
 
 archive:
-	# ZIPs don't contain a base directory
-	cd distrib/jallib-${VERSION} && zip -r jallib-${VERSION}.zip . && mv jallib-${VERSION}.zip ..
-	cd distrib/jallib-all_devices-${VERSION} && zip -r jallib-all_devices-${VERSION}.zip . && mv jallib-all_devices-${VERSION}.zip ..
-	cd distrib/jallib-pack-${JALV2_VERSION}-${VERSION} && zip -r jallib-pack-${JALV2_VERSION}-${VERSION}.zip . && mv jallib-pack-${JALV2_VERSION}-${VERSION}.zip ..
+	# ZIPs don't contain a base directory. Release outputs: jallib-${VERSION}.zip, jallib_full-${VERSION}.zip
+	cd distrib/jallib-${VERSION} && zip -r jallib-${VERSION}.zip . && mv jallib-${VERSION}.zip .. && \
+	cd ../jallib_full-${VERSION} && zip -r jallib_full-${VERSION}.zip . && mv jallib_full-${VERSION}.zip ..
 
 check:
-	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686
-	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686
-	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample $(JALV2)
+	bash check_package_parallel.sh distrib/jallib_full-${VERSION}/lib distrib/jallib_full-${VERSION}/sample distrib/jallib_full-${VERSION}/compiler/jalv2-i686
 
 bee-archive:
-	# simplify folder name so I can use `` while generating archive names (else some `` are nested)
-	-mv distrib/jallib-pack-${JALV2_VERSION}-${VERSION} distrib/jallib-pack-${VERSION}
-	# We need to enrich version with date, so user can report what exact version is used (else there'll just a "bee"
-	echo ${VERSION}-${JALV2_VERSION}-`date +%Y%m%d` > distrib/jallib-pack-${VERSION}/VERSION
-	##cd distrib && tar czfv jallib-pack-`cat jallib-pack-${VERSION}/VERSION`.tar.gz jallib-pack-${VERSION}
-	cd distrib/jallib-pack-${VERSION} && zip -r jallib-pack-`cat VERSION`.zip . && mv jallib-pack-`cat VERSION`.zip ..
+	# bee: jallib-pack-bee-jalv<ver>-<date>.zip; alpha: jallib_full-alpha.zip
+	@JALV2_VER=$$(distrib/jallib-export/compiler/jalv2-i686 2>/dev/null | sed 's/.*jal \([^ ]*\).*/\1/' | tr -d ' .' || echo "unknown"); \
+	DATE=$$(date +%Y%m%d); \
+	echo ${VERSION}-$${JALV2_VER}-$${DATE} > distrib/jallib_full-${VERSION}/VERSION; \
+	if [ "${VERSION}" = "bee" ]; then \
+		cd distrib/jallib_full-${VERSION} && zip -r jallib-pack-bee-$${JALV2_VER}-$${DATE}.zip . && mv jallib-pack-bee-$${JALV2_VER}-$${DATE}.zip ..; \
+	else \
+		cd distrib/jallib_full-${VERSION} && zip -r jallib_full-${VERSION}.zip . && mv jallib_full-${VERSION}.zip ..; \
+	fi
 
 bee-check:
-	bash check_package_parallel.sh distrib/jallib-pack-${VERSION}/lib distrib/jallib-pack-${VERSION}/sample distrib/jallib-pack-${VERSION}/compiler/jalv2-i686
+	bash check_package_parallel.sh distrib/jallib_full-${VERSION}/lib distrib/jallib_full-${VERSION}/sample distrib/jallib_full-${VERSION}/compiler/jalv2-i686
 
 
 
 check-quick:
-	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample ../compiler/jalv2-i686 test-one
-	bash check_package_parallel.sh distrib/jallib-all_devices-${VERSION}/lib distrib/jallib-all_devices-${VERSION}/blink ../compiler/jalv2-i686 test-one
-	bash check_package_parallel.sh distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/lib distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/sample distrib/jallib-pack-${JALV2_VERSION}-${VERSION}/compiler/jalv2-i686 test-one
+	bash check_package_parallel.sh distrib/jallib-${VERSION}/lib distrib/jallib-${VERSION}/sample $(JALV2) test-one
+	bash check_package_parallel.sh distrib/jallib_full-${VERSION}/lib distrib/jallib_full-${VERSION}/sample distrib/jallib_full-${VERSION}/compiler/jalv2-i686 test-one
 
-maketest: ## Quick test build (fast, minimal testing)
-	@echo "Starting maketest build (VERSION=maketest)..."
-	$(MAKE) VERSION=maketest clean export prepare-quick jallib-pack-quick archive check-quick
-	@echo "Maketest build completed successfully"
+maketest: 
+	# for testing the makefile
+	$(MAKE) VERSION=maketest clean export prepare-quick jallib_full-quick archive check-quick
+	@if [ -f distrib/jallib-maketest.zip ] && [ -f distrib/jallib_full-maketest.zip ] && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
 
-bee: ## Weekly build (with PDFs, for automated builds)
-	@echo "Starting bee weekly build (VERSION=bee)..."
-	$(MAKE) VERSION=bee clean export prepare jallib-pack bee-archive bee-check
-	@echo "Bee weekly build completed successfully"
+bee: 
+	# weekly build: produces jallib-pack-bee-jalv<ver>-<date>.zip
+	$(MAKE) VERSION=bee clean export prepare jallib_full bee-archive bee-check
+	@if ls distrib/jallib-pack-bee-*.zip 1>/dev/null 2>&1 && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
 
-dev: ## Development build (fast, no PDFs)
-	@echo "Starting dev build (VERSION=dev)..."
-	$(MAKE) VERSION=dev clean export prepare jallib-pack bee-archive bee-check
-	@echo "Dev build completed successfully"
+bee-win: bee
+	# bee build plus Windows installer: produces jallib-pack-bee-win-<jalv2version>-<date>.exe
+	$(MAKE) bee-win-installer
+	@if ls distrib/jallib-pack-bee-*.zip 1>/dev/null 2>&1 && ls distrib/jallib-pack-bee-win-*.exe 1>/dev/null 2>&1 && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
 
-beta: ## Beta release build (with PDFs)
-	@echo "Starting beta build (VERSION=beta)..."
-	$(MAKE) VERSION=beta clean export prepare jallib-pack archive check
-	@echo "Beta build completed successfully"
+download-win-includes:
+	# Ensure AutoIt includes in Include/ so Aut2exe (run from JallibWinSetup) finds ..\Include. Use cache if set to avoid re-download.
+	@CACHE="$(AUTOIT_INCLUDES_CACHE)"; \
+	if [ -n "$$CACHE" ] && [ -f "$$CACHE/GUIConstantsEx.au3" ]; then \
+		echo "Copying AutoIt includes from cache $$CACHE to Include/"; \
+		mkdir -p Include; cp -r "$$CACHE"/* Include/; \
+	elif [ -f Include/GUIConstantsEx.au3 ]; then \
+		echo "AutoIt includes already in Include/"; \
+	else \
+		echo "Downloading AutoIt includes for Wine build..."; \
+		mkdir -p Include; \
+		curl -sL $(AUTOIT_INCLUDES_URL) -o /tmp/autoit-includes.zip; \
+		unzip -q -o /tmp/autoit-includes.zip -d /tmp; \
+		cp -r /tmp/AutoItSciTEj-master/language/au3/Include/* Include/; \
+		rm -rf /tmp/AutoItSciTEj-master /tmp/autoit-includes.zip; \
+		if [ -n "$$CACHE" ]; then mkdir -p "$$CACHE"; cp -r Include/* "$$CACHE"/; echo "Cached to $$CACHE"; fi; \
+		echo "AutoIt includes ready in Include/"; \
+	fi
 
-release: ## Full release build (with PDFs)
-	@echo "Starting release build (VERSION=release)..."
-	$(MAKE) VERSION=release clean export prepare jallib-pack archive check
-	@echo "Release build completed successfully"
+bee-win-installer: download-win-includes
+	# Build bee Windows installer (requires wine, xvfb). Times out after WIN_INSTALLER_TIMEOUT s; if it hangs, build .exe on Windows.
+	JALV2_VER=$$(distrib/jallib-export/compiler/jalv2-i686 2>/dev/null | sed 's/.*jal \([^ ]*\).*/\1/' | tr -d ' .' || echo "unknown"); \
+	DATE=$$(date +%Y%m%d); \
+	EXENAME="jallib-pack-bee-win-$${JALV2_VER}-$${DATE}.exe"; \
+	ZIPNAME="jallib-pack-bee-$${JALV2_VER}-$${DATE}.zip"; \
+	cp distrib/$$ZIPNAME JallibWinSetup/files/jallib-pack.zip && \
+	cd JallibWinSetup && timeout $(WIN_INSTALLER_TIMEOUT) env WINEARCH=win32 WINEPREFIX="$$HOME/.wine-jallib-aut2exe" xvfb-run -a wine Aut2exe.exe /in JallibWinSetup.au3 /out "$$EXENAME" && \
+	mv "$$EXENAME" ../distrib/ || (echo "Windows installer build timed out or failed. Build the .exe on Windows (copy JallibWinSetup and run Aut2exe there), or increase WIN_INSTALLER_TIMEOUT." && exit 1)
+
+alpha: 
+	# alpha build: produces jallib_full-alpha.zip
+	$(MAKE) VERSION=alpha clean export prepare jallib_full bee-archive bee-check
+	@if [ -f distrib/jallib_full-alpha.zip ] && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
+
+beta: 
+	$(MAKE) VERSION=beta clean export prepare jallib_full archive check
+	@if [ -f distrib/jallib-beta.zip ] && [ -f distrib/jallib_full-beta.zip ] && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
+
+win-installer: download-win-includes
+	# Copy full zip for installer; build .exe with Wine+Aut2exe (requires xvfb, wine). Times out after WIN_INSTALLER_TIMEOUT s.
+	cp distrib/jallib_full-${VERSION}.zip JallibWinSetup/files/jallib-pack.zip && \
+	cd JallibWinSetup && timeout $(WIN_INSTALLER_TIMEOUT) env WINEARCH=win32 WINEPREFIX="$$HOME/.wine-jallib-aut2exe" xvfb-run -a wine Aut2exe.exe /in JallibWinSetup.au3 /out jallib_full_win_setup-${VERSION}.exe && \
+	mv jallib_full_win_setup-${VERSION}.exe ../distrib/ || (echo "Windows installer build timed out or failed. Build the .exe on Windows, or increase WIN_INSTALLER_TIMEOUT." && exit 1)
+
+release: 
+	# release: produces jallib-${VERSION}.zip, jallib_full-${VERSION}.zip
+	$(MAKE) VERSION=$(VERSION) clean export prepare jallib_full archive check
+	@if [ -f distrib/jallib-$(VERSION).zip ] && [ -f distrib/jallib_full-$(VERSION).zip ] && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
+
+release-win: release
+	# release plus Windows installer: also produces jallib_full_win_setup-${VERSION}.exe
+	$(MAKE) VERSION=$(VERSION) win-installer
+	@if [ -f distrib/jallib-$(VERSION).zip ] && [ -f distrib/jallib_full-$(VERSION).zip ] && [ -f distrib/jallib_full_win_setup-$(VERSION).exe ] && [ ! -f $$HOME/tmp/failed.log ]; then echo success; else echo failure; exit 1; fi
+
+publish: publish-release
+
+publish-release:
+	# Copy distrib packages to release location. Override PUBLISH_DIR_RELEASE if needed.
+	$(MAKE) PUBLISH_DEST=$(PUBLISH_DIR_RELEASE) _publish
+
+publish-bee:
+	# Copy distrib packages to bee location. Override PUBLISH_DIR_BEE if needed.
+	$(MAKE) PUBLISH_DEST=$(PUBLISH_DIR_BEE) _publish
+
+_publish:
+	@test -d distrib || (echo "No distrib/; run make release (or bee etc.) first." && exit 1)
+	@test -d $(PUBLISH_DEST) || (echo "PUBLISH_DEST $(PUBLISH_DEST) does not exist." && exit 1)
+	@for f in distrib/*.zip distrib/*.exe; do [ -e "$$f" ] && cp "$$f" $(PUBLISH_DEST)/; done; echo "Published to $(PUBLISH_DEST)"
 
 pdfbooks: ## Generate PDF and HTML documentation (requires DITA)
 	@echo "Generating PDF and HTML documentation..."
