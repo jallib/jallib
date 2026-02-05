@@ -109,25 +109,38 @@ end if
 -- variables
 var byte _seven_segment_multiplexer_rotate = 0
 var word _seven_segment_multiplexer_number = 0
-var byte _seven_segment_multiplexer_digit[6]
+var byte seven_segment_multiplexer_digit[6]
 
--------------------------------------------------------------------------------
--- Init procedure
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Initialize the seven segment multiplexer with refresh frequency
+-- Parameters:
+-- - freq - refresh frequency for multiplexing displays
+-- Returns: none
+-- Notes:
+-- - Sets all digit values to 0 initially
+-- - Must be called before using the multiplexer
+--------------------------------------------------------------------------------
 procedure seven_segment_multiplexer_init(word in freq) is
    seven_segment_multiplexer_timer_interval = timer_freq(freq,0) -- same result as previous line at 20mhz
    
    ;set all to 0's
    var byte step = 0
    for SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS using step loop
-       _seven_segment_multiplexer_digit[step] = 0
+       seven_segment_multiplexer_digit[step] = 0
    end loop
 end procedure
 
--------------------------------------------------------------------------------
--- Interrupt to handel switching of 7 segment displays
--------------------------------------------------------------------------------
-procedure seven_segment_multiplexer_isr() is
+--------------------------------------------------------------------------------
+-- Description: Interrupt service routine that handles switching between 7 segment displays
+-- Parameters: none
+-- Returns: none
+-- Notes:
+-- - This is an interrupt procedure (pragma interrupt)
+-- - Called automatically by timer interrupt
+-- - Rotates through displays and updates the active display
+-- - Clears timer interrupt flag and sets next timer interval
+--------------------------------------------------------------------------------
+procedure _seven_segment_multiplexer_isr() is
    pragma interrupt        -- interupt procedure
 
    if !_ssm_timer_if then       -- check if this is a timer interupt
@@ -257,7 +270,7 @@ procedure seven_segment_multiplexer_isr() is
    end if
 
    -- Draw to a 7 segment display.
-   seven_segment_multiplexer_port = seven_from_digit(_seven_segment_multiplexer_digit[_seven_segment_multiplexer_rotate])
+   seven_segment_multiplexer_port = seven_from_digit(seven_segment_multiplexer_digit[_seven_segment_multiplexer_rotate])
 
    -- Switch to the next display.
    _seven_segment_multiplexer_rotate = _seven_segment_multiplexer_rotate + 1
@@ -268,15 +281,22 @@ procedure seven_segment_multiplexer_isr() is
    _ssm_timer = seven_segment_multiplexer_timer_interval -- set the interval
 end procedure
 
--------------------------------------------------------------------------------
--- Write to this pseudo var to put a number on your seven segment displays.
--------------------------------------------------------------------------------
+--------------------------------------------------------------------------------
+-- Description: Write a number to the seven segment displays
+-- Parameters:
+-- - value - the number to display on the multiplexed displays
+-- Returns: none
+-- Notes:
+-- - This is a pseudo-variable procedure
+-- - Splits the number into individual digits for each display
+-- - Digits are stored in reverse order (least significant digit first)
+--------------------------------------------------------------------------------
 procedure seven_segment_multiplexer'put(word in value) is
    _seven_segment_multiplexer_number = value
    
    var byte step = 0
    for SEVEN_SEGMENT_MULTIPLEXER_SEGMENTS using step loop
-      _seven_segment_multiplexer_digit[step] = byte(value % 10);
+      seven_segment_multiplexer_digit[step] = byte(value % 10);
       value = value / 10
    end loop
 
