@@ -12,6 +12,27 @@ COMPILERBIN=$3
 QUICKTEST=${4:-test-all} # Default to test-all instead of test-one (for makefile testing) if not specified
 MAX_PROCESSES=${5:-16}  # Default to 16 processes if not specified
 
+if [ -z "$LIBDIR" ] || [ -z "$SAMPLEDIR" ] || [ -z "$COMPILERBIN" ]; then
+    echo "ERROR: Missing required arguments."
+    echo "Usage: $0 <LIBDIR> <SAMPLEDIR> <COMPILERBIN> [QUICKTEST] [MAX_PROCESSES]"
+    exit 2
+fi
+
+if [ ! -d "$LIBDIR" ]; then
+    echo "ERROR: LIBDIR does not exist: $LIBDIR"
+    exit 2
+fi
+
+if [ ! -d "$SAMPLEDIR" ]; then
+    echo "ERROR: SAMPLEDIR does not exist: $SAMPLEDIR"
+    exit 2
+fi
+
+if [ ! -x "$COMPILERBIN" ]; then
+    echo "ERROR: COMPILERBIN is not executable: $COMPILERBIN"
+    exit 2
+fi
+
 TMPFILE=$HOME/tmp/compile.log
 FAILED=$HOME/tmp/failed.log
 PARALLEL_TMPDIR=$HOME/tmp/parallel_compile
@@ -37,14 +58,23 @@ compile_file() {
     local warnings_file="$PARALLEL_TMPDIR/warnings_${file_id}.txt"
     
     # Run the compiler
-    $COMPILERBIN -s $LIBDIR "$file" > "$tmp_file" 2>&1
+    "$COMPILERBIN" -s "$LIBDIR" "$file" > "$tmp_file" 2>&1
     local status=$?
     
     # Extract errors and warnings from output
-    local errors=$(grep -o "[0-9]* errors" "$tmp_file" | grep -o "[0-9]*" | tail -1)
-    local warnings=$(grep -o "[0-9]* warnings" "$tmp_file" | grep -o "[0-9]*" | tail -1)
+    local errors_match=$(grep -o "[0-9]* errors" "$tmp_file" | tail -1)
+    local warnings_match=$(grep -o "[0-9]* warnings" "$tmp_file" | tail -1)
+    local errors=$(echo "$errors_match" | grep -o "[0-9]*")
+    local warnings=$(echo "$warnings_match" | grep -o "[0-9]*")
+    local summary_missing=0
+    if [ -z "$errors_match" ] || [ -z "$warnings_match" ]; then
+        summary_missing=1
+        # If we can't parse the summary lines from compiler output, treat as a failure.
+        errors=1
+        warnings=0
+    fi
     
-    # Default to 0 if not found
+    # Default to 0 if not found (shouldn't normally happen now; summary_missing handles the main case)
     errors=${errors:-0}
     warnings=${warnings:-0}
     
@@ -52,10 +82,36 @@ compile_file() {
     echo "$status" > "$status_file"
     echo "$errors" > "$errors_file"
     echo "$warnings" > "$warnings_file"
+
+    # Verify .hex output exists for successful compiles.
+    # (Only check when compile looks successful and summary was parsed.)
+    local hex_missing=0
+    local hex_file="${file%.jal}.hex"
+    local HEX_file="${file%.jal}.HEX"
+    if [ "$status" -eq 0 ] && [ "$summary_missing" -eq 0 ] && [ "$errors" -eq 0 ] && [ "$warnings" -eq 0 ]; then
+        if [ ! -f "$hex_file" ] && [ ! -f "$HEX_file" ]; then
+            hex_missing=1
+            errors=1
+            echo "$errors" > "$errors_file"
+        fi
+    fi
     
-    # Check if compilation failed (errors > 0 or warnings > 0)
-    if [ "$errors" -gt 0 ] || [ "$warnings" -gt 0 ]; then
+    # Check if compilation failed.
+    # - Fail on any errors/warnings
+    # - Fail on non-zero exit status
+    # - Fail if we couldn't find the compiler summary lines
+    # - Fail if expected .hex output is missing after an otherwise successful compile
+    if [ "$errors" -gt 0 ] || [ "$warnings" -gt 0 ] || [ "$status" -ne 0 ] || [ "$summary_missing" -eq 1 ] || [ "$hex_missing" -eq 1 ]; then
         echo "$file failed ! (Errors: $errors, Warnings: $warnings)" >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
+        if [ "$summary_missing" -eq 1 ]; then
+            echo "ERROR: Unable to parse compiler output summary ('<N> errors' / '<N> warnings' not found)." >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
+        fi
+        if [ "$status" -ne 0 ]; then
+            echo "ERROR: Compiler exit status was non-zero ($status)." >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
+        fi
+        if [ "$hex_missing" -eq 1 ]; then
+            echo "ERROR: Expected .hex output was not created: ${hex_file}" >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
+        fi
         cat "$tmp_file" >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
         echo >> "$PARALLEL_TMPDIR/failed_${file_id}.log"
     fi
@@ -145,8 +201,8 @@ for i in $(seq 0 $((total_files - 1))); do
         total_errors=$((total_errors + errors))
         total_warnings=$((total_warnings + warnings))
         
-        # Check if compilation failed (errors > 0 or warnings > 0)
-        if [ "$errors" -gt 0 ] || [ "$warnings" -gt 0 ]; then
+        # Check if compilation failed (errors/warnings > 0 OR non-zero exit status).
+        if [ "$errors" -gt 0 ] || [ "$warnings" -gt 0 ] || [ "$status" -ne 0 ]; then
             ((failed_files++))
             mainstatus=1
         fi
