@@ -44,6 +44,8 @@ WIN_INSTALLER_TIMEOUT ?= 1800
 # Downloaded once; stored in Include/. If AUTOIT_INCLUDES_CACHE is set, copy from cache when possible and fill cache after download.
 AUTOIT_INCLUDES_URL ?= https://github.com/310ken1/AutoItSciTEj/archive/refs/heads/master.zip
 AUTOIT_INCLUDES_CACHE ?= $(HOME)/.cache/jallib/autoit-includes
+JALEDIT_URL ?= https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/jaledit/jaledit0.9.0.9.zip
+JALEDIT_CACHE ?= $(HOME)/.cache/jallib/jaledit
 JALV2COMPILER_URL ?= https://github.com/jallib/jalv2compiler/archive/refs/heads/master.zip
 JALV2_BIN := $(shell pwd)/distrib/jallib-export/compiler/jalv2-i686
 # JALV2_VERSION: extract at runtime in bee-archive; avoid $(shell) here due to make parsing of )
@@ -259,10 +261,16 @@ download-win-includes:
 
 bee-win-installer: download-win-includes
 	# Build bee Windows installer (requires wine, xvfb). Times out after WIN_INSTALLER_TIMEOUT s; if it hangs, build .exe on Windows.
-	JALV2_VER=$$(distrib/jallib-export/compiler/jalv2-i686 2>/dev/null | sed 's/.*jal \([^ ]*\).*/\1/' | tr -d ' .' || echo "unknown"); \
+	@JALV2_VER=$$(distrib/jallib-export/compiler/jalv2-i686 2>/dev/null | sed 's/.*jal \([^ ]*\).*/\1/' | tr -d ' .' || echo "unknown"); \
 	DATE=$$(date +%Y%m%d); \
 	EXENAME="jallib-pack-bee-win-$${JALV2_VER}-$${DATE}.exe"; \
 	ZIPNAME="jallib-pack-bee-$${JALV2_VER}-$${DATE}.zip"; \
+	for f in $$(grep -E '^\s*#include' JallibWinSetup/JallibWinSetup.au3 | sed 's/.*["<]\([^">]*\)[">].*/\1/; s/.*[\\\/]//' | sort -u); do \
+		test -f "Include/$$f" || { echo "ERROR: Missing Include/$$f (required by JallibWinSetup.au3 #include)"; exit 1; }; \
+	done; \
+	test -f JallibWinSetup/files/7za.exe || (echo "ERROR: Missing JallibWinSetup/files/7za.exe" && exit 1); \
+	test -f JallibWinSetup/images/jal_logo.jpg || (echo "ERROR: Missing JallibWinSetup/images/jal_logo.jpg" && exit 1); \
+	mkdir -p "$(JALEDIT_CACHE)" && ( [ -f "$(JALEDIT_CACHE)/jaledit0.9.0.9.zip" ] || ( echo "Downloading JalEdit to cache: $(JALEDIT_CACHE)/jaledit0.9.0.9.zip" && curl -fL -o "$(JALEDIT_CACHE)/jaledit0.9.0.9.zip" "$(JALEDIT_URL)" ) ) && ( [ -f JallibWinSetup/files/jaledit0.9.0.9.zip ] || cp -f "$(JALEDIT_CACHE)/jaledit0.9.0.9.zip" JallibWinSetup/files/jaledit0.9.0.9.zip ) || (echo "ERROR: JalEdit zip missing or failed: JallibWinSetup/files/jaledit0.9.0.9.zip" && exit 1); \
 	cp distrib/$$ZIPNAME JallibWinSetup/files/jallib-pack.zip && \
 	cd JallibWinSetup && timeout $(WIN_INSTALLER_TIMEOUT) env WINEARCH=win32 WINEPREFIX="$$HOME/.wine-jallib-aut2exe" xvfb-run -a wine Aut2exe.exe /in JallibWinSetup.au3 /out "$$EXENAME" && \
 	mv "$$EXENAME" ../distrib/ || (echo "Windows installer build timed out or failed. Build the .exe on Windows (copy JallibWinSetup and run Aut2exe there), or increase WIN_INSTALLER_TIMEOUT." && exit 1)

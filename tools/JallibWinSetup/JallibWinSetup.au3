@@ -25,13 +25,25 @@ FileInstall(	"files\jallib-pack.zip"								,@tempdir & "\jallib.zip",1)
 ;FileInstall(	"files\jalv24q3.zip"									,@tempdir & "\jalv2.zip",1)
 FileInstall(	"images\jal_logo.jpg"									,@tempdir & "\jal_logo.jpg")
 
-;includes
-#include <GUIConstantsEx.au3>
-#include <WinAPI.au3>
-#include <Date.au3>
-#include <Array.au3>
-#include <File.au3>
-#Include <WinAPIEx.au3>
+
+#if FileExists(@ScriptDir & "\..\Include\GUIConstantsEx.au3") then
+   ; For Linux+Wine builds, include from the prepared include folder (tools/Include).
+   ; The Makefile populates tools/Include from the AutoIt include cache.
+   #include "..\Include\GUIConstantsEx.au3"
+   #include "..\Include\WinAPI.au3"
+   #include "..\Include\Date.au3"
+   #include "..\Include\Array.au3"
+   #include "..\Include\File.au3"
+   #include "..\Include\WinAPIEx.au3"
+#else 
+   ;For Windows
+   #include <GUIConstantsEx.au3>
+   #include <WinAPI.au3>
+   #include <Date.au3>
+   #include <Array.au3>
+   #include <File.au3>
+   #include <WinAPIEx.au3>
+#endif
 
 ;On event mode when clicking widgets
 Opt("GUIOnEventMode", 1) ; Change to OnEvent mode
