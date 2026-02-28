@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Title: Create JalV2 device files for Microchip 8-bits flash PICs.
-Author: Rob Hamerling, Copyright (c) 2014..2025, all rights reserved.
+Author: Rob Hamerling, Copyright (c) 2014..2026, all rights reserved.
 Adapted-by: Rob Jansen
 
 This file is part of jallib  https://github.com/jallib/jallib
@@ -64,6 +64,8 @@ Notes:
    - use of xml.etree.ElementTree in stead of xml.dom.minidom
      for processing the MPLABX xml files
    - removed (support for) 'temporary' excluded pics
+   Changes dd 2026-02-27
+   - Added DEBUG option for configuration register if not hidden.
 
 """
 
@@ -85,7 +87,7 @@ if (base == ""):
 
 # --- basic working parameters
 scriptauthor = "Rob Hamerling, Rob Jansen"
-scriptversion = "2.3"       # script version
+scriptversion = "2.4"       # script version
 compilerversion = "2.5r9"   # latest JalV2 compiler version
 
 # Additional file specifications
@@ -212,6 +214,7 @@ fusedef_kwd = {"ABW": "ABW",
                "ECCPMX": "ECCPMUX",
                "ETHLED": "ETHLED",
                "EXCLKMX": "EXCLKMUX",
+               "FALSE": "FALSE",
                "FCMEN": "FCMEN",
                "FCMENP": "FCMENP",
                "FCMENS": "FCMENS",
@@ -287,6 +290,7 @@ fusedef_kwd = {"ABW": "ABW",
                "SSPMX": "SSPMUX",
                "STVR": "STVR",
                "STVREN": "STVR",
+               "TRUE": "TRUE",
                "T0CKMX": "T0CKMUX",
                "T1DIG": "T1DIG",
                "T1OSCMX": "T1OSCMUX",
@@ -2317,17 +2321,22 @@ def list_dcrfielddef(fp, dcrfielddef, index, offset):
         offset += eval(dcrfielddef.get("offset"))
     elif dcrfielddef.tag == "DCRFieldDef":
         width = eval(dcrfielddef.get("nzwidth"))
-        if dcrfielddef.get("ishidden") is None:  # do not list hidden fields
-            name = dcrfielddef.get("cname").upper()
-            name = normalize_fusedef_key(name)
-            mask = eval(dcrfielddef.get("mask"))
-            str = "pragma fuse_def " + name
-            if (cfgvar["fusesize"] > 1):
-                str = str + ":%d " % (index)
-            str = str + " 0x%X {" % (mask << offset)  # position in byte!
-            fp.write("%-40s -- %s\n" % (str, dcrfielddef.get("desc")))
-            list_dcrfieldsem(fp, name, dcrfielddef, offset)
-            fp.write("       }\n")
+        # Do not list hidden fields if ishidden is set to True.
+        if dcrfielddef.get("ishidden") is not None:
+            value = dcrfielddef.get("ishidden").upper()
+            if value.startswith("TRUE"):
+                offset = offset + width
+                return offset
+        name = dcrfielddef.get("cname").upper()
+        name = normalize_fusedef_key(name)
+        mask = eval(dcrfielddef.get("mask"))
+        str = "pragma fuse_def " + name
+        if (cfgvar["fusesize"] > 1):
+            str = str + ":%d " % (index)
+        str = str + " 0x%X {" % (mask << offset)  # position in byte!
+        fp.write("%-40s -- %s\n" % (str, dcrfielddef.get("desc")))
+        list_dcrfieldsem(fp, name, dcrfielddef, offset)
+        fp.write("       }\n")
         offset = offset + width
     return offset
 
@@ -2343,14 +2352,21 @@ def list_dcrfieldsem(fp, key, dcrfielddef, offset):
     kwdsemlist = []
     for child in list(dcrfielddef):
         if child.tag == "DCRFieldSemantic":
-            if child.get("ishidden") is not None:   # skip hidden fields
-                continue
+            # if ishidden is present and True then skip this one.
+            if child.get("ishidden") is not None:
+               fieldname = fieldname.upper()
+               if fieldname.startswith("TRUE"):
+                   continue
             if (fieldname := child.get("cname")) is not None:
                 fieldname = fieldname.upper()
-                if fieldname.startswith("RESERVED") | (fieldname == ""):
+                if (fieldname.startswith("RESERVED") | (fieldname == "") |
+                    fieldname.startswith("UNIMPLEMENTED")) :
                     continue
+                # if islanghidden is present and True then skip this one.
                 if child.get("islanghidden") is not None:
-                    continue
+                   fieldname = fieldname.upper()
+                   if fieldname.startswith("TRUE"):
+                       continue
                 when = child.get("when").split()
                 desc = child.get("desc")
                 fieldname = normalize_fusedef_value(key, fieldname, desc)
@@ -2635,6 +2651,13 @@ def normalize_fusedef_value(key, val, desc):
 
     def crcseedt(val): # CRC Seed
         return val
+
+    def debug(val): # For backward compatibility we change the values from the XML file.
+        if (val == "OFF"):
+            return "DISABLED"
+        elif (val == "ON"):
+            return "ENABLED"
+        return descu
 
     def dbw(val):  # data bus width
         if (val.isdigit()):

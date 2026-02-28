@@ -50,7 +50,7 @@ def check_and_set_environment():
       mplabxversion = os.environ["MPLABXVERSION"]  
    except:                                        
       # Local settings.                               
-      mplabxversion = "6.25"
+      mplabxversion = "6.30"
    sys.stdout.write("MPLABX version: " + mplabxversion + "\n")
    os.environ["MPLABXVERSION"] = mplabxversion
 
