@@ -1,0 +1,149 @@
+-- ----------------------------------------------------------------------------
+-- Title: GLCD SH1106 demo sample showing the number font.
+-- Author: Rob Jansen, Copyright (c) 2026..2026, all rights reserved.
+-- Adapted-by:
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demo program showing the number font on an SH1106. 
+--
+-- Note: The numbers font is used for PICs with limited FLASH memory for
+--       applications where only numbers - and a space - are needed.
+--
+
+include 16f1825                 
+
+-- This program uses the internal oscillator at 16 MHz (PIC at 3.3V).
+pragma target clock    16_000_000      -- oscillator frequency
+pragma target OSC      INTOSC_NOCLKOUT -- Internal Clock
+pragma target PLLEN    DISABLED        -- No PLL
+pragma target WDT      DISABLED        -- No Watchdog
+pragma target PWRTE    ENABLED         -- Power up timer enabled
+pragma target BROWNOUT DISABLED        -- No brownout reset
+pragma target FCMEN    DISABLED        -- No clock monitoring
+pragma target IESO     DISABLED        -- int/ext osc. switch
+pragma target LVP      DISABLED        -- No low voltage programming
+pragma target MCLR     EXTERNAL        -- Reset internal
+OSCCON_IRCF   = 0b1111                 -- Set 16 MHz 
+OSCCON_SCS    = 0b00                   -- Clock determined by FOSC
+
+-- Enable weak pull up for all unused ports since some inputs are not connected
+WPUA = 0b0000_0111       -- Weak pull-up for unused pins.
+WPUC = 0b0011_1000       -- Weak pull-up for unused pins.
+OPTION_REG_WPUEN = FALSE -- Enable Weak Pull-Up
+
+enable_digital_io()
+-- Wait some time for the hardware to power up.
+_usec_delay(100_000)
+
+-- The default display resolution is 128 x 64. When using 128 x 32 define:
+-- const SH1106_Y_32_PIXELS = TRUE
+
+-- In this sample program you can select between IIC or SPI communication.
+-- const SH1106_USE_IIC = TRUE -- When commenting this out, this program will use SPI.
+if defined(SH1106_USE_IIC) then
+   -- Using IIC, include and initialize IIC.
+   const word _i2c_bus_speed = 4 -- 400kHz (set to 1 gives 100 kHz) 
+   const bit _i2c_level = TRUE   -- i2c levels (not SMB)
+   alias i2c_scl is pin_C0                     -- To SCK of sh1106 
+   alias i2c_scl_direction is pin_C0_direction -- Pin 10 of 14 pin DIP 
+   alias i2c_sda is pin_C1                     -- To SDA of sh1106  
+   alias i2c_sda_direction is pin_C1_direction -- Pin 9 of 14 pin DIP
+   include i2c_hardware
+   i2c_initialize()
+else
+   -- Using SPI.
+   ; Define the required SPI pins.
+   alias sh1106_sck is pin_c0                      -- To SCK of sh1106 
+   alias sh1106_sck_direction is pin_c0_direction  -- Pin 10 of 14 pin DIP 
+   alias sh1106_sdo is pin_c2                      -- To SDA of sh1106  
+   alias sh1106_sdo_direction is pin_c2_direction  -- Pin 8 of 14 pin DIP 
+   alias sh1106_csn is pin_c3                      -- To CS of sh1106  
+   alias sh1106_csn_direction is pin_c3_direction  -- Pin 7 of 14 pin DIP 
+   alias sh1106_dc is pin_c4                       -- To DC of sh1106 
+   alias sh1106_dc_direction is pin_c4_direction   -- Pin 6 of 14 pin DIP  
+   -- The SPI version of the sh1106 uses a hardware reset pin for its reset. 
+   -- This optional feature can be used by defining the following:
+   alias sh1106_res is pin_c5                      -- To RES of sh1106 
+   alias sh1106_res_direction is pin_c5_direction  -- Pin 5 of 14 pin DIP 
+
+   -- You can use software SPI too by setting this constant.
+   -- const SH1106_SOFTWARE_SPI = TRUE 
+   if !defined(SH1106_SOFTWARE_SPI) then
+      -- Using SPI hardware and initiallize.
+      include spi_master_hw
+      spi_init(SPI_MODE_00, SPI_RATE_FOSC_16)
+   end if 
+end if 
+
+include delay
+include print
+
+-- Font libraries.
+include glcd_6x8_font          -- Vertical font.
+include glcd_16x32_number_font -- Horizontal font.
+-- Since we are using a horizontal font so we need to set the character buffer.
+const byte SH1106_CHAR_BUFFER_SIZE = NUMBER_FONT_16X32_BYTE_PER_CHAR
+-- Only use fonts, no graphics.
+const SH1106_TEXT_ONLY = TRUE
+include glcd_font
+
+-- Include and initialize the GLCD SH1106 lib. 
+include glcd_sh1106
+sh1106_init()
+
+-- Show text normal.
+procedure show_normal() is
+   glcd_background_color = GLCD_WHITE
+   glcd_pen_color = GLCD_BLACK
+end procedure 
+
+-- Show text inverse.
+procedure show_inverse() is
+   glcd_background_color = GLCD_BLACK
+   glcd_pen_color = GLCD_WHITE
+end procedure 
+
+-- Constants.
+const byte ASCII_FIX = 32 ; Need due 
+
+-- Variable declaration.
+var byte index
+
+show_normal()
+sh1106_clear_screen()
+glcd_font_use(FONT_6X8)
+sh1106_goto(27,0)
+print_string(glcd,"JAL Number")  
+sh1106_goto(30,1)
+print_string(glcd,"Font Demo")
+sh1106_goto(30,4)
+print_string(glcd,"2026-04-03")
+delay_1s(3)
+
+-- Now show the number fonts. It has 11 characters,  0..9 and space.
+glcd_font_use(NUMBER_FONT_16X32)
+
+forever loop
+
+   -- 0..9 + space in normal mode.
+   show_normal()
+   sh1106_clear_screen()
+   for 11 using index loop
+      glcd = index + ASCII_FIX
+   end loop
+   delay_1s(3)
+
+   -- 0..9 + space in inverse mode.
+   show_inverse()
+   sh1106_clear_screen()
+   for 11 using index loop
+      glcd = index + ASCII_FIX
+   end loop
+   delay_1s(3)
+
+end loop
+
+
