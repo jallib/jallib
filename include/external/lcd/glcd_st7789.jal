@@ -1,0 +1,832 @@
+-- -----------------------------------------------------------------------------
+-- Title: Library for GLCD using the ST7789 display controller.
+-- Author: Rob Jansen, Copyright (c) 2026..2026, all rights reserved.
+-- Adapted-by:
+--
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Text and graphics library for the graphic display module using 
+--              the ST7789 display controller, controlled via a 4-wire SPI 
+--              interface. The library supports displays with a resolution of
+--              240 x 240 pixels (default). The default resolution can be overruled.
+--
+-- Sources: Sitronic ST7789VW Datasheet, version 1.0, 2017/09.
+--
+-- Notes: The default display resolution is 240 x 240 pixels If a display with a
+--        different resolution is used you can overrule these as follows (example):
+--        const word ST7789_MAX_X_PIXELS = 240  -- Width  
+--        const word ST7789_MAX_Y_PIXELS = 320  -- Height 
+--
+--        It is possible to dynamically change the mirroring for displays
+--        that are assembled differently. In that case use these procedures:
+--        -) st7789_mirror_x_on(), st7789_mirror_x_off()
+--        -) st7789_mirror_y_on(), st7789_mirror_y_off()
+--        After calling one of these procedures you must call the procedure:
+--        -) st7789_set_display_rotation() to activate the mirroring. 
+--
+--        The following interface aliases pins must be defined by the main 
+--        program. This library uses the hardware SPI interface which must be 
+--        initialized with SPI_MODE_00:
+--        -) alias st7789_spi_host  -- E.g. spi_master_hw, spi_master_hw2
+--        -) alias st7789_sck       -- SCL of ST7789 
+--        -) alias st7789_sdo       -- SDA of ST7789 
+--        -) alias st7789_csn       -- CS of ST7789 
+--        -) alias st7789_dc        -- DC of ST7789 
+--        Optional: Hardware reset pin. If not defined, software reset will 
+--        be used.
+--        -) alias st7789_rst       -- RST of ST7789 
+--        If not defined the RST pin of the module must be connected to another
+--        reset circuit. It is active low.
+--        The user must set the direction of these pins.
+--        Instead of hardware SPI, the user can select a - slower - software 
+--        SPI interface. In order to use this define the following:
+--        -) const ST7789_SOFTWARE_SPI = TRUE 
+-- 
+--        About the pixel colors:
+--        The 4-line SPI interface uses 16 bits/pixel for RGB, the format
+--        RGB 5-6-5 is used which means 5 bits for red, 6 bits for green and
+--        5 bits for blue. 
+--        So: 16 bit/pixel color order (R:5-bit, G:6-bit, B:5-bit)
+--
+
+-- -----------------------------------------------------------------------------
+-- ---------------------- PUBLIC CONSTANTS DEFS --------------------------------
+-- -----------------------------------------------------------------------------
+
+-- Number of pixels on the ST7789 screen. The user can overrule these for 
+-- displays with a different resolution.
+if !defined(ST7789_MAX_X_PIXELS) then
+   const word ST7789_MAX_X_PIXELS = 240  -- Default width  
+end if 
+if !defined(ST7789_MAX_Y_PIXELS) then
+   -- Note: The maximum of this controller is 320 pixels.
+   const byte ST7789_MAX_Y_PIXELS = 240 -- Default height 
+end if 
+
+-- Color definitions.
+const word ST7789_BLACK        = 0x0000 --   0,   0,   0
+const word ST7789_NAVY         = 0x000F --   0,   0, 123
+const word ST7789_DARKGREEN    = 0x03E0 --   0, 125,   0
+const word ST7789_DARKCYAN     = 0x03EF --   0, 125, 123
+const word ST7789_MAROON       = 0x7800 -- 123,   0,   0
+const word ST7789_PURPLE       = 0x780F -- 123,   0, 123
+const word ST7789_OLIVE        = 0x7BE0 -- 123, 125,   0
+const word ST7789_LIGHTGREY    = 0xC618 -- 198, 195, 198
+const word ST7789_DARKGREY     = 0x7BEF -- 123, 125, 123
+const word ST7789_BLUE         = 0x001F --   0,   0, 255
+const word ST7789_GREEN        = 0x07E0 --   0, 255,   0
+const word ST7789_CYAN         = 0x07FF --   0, 255, 255
+const word ST7789_RED          = 0xF800 -- 255,   0,   0
+const word ST7789_MAGENTA      = 0xF81F -- 255,   0, 255
+const word ST7789_YELLOW       = 0xFFE0 -- 255, 255,   0
+const word ST7789_WHITE        = 0xFFFF -- 255, 255, 255
+const word ST7789_ORANGE       = 0xFD20 -- 255, 165,   0
+const word ST7789_GREENYELLOW  = 0xAFE5 -- 173, 255,  41
+const word ST7789_PINK         = 0xFC18 -- 255, 130, 198
+
+-- Diplay rotation defintions in degrees
+const ST7789_ROTATE_0_DEGREES   = 0 -- Default.
+const ST7789_ROTATE_90_DEGREES  = 1
+const ST7789_ROTATE_180_DEGREES = 2
+const ST7789_ROTATE_270_DEGREES = 3
+
+-- Define some glcd aliases for the available procedures. See glcd_common.
+-- First the prototypes.
+procedure st7789_clear_screen()
+procedure st7789_write_pixel(word in x, word in y)
+procedure st7789_draw_image(word in image[], word in x, word in y,
+                            word in width, word in height)
+-- Now the aliases.
+alias glcd_clear_screen is st7789_clear_screen  
+alias glcd_write_pixel  is st7789_write_pixel   
+alias glcd_draw_image   is st7789_draw_image  
+
+-- GLCD specifications.
+const word GLCD_X_PIXELS   = ST7789_MAX_X_PIXELS
+const word GLCD_Y_PIXELS   = ST7789_MAX_Y_PIXELS
+const byte GLCD_COLOR_BITS = 16 -- 16 bit colors
+
+-- We can rotate the display so we must overrule the default chosen GLCD_X_SIZE
+-- and GLCD_Y_SIZE (see glcd_common.jal) otherwise the width would be too small.
+const GLCD_X_SIZE = 2
+const GLCD_Y_SIZE = 2
+
+-- Colors constants. Black & white are official values for display controller.
+const GLCD_BLACK = ST7789_BLACK
+const GLCD_WHITE = ST7789_WHITE
+
+-- Variables for storing background color and pen color.
+var word glcd_background_color = ST7789_BLACK
+var word glcd_pen_color        = ST7789_WHITE
+
+-- According to datasheet, ST7789 controller does not deal with autowrap.
+if defined(FONT_AUTO_WRAP) then
+   if FONT_AUTO_WRAP == FALSE then
+       _warn "FONT_AUTO_WRAP must be set to TRUE because this is\n\t
+              the default behavior for this GLCD controller"
+   end if
+else
+    const bit FONT_AUTO_WRAP = TRUE
+end if
+
+-- Must include glcd_common for graphics functions.
+include glcd_common  
+
+-- -----------------------------------------------------------------------------
+-- -------------------------- PRIVATE CONSTANTS  -------------------------------
+-- -----------------------------------------------------------------------------
+
+-- ST7789 command list.
+const byte _ST7789_NOP        = 0x00 -- No-op register
+const byte _ST7789_SWRESET    = 0x01 -- Software reset register
+const byte _ST7789_RDDID      = 0x04 -- Read display identification information
+const byte _ST7789_RDDST      = 0x09 -- Read Display Status
+const byte _ST7789_RDDPM      = 0x0A -- Read Display Power Mode
+const byte _ST7789_RDDMADCTL  = 0x0B -- Read Display MADCTL
+const byte _ST7789_RDDCOLMOD  = 0x0C -- Read Display Pixel Format
+const byte _ST7789_RDDIM      = 0x0D -- Read Display Image Format
+const byte _ST7789_RDDSIM     = 0x0E -- Read Display Signal
+const byte _ST7789_RDDSDR     = 0x0F -- Read Display Self diagnostic result
+const byte _ST7789_SLPIN      = 0x10 -- Sleep in
+const byte _ST7789_SLPOUT     = 0x11 -- Sleep Out
+const byte _ST7789_PTLON      = 0x12 -- Partial mode on
+const byte _ST7789_NORON      = 0x13 -- Partial mode off (Normal mode)
+const byte _ST7789_INVOFF     = 0x20 -- Display Inversion OFF
+const byte _ST7789_INVON      = 0x21 -- Display Inversion ON
+const byte _ST7789_GAMSET     = 0x26 -- Gamma Set
+const byte _ST7789_DISPOFF    = 0x28 -- Display OFF
+const byte _ST7789_DISPON     = 0x29 -- Display ON
+const byte _ST7789_CASET      = 0x2A -- Column Address Set
+const byte _ST7789_RASET      = 0x2B -- Row Address Set
+const byte _ST7789_RAMWR      = 0x2C -- Memory Write
+const byte _ST7789_RAMRD      = 0x2E -- Memory Read
+const byte _ST7789_PTLAR      = 0x30 -- Partial start/end address set
+const byte _ST7789_VSCRDEF    = 0x33 -- Vertical Scrolling Definition
+const byte _ST7789_TEOFF      = 0x34 -- Tearing effect line off
+const byte _ST7789_TEON       = 0x35 -- Tearing effect line on
+const byte _ST7789_MADCTL     = 0x36 -- Memory Access Control
+const byte _ST7789_VSCRSADD   = 0x37 -- Vertical Scrolling Start Address
+const byte _ST7789_IDMOFF     = 0x38 -- Idle mode off
+const byte _ST7789_IDMON      = 0x39 -- Idle mode on.
+const byte _ST7789_COLMOD     = 0x3A -- Interface pixel format
+const byte _ST7789_RAMWRC     = 0x3C -- Memory write continue
+const byte _ST7789_RAMRRC     = 0x3E -- Memory read continue
+const byte _ST7789_TESCAN     = 0x44 -- Set tear scanline
+const byte _ST7789_RDTESCAN   = 0x45 -- Get tear scanline
+const byte _ST7789_WRDISBV    = 0x51 -- Write display brightness (does not work)
+const byte _ST7789_RDDISBV    = 0x52 -- Read display brighteness
+const byte _ST7789_WRCTRLD    = 0x53 -- Write CTRL display
+const byte _ST7789_RDCTRLD    = 0x54 -- Read CTRL display
+const byte _ST7789_WRCABC     = 0x55 -- Write content adaptive brightness control and color enhancement
+const byte _ST7789_RDCABC     = 0x56 -- Read content adaptive brightness control and color enhancement
+const byte _ST7789_WRCABCMB   = 0x5E -- Write CABC minimum brightness
+const byte _ST7789_RDCABCMB   = 0x5F -- Read CABC minimum brightness
+const byte _ST7789_RDACCSDR   = 0x68 -- Read automatic brightness control self-diagnostic result
+const byte _ST7789_RDID1      = 0xDA -- Read ID 1
+const byte _ST7789_RDID2      = 0xDB -- Read ID 2
+const byte _ST7789_RDID3      = 0xDC -- Read ID 3
+
+-- See register_ST7789_MADCT in the datatsheet.
+-- Depending on the display mirroring may be needed.
+const byte _ST7789_MADCTL_MX_RL = 0x40 -- Right to left (default left to right).
+const byte _ST7789_MADCTL_MY_BT = 0x80 -- Bottom to top (default top to bottom).
+const byte _ST7789_MADCTL_MV    = 0x20 -- Reverse Mode (default not swap x and y).
+const byte _ST7789_MADCTL_BGR   = 0x08 -- Blue-Green-Red pixel instead of RGB.
+
+-- Enable/disable display.
+const bit _ST7789_ENABLE  = LOW
+const bit _ST7789_DISABLE = HIGH
+
+-- Sending data or commands.
+const bit _ST7789_DATA_TRANSMISSION    = HIGH
+const bit _ST7789_COMMAND_TRANSMISSION = LOW
+
+-- Maximum number of Y-pixels for this controller.
+const word ST7789_MAX_X_CONTROLLER_PIXELS = 240
+const word ST7789_MAX_Y_CONTROLLER_PIXELS = 320
+
+-- Initialization data for the ST7789.
+-- Format is: Command, nr of data bytes, data bytes (if any).
+const byte _st7789_initialization_data[] = 
+{
+   -- Wakeup.
+   _ST7789_SLPOUT, 0, 
+   -- Color mode 16 bit.        
+   _ST7789_COLMOD, 1, 0x55, 
+   -- Memory access Top Bottom, Left Right, RGB.
+   _ST7789_MADCTL, 1, 0,   
+   -- Column address set. X-start , X-end               
+   _ST7789_CASET,  4, 0x00, 0x00, 0x00, byte((ST7789_MAX_X_PIXELS - 1) & 0x00FF),
+   -- Row address set, Y-start, Y-end.
+   _ST7789_RASET,  4, 0x00, 0x00, byte((ST7789_MAX_Y_PIXELS - 1) >> 8), 
+                   byte((ST7789_MAX_Y_PIXELS - 1) & 0x00FF),
+   -- Inversion on to get the correct RGB colors.
+   _ST7789_INVON,  0,
+   -- Normal display on.
+   _ST7789_NORON,  0,
+   -- Main screen on. 
+   _ST7789_DISPON, 0
+}
+
+-- -----------------------------------------------------------------------------
+-- -------------------- REQUIRED FUNCTION PROTOTYPES -----------------------------
+-- -----------------------------------------------------------------------------
+procedure st7789_reset()
+procedure st7789_fill_screen(word in color)
+procedure st7789_set_display_rotation(byte in rotation)
+procedure _st7789_write_byte(byte in data)
+procedure _st7789_write_word(word in data)
+procedure _st7789_write_data_word(word in data) 
+procedure _st7789_write_command(byte in command)
+procedure _st7789_write_command_data(byte in command, byte in data)
+procedure _st7789_set_address_window(word in x, word in y, word in width,
+                                     word in height)
+if defined(ST7789_SOFTWARE_SPI) then 
+   procedure st7789_spi_host'put(byte in data) 
+end if
+-- -----------------------------------------------------------------------------
+-- ---------------------------- PRIVATE VARIABLES -----------------------------
+-- -----------------------------------------------------------------------------
+-- Offset variables needed when rotating the screen or using another screen
+-- resolution.
+var word _st7789_x_offset
+var word _st7789_y_offset
+
+-- Mirroring settings.
+var bit _st7789_mirror_x
+var bit _st7789_mirror_y
+
+-- -----------------------------------------------------------------------------
+-- ---------------- PUBLIC PROCEDURES AND FUNCTIONS  ---------------------------
+-- -----------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------
+-- Description: Initialize the requires SPI control and the the ST7789 module
+-- Parameters: none
+-- Returns: none
+-- Notes:
+-- - When the reset hardware pin is defined then the module will be hardware reset 
+--   reset, otherwise it will be software reset
+--------------------------------------------------------------------------------
+procedure st7789_init() is
+
+   var byte index, nr_of_data_bytes
+
+   -- Initialize interface pins.
+   st7789_csn = _ST7789_DISABLE
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+
+   if defined(ST7789_SOFTWARE_SPI) then
+      -- SPI done in software, initialize additonal pins.
+      st7789_sck = LOW
+      st7789_sdo = LOW 
+   end if  
+
+   -- Reset the device if a hardware reset pin is present. There is quite
+   -- some wait time needed after the reset is released.
+   if defined(st7789_rst) then
+      st7789_rst = HIGH
+      _usec_delay(5_000) 
+      st7789_rst = LOW
+      _usec_delay(200) -- 10 us would be enough, a bit more.
+      st7789_rst = HIGH  
+      _usec_delay(150_000)   -- Long recover time needed.
+   else
+      st7789_reset()
+   end if 
+
+   -- Send initialization data. 
+   index = 0
+   while (index < count(_st7789_initialization_data)) loop
+      -- Start sending a command with or without argument.
+      st7789_dc = _ST7789_COMMAND_TRANSMISSION
+      st7789_csn = _ST7789_ENABLE
+      _st7789_write_byte(_st7789_initialization_data[index])
+      -- Get nummber of data bytes.
+      index = index + 1
+      nr_of_data_bytes = _st7789_initialization_data[index]
+      -- Switch to sending data. 
+      st7789_dc = _ST7789_DATA_TRANSMISSION
+       -- Send data (if any).
+      for nr_of_data_bytes loop
+         index = index + 1
+         _st7789_write_byte(_st7789_initialization_data[index])
+      end loop
+      -- Next command (if not yet done).
+      index = index + 1
+      st7789_csn = _ST7789_DISABLE
+   end loop
+
+   -- No mirroring.
+   _st7789_mirror_x = FALSE
+   _st7789_mirror_y = FALSE
+
+   -- Resetting the display rotation also sets the direction.
+   st7789_set_display_rotation(ST7789_ROTATE_0_DEGREES)
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Perform a sofware reset
+-- Parameters: none
+-- Returns: none
+-- Notes: 
+-- - This will put registers to their default value. st7789_init() may be needed
+--------------------------------------------------------------------------------
+procedure st7789_reset() is
+
+   _st7789_write_command(_ST7789_SWRESET)
+   _usec_delay(150_000)   -- Long recover time needed.
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Clear the screen
+-- Parameters: none
+-- Returns: none
+-- Notes: 
+-- - Clearing means filling the screen with the color black
+--------------------------------------------------------------------------------
+procedure st7789_clear_screen() is
+
+   st7789_fill_screen(ST7789_BLACK)
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Fill the screen with the given color
+-- Parameters: 
+-- - color - 16 bit color to fill the screen with
+-- Returns: none
+-- Notes:
+-- - Color must be in RGB 5-6-5 format
+--------------------------------------------------------------------------------
+procedure st7789_fill_screen(word in color) is
+
+   -- The total does not fit in a word so casting is needed.
+   var dword total_pixels = dword(glcd_display_x_size) * dword(glcd_display_y_size)
+   var byte color_low  at color
+   var byte color_high at color + 1 
+
+   -- Set column address and page addresse to maxium.
+   _st7789_set_address_window(0, 0, glcd_display_x_size, glcd_display_y_size) 
+   -- Write the data.
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = _ST7789_RAMWR 
+   -- ST7789 is ready for accepting data. 
+   st7789_dc = _ST7789_DATA_TRANSMISSION
+   -- Two bytes (one word) needed for one pixel.
+    for total_pixels loop
+       st7789_spi_host = color_high
+       st7789_spi_host = color_low
+   end loop
+   st7789_csn = _ST7789_DISABLE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Set the current position in pixels for any data to be written. 
+-- Parameters: 
+-- - x - x-coordinate of pixel
+-- - y - y-coordinate of pixel
+-- Returns: none
+-- Notes: 
+-- - All data, including characters, are written as pixels
+--------------------------------------------------------------------------------
+procedure st7789_goto_pixel(word in x, word in y) is
+
+   _st7789_set_address_window(x, y, glcd_display_x_size - x, glcd_display_y_size - y)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Plot a pixel at the given absolute pixel coordimate. The
+--              pixel is written with the value of the global glcd_pen_color
+-- Parameters: 
+-- - x - x-coordinate of pixel
+-- - y - y-coordinate of pixel
+-- Returns: none
+-- Notes: 
+-- - glcd_pen_color must be set before the call and must be in RGB 5-6-5 format
+--------------------------------------------------------------------------------
+procedure st7789_write_pixel(word in x, word in y) is
+
+   -- Write the pixel in the global glcd_pen_color.
+   st7789_goto_pixel(x, y)
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION   
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = _ST7789_RAMWR
+   st7789_dc = _ST7789_DATA_TRANSMISSION   
+   _st7789_write_word(glcd_pen_color)
+   st7789_csn = _ST7789_DISABLE
+
+end procedure
+
+ 
+--------------------------------------------------------------------------------
+-- Description: Draw a bitmap image from an array with pixel data
+-- Parameters: 
+-- - image - word array with pixel data of image
+-- - x - x-coordinate of image
+-- - y - y-coordinate of image
+-- - width - width of image
+-- - height - height of image
+-- Returns: none
+-- Notes: 
+-- - Image must be in RGB 5-6-5 format
+--------------------------------------------------------------------------------
+procedure st7789_draw_image(word in image[],
+                            word in x, word in y,
+                            word in width, word in height) is
+
+   var dword image_size, index
+   var word data
+   var byte data_low  at data
+   var byte data_high at data+1
+
+  -- Calculate the amount of data to be written. 
+   image_size = dword(width) * dword(height)
+   -- Set column address and page address
+   _st7789_set_address_window(x, y, width, height)
+   -- Write the data.
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = _ST7789_RAMWR 
+   st7789_dc = _ST7789_DATA_TRANSMISSION
+   for image_size using index loop
+      data = image[index]
+      st7789_spi_host = data_high
+      st7789_spi_host = data_low
+   end loop
+   st7789_csn = _ST7789_DISABLE
+ end procedure
+ 
+
+--------------------------------------------------------------------------------
+-- Description: Put the display in normal (non-inverse) mode
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_normal() is
+ 
+   -- In order to get the correct RGB colors the inversion on command is needed.
+   _st7789_write_command(_ST7789_INVON)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Put the display in inverse mode
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_inverse() is
+
+   -- In order to get the correct RGB colors the inversion off command is needed.
+   _st7789_write_command(_ST7789_INVOFF)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Turn the display on
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_on() is
+
+   _st7789_write_command(_ST7789_DISPON)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Turn the display off
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_off() is
+
+   _st7789_write_command(_ST7789_DISPOFF)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Put the display into sleep mode
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_sleep() is
+
+   _st7789_write_command(_ST7789_SLPIN)
+   _usec_delay(150_000)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Wakeup the display from sleep mode
+-- Parameters: none
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_display_wakeup() is
+
+   _st7789_write_command(_ST7789_SLPOUT)
+   _usec_delay(5_000)
+   
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Set mirroring the display in the x-direction
+-- Parameters: none
+-- Returns: none
+-- Notes: Use st7789_set_display_rotation() to activate
+--------------------------------------------------------------------------------
+procedure st7789_mirror_x_on() is
+
+   _st7789_mirror_x = TRUE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Reset mirroring the display in the x-direction
+-- Parameters: none
+-- Returns: none
+-- Notes: Use st7789_set_display_rotation() to activate
+--------------------------------------------------------------------------------
+procedure st7789_mirror_x_off() is
+
+   _st7789_mirror_x = FALSE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Set mirroring the display in the y-direction
+-- Parameters: none
+-- Returns: none
+-- Notes: Use st7789_set_display_rotation() to activate
+--------------------------------------------------------------------------------
+procedure st7789_mirror_y_on() is
+
+   _st7789_mirror_y = TRUE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Reset mirroring the display in the y-direction
+-- Parameters: none
+-- Returns: none
+-- Notes: Use st7789_set_display_rotation() to activate
+--------------------------------------------------------------------------------
+procedure st7789_mirror_y_off() is
+
+   _st7789_mirror_y = FALSE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Set display rotation to 0, 90, 180 or 270 degrees
+-- Parameters: 
+-- - rotation - ST7789_ROTATE_XX_DEGREES where XX = 0, 90, 180, 270
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure st7789_set_display_rotation(byte in rotation) is
+
+   var byte setting = 0 -- Default is RGB, Left-Right, Top Bottom
+
+   rotation = rotation & 0x03 -- Mask out unwanted bits.
+   _st7789_x_offset = 0
+   _st7789_y_offset = 0
+
+   case rotation of
+
+      ST7789_ROTATE_0_DEGREES:
+      block 
+         if _st7789_mirror_x then
+            setting = setting | _ST7789_MADCTL_MX_RL
+         end if 
+         if _st7789_mirror_y then
+            setting = setting | _ST7789_MADCTL_MY_BT 
+            _st7789_y_offset = ST7789_MAX_Y_CONTROLLER_PIXELS - ST7789_MAX_Y_PIXELS
+         end if 
+         glcd_display_x_size = ST7789_MAX_X_PIXELS
+         glcd_display_y_size = ST7789_MAX_Y_PIXELS
+      end block
+ 
+      ST7789_ROTATE_90_DEGREES:
+      block 
+         -- Swap x and y.
+         setting = setting | _ST7789_MADCTL_MV | _ST7789_MADCTL_MX_RL 
+         if _st7789_mirror_x then
+            setting = setting | _ST7789_MADCTL_MY_BT
+            _st7789_x_offset = ST7789_MAX_Y_CONTROLLER_PIXELS - ST7789_MAX_Y_PIXELS
+         end if 
+         if _st7789_mirror_y then
+            setting = setting & !_ST7789_MADCTL_MX_RL 
+         end if 
+         glcd_display_x_size = ST7789_MAX_Y_PIXELS
+         glcd_display_y_size = ST7789_MAX_X_PIXELS
+      end block
+ 
+      ST7789_ROTATE_180_DEGREES:
+      block 
+         setting = setting | _ST7789_MADCTL_MX_RL | _ST7789_MADCTL_MY_BT
+         _st7789_y_offset = ST7789_MAX_Y_CONTROLLER_PIXELS - ST7789_MAX_Y_PIXELS
+         if _st7789_mirror_x then
+            setting = setting & !_ST7789_MADCTL_MX_RL
+         end if 
+         if _st7789_mirror_y then
+            setting = setting & !_ST7789_MADCTL_MY_BT 
+            _st7789_y_offset = 0 
+         end if 
+         glcd_display_x_size = ST7789_MAX_X_PIXELS
+         glcd_display_y_size = ST7789_MAX_Y_PIXELS
+      end block
+
+      ST7789_ROTATE_270_DEGREES:
+      block 
+         -- Swap x and y.
+         setting = setting | _ST7789_MADCTL_MV | _ST7789_MADCTL_MY_BT
+         _st7789_x_offset = ST7789_MAX_Y_CONTROLLER_PIXELS - ST7789_MAX_Y_PIXELS
+         if _st7789_mirror_x then
+            setting = setting & !_ST7789_MADCTL_MY_BT 
+            _st7789_x_offset = 0 
+         end if 
+         if _st7789_mirror_y then
+            setting = setting | _ST7789_MADCTL_MX_RL
+         end if 
+         glcd_display_x_size = ST7789_MAX_Y_PIXELS
+         glcd_display_y_size = ST7789_MAX_X_PIXELS
+      end block   
+   end case
+
+   _st7789_write_command_data(_ST7789_MADCTL, setting)
+   
+end procedure
+
+
+-- ----------------------------- Private functions ---------------------------
+
+--------------------------------------------------------------------------------
+-- Description: Write a byte to the ST7789
+-- Parameters:
+-- - data - byte to be written
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure _st7789_write_byte(byte in data) is
+
+   st7789_spi_host = data
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Write a word to the ST7789
+-- Parameters:
+-- - data - word to be written
+-- Returns: none
+-- Notes: 
+-- - The MSB of the word is written first
+--------------------------------------------------------------------------------
+procedure _st7789_write_word(word in data) is
+
+   var byte data_low  at data
+   var byte data_high at data + 1
+
+   st7789_spi_host = data_high
+   st7789_spi_host = data_low
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Write a command to the ST7789
+-- Parameters:
+-- - command - command to be written
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure _st7789_write_command(byte in command) is
+
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = command
+   st7789_csn = _ST7789_DISABLE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Write a command with the given data to ST7789 
+-- Parameters:
+-- - command - command to be written
+-- - data - data to be written
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure _st7789_write_command_data(byte in command, byte in data) is
+
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = command
+   st7789_dc = _ST7789_DATA_TRANSMISSION
+   st7789_spi_host = data
+   st7789_csn = _ST7789_DISABLE
+
+end procedure
+
+
+--------------------------------------------------------------------------------
+-- Description: Set the address window
+-- Parameters:
+-- - x - x-coordinate
+-- - y - y-coordinate
+-- - width - width of window
+-- - height - height of window
+-- Returns: none
+-- Notes: none
+--------------------------------------------------------------------------------
+procedure _st7789_set_address_window(word in x, word in y, word in width,
+                                     word in height) is
+
+
+   -- For font usage, set x and y from glcd_common in pixels for x and y.
+   glcd_char_x_pos = x  
+   glcd_char_y_pos = y
+
+   -- Fix for MAX display resolution of controller. 
+   x = x + _st7789_x_offset
+   y = y + _st7789_y_offset
+
+   -- Write new column address.
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = _ST7789_CASET
+   st7789_dc = _ST7789_DATA_TRANSMISSION
+   -- X start address.
+   _st7789_write_word(x)
+   -- X end address.
+   _st7789_write_word(x + width - 1)
+   st7789_csn = _ST7789_DISABLE
+   -- Write new row address.
+   st7789_dc = _ST7789_COMMAND_TRANSMISSION
+   st7789_csn = _ST7789_ENABLE
+   st7789_spi_host = _ST7789_RASET
+   st7789_dc = _ST7789_DATA_TRANSMISSION
+   -- Y start address. 
+   _st7789_write_word(y)
+   -- Y end address.
+   _st7789_write_word(y + height - 1)
+   st7789_csn = _ST7789_DISABLE
+
+ 
+end procedure
+    
+if defined(ST7789_SOFTWARE_SPI) then 
+-- -----------------------------------------------------------------------------
+-- Description: Software SPI interface.
+-- Parameters: 
+-- - data -  data byte to be transmitted
+-- Returns: none
+-- Notes: none
+-- -----------------------------------------------------------------------------
+procedure st7789_spi_host'put(byte in data) is
+
+   var bit data_bit_out at data:7
+
+   for 8 loop
+      st7789_sdo = data_bit_out
+      data = data << 1 
+      st7789_sck = HIGH
+      st7789_sck = LOW
+   end loop
+
+end procedure
+end if     
+
+ 
+
+

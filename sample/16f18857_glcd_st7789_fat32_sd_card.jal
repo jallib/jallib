@@ -1,0 +1,364 @@
+-- -----------------------------------------------------------------------------
+-- Title: GLCD ST7789 demo showing bmp pictures from an SD card on the ST7789.
+-- Author: Rob Jansen, Copyright (c) 2026..2026, all rights reserved.
+-- Adapted-by:
+--
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demo program showing how to show bmp pictures on the ST7789 which 
+--              are stored on an SD Card with a FAT32 file system. By pressing
+--              the file number on the keyboard the image will be copied from the
+--              SD card to the ST7789 display.
+--
+--              Pictures stored must be in .bmp format using the RGB 5-6-5 format.
+--              You can find samples of bmp images in the project folder under:
+--              jallib/project/st7789.
+--
+-- Sources:     This sample program is based on the FAT32 SD Card sample program of
+--              Matthew Schinkel.
+--
+-- Notes:       A way to generate the bmp images from a bmp, png or jpg file: 
+--              Converter: https://online-converting.com/image/convert2bmp/
+--              Choose: 16 (5:6:5 RGB Hi-Color), rows direction Top - Bottom
+--              Upload the image and download the bmp file after the conversion.
+--
+--
+
+include 16f18857
+
+-- Using internal oscillator at 16 MHz (PIC running at 3.3 Volt).
+pragma target clock    16_000_000       -- oscillator frequency
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINT32          -- select 32 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCFRQ_HFFRQ = 0b101                    -- Fosc 16 MHz
+
+
+enable_digital_io()
+-- Wait some time for the hardware to power up.
+_usec_delay(100_000)
+
+-- -----------------------------------------------------------------
+-- Configure Remappable Pins on MSSP2 to match SPI/SD-Card wiring,
+-- configure MSSP2 and initialize SD-card library
+-- Also map pins for serial hardware.
+-- Do not map the pins if ST7789_SPI_SW is used.
+-- -----------------------------------------------------------------
+include pps
+pps_control_lock(FALSE)
+-- SPI 1 used by st7789 and SD card.
+RC3PPS = PPS_SCK1 -- SPI clock 
+RC4PPS = PPS_SDA1 
+RC5PPS = PPS_SDO1 -- SPI data out
+-- Serial pins.
+RC6PPS = PPS_TX   -- TX1 re-assigned to C6  (default)             
+RXPPS  = PPS_RC7  -- C7 re-assigned to RX1  (default)            
+pps_control_lock(TRUE)  
+
+-- Define the SPI pins and other used pins to control the display and
+-- initiaize the pin direction.
+alias st7789_sck is pin_C3   -- PIC SCK to pin SCL of the module.
+pin_C3_direction = output    -- Pin 14 of 28 pin DIP.
+alias st7789_sdo is pin_C5   -- PIC SDO to pin SDA of the module.
+pin_C5_direction = output    -- Pin 16 of 28 pin DIP. 
+alias st7789_csn is pin_C2   -- PIC CS to pin CS of the module.
+st7789_csn = HIGH            -- Disable.
+pin_C2_direction = output    -- Pin 13 of 28 pin DIP.  
+alias st7789_dc is pin_C1    -- PIC DC to pin DC of the module. 
+pin_C1_direction = output    -- Pin 12 of 28 pin DIP.
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+-- If software reset is used make sure the RST pin is HIGH.
+alias st7789_rst is pin_C0   -- PIC RST to pin RST of the module.
+pin_c0 = HIGH                -- No reset.
+pin_C0_direction = output    -- Pin 11 of 28 pin DIP. 
+
+-- Setup the sd card pins.
+alias sd_chip_select is pin_b1
+alias sd_chip_select_direction is pin_b1_direction -- Pin 22 of 28 pin DIP.
+sd_chip_select = high
+sd_chip_select_direction = output
+alias pin_sck is pin_c3 -- PIC SCK to SD_SCK
+alias pin_sdi is pin_c4 -- PIC SDI to SD_MISO
+pin_C4_direction = INPUT
+alias pin_sdo is pin_c5 -- PIC SDO to SD_MOSI
+
+-- Setup SPI library.
+include spi_master_hw
+-- init spi, choose mode and speed.
+spi_init(SPI_MODE_00,SPI_RATE_FOSC_4) 
+-- Interface aliases for sd card.
+alias spi_master is spi_master_hw
+alias spi_master_exchange is spi_master_hw_exchange
+alias spi_master_set_mode is spi_master_hw_set_mode
+alias spi_master_set_speed is spi_master_hw_set_speed
+-- Interface alias for the ST7789.
+alias st7789_spi_host is spi_master_hw
+
+-- -----------------------------------------------------------------
+-- Most of the rest of this program comes from the fat32_sd_card 
+-- sample program of Matthew Schinkel with some modifications for
+-- this PIC and leaving out parts that are not needed. 
+-- -----------------------------------------------------------------
+-- Setup uart for communication
+alias pin_RX_direction is pin_C7_direction -- Pin 18
+alias pin_TX_direction is pin_C6_direction -- Pin 17
+const serial_hw_baudrate  = 115200   -- set the baudrate
+include serial_hardware
+serial_hw_init()
+-- Some aliases so it is easy to change from serial hw to serial sw.
+alias serial_data is serial_hw_data
+alias serial_data_available is serial_hw_data_available
+
+-- include print
+const PRINT_MAX_VAR_SIZE = 6
+include print
+include format
+include delay
+
+-- Include and initialize the GLCD lib. Clear the screen.
+include glcd_st7789
+st7789_init()
+glcd_clear_screen()
+
+-- Show that we are starting up. 
+print_string(serial_data,"Jallib Sample Started...")
+print_crlf(serial_data)
+
+-- Setup the sd card library.
+const bit SD_DELAY_AFTER_WRITE = TRUE -- Try this if you are having troulbe with your card.
+include sd_card              -- include the sd card ide hard disk library
+sd_init()                    -- initialize startup settings
+
+if sd_has_error == TRUE then
+   print_string(serial_data, "ERROR - SD CARD FAILED\r\n")
+else
+   if sd_card_type == SD_STANDARD_CAPACITY then
+      print_string(serial_data, "Standard capacity ")
+   elsif sd_card_type == SD_HIGH_CAPACITY then
+      print_string(serial_data, "High capacity ")
+   end if
+   print_string(serial_data, "SD card successfully loaded!\r\n")
+end if
+
+-- Setup fat32. Change these vaues to save memory
+const bit FAT32_WRITE_LONG_FILE_NAMES = FALSE -- Support writing of long file names.
+const word FAT32_FILES_MAX = 10               -- The max number of files allowed in a directory.
+const byte FAT32_FILE_NAME_SIZE = 80          -- Choose max file_name size. If a file_name is longer the this, 
+                                              -- beginning chars will be cut. short file_names are 12 bytes.
+const FAT32_DIR_FRAGMENTS_TO_ALLOW = 5        -- Uses 6 bytes memory per fragment allowed (0 not allowed).
+                                              -- Windows defrag does not defragment directories.
+const FAT32_FILE_FRAGMENTS_TO_ALLOW = 5       -- Uses 8 bytes memory per fragment allowed (0 not allowed).
+-- Experts may change the following values.
+const byte FAT32_ENTRIES_MAX = 2            -- highest file entry address can be 65535
+
+-- We do not need a large array for this application due to the limited number of files per directory.
+var dword fat32_entry_location[FAT32_FILES_MAX]
+include fat32  
+
+-- CHOOSE FILE ATTRIBUTES TO FILTER OUT.
+fat32_filter_is_read_only  = FALSE
+fat32_filter_is_hidden     = FALSE
+fat32_filter_is_system     = FALSE
+fat32_filter_is_volume_id  = FALSE
+fat32_filter_is_directory  = FALSE
+fat32_filter_is_archive    = FALSE
+
+fat32_init(1) -- initialize fat32, go to 1st primary partition's root dir "\"
+if fat32_init_ok then
+   print_string(serial_data,"FAT32 READY!!!")
+else
+    print_string(serial_data,"FAT32 FAILED!!!")
+end if
+print_crlf(serial_data)
+
+-- Procedure for sending 80 "-----------------" via serial port
+procedure separator() is
+   serial_data = 13
+   serial_data = 10
+   const byte str3[] = "--------------------------------------------------------------------------------"
+   print_string(serial_data, str3)
+   print_crlf(serial_data)
+end procedure
+
+-- Use a temporary buffer, size must be <= bytes 80 for 
+-- PIC14(H) and use a value that fits in 512 bytes.
+const IMAGE_BUFFER_SIZE = 32 -- In words so 64 bytes.
+
+-- Variables.
+var dword image_size, image_size_counter, data_location, data_counter
+var word data 
+var byte data_low at data
+var byte data_high at data+1
+var byte index
+var dword step1
+var word step2, x_coord, y_coord, width, height, odd_even
+var word image_buffer[IMAGE_BUFFER_SIZE]
+var byte file_number
+
+-- Main program starts here.
+
+forever loop
+
+   separator()
+   ------------------------------------------------------------ 
+   -- list a directory, send it via serial port
+   ------------------------------------------------------------
+   fat32_print_directory(serial_data, FAT32_PRINT_ALL) -- see the procedure, sends dir listing via serial port
+   separator()
+
+   print_crlf(serial_data)
+   print_string(serial_data, "Press the file number on the keyboard to start.\r\n")
+   -- Serial_data_available doesn't exist on serial sw.
+   if defined(serial_data_available) then
+      -- Remove everything after the number that has been entered before.
+      while !serial_data_available loop
+      end loop
+   end if
+   -- Wait for character. We get ASCII from the keyboard so make it binary.
+   file_number = serial_data - "0"
+   -- Indicate that there is any activity.
+   print_string(serial_data, "Opening file ...\r\n")
+   glcd_clear_screen()
+
+   -- Choose a file for reading or dir for opening.
+   if fat32_cd(file_number) then             -- if change directory is successful
+      fat32_print_directory(serial_data, FAT32_PRINT_ALL) -- sends dir listing via serial port (with file numbers)
+   elsif fat32_file_open(file_number) then   -- if go into file is successful
+
+      print_string(serial_data, "File is open.\r\n")
+      -- Calculate number of sectors in file.
+      var dword sectors_available
+      if (fat32_file_size) == (fat32_file_size / 512) * 512 then
+         sectors_available = (fat32_file_size / 512)
+      else
+         sectors_available = (fat32_file_size / 512) + 1
+      end if
+      print_string(serial_data, "Sectors available: ")
+      print_dword_dec(serial_data, sectors_available)
+      print_crlf(serial_data)
+ 
+      -- Read from any sector number in the file
+      data_counter = 0
+      for sectors_available using step1 loop
+         -- Read one sector from the disk.
+         fat32_read_file_sector_number(step1)
+         -- Read all data from one sector.
+         step2 = 0 
+         while (step2 < 512) loop
+            -- See if we need to get some BMP specific info.
+            if (data_counter == 0x0A) then
+               -- Get the location of the data, 4 bytes.
+               data_low = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_high = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_location = dword(data)
+               data_low = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_high = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_location = data_location | (dword(data) << 16)
+               data_counter = data_counter + 4
+               print_string(serial_data, "Data is located at (hex): ")
+               print_dword_hex(serial_data, data_location)
+               print_crlf(serial_data)
+            elsif (data_counter == 0x12) then
+               -- Get the width. Left to right order.
+               data_low = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_high = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               width = data
+               -- Skip the other two bytes.
+               step2 = step2 + 2
+               -- Another calculation is used when nr of pixels > 255.
+               if (width > 255) then 
+                  width = (0xFFFF - width) + 1
+               end if 
+               -- Get the height.
+               data_low = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_high = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               height = data
+               -- Skip the other two bytes.
+               step2 = step2 + 2
+               -- Another calculation is used when nr of pixels > 255.
+               if (height > 255) then 
+                  height = (0xFFFF - height) + 1
+               end if 
+               image_size = dword(width) * dword(height)
+               data_counter = data_counter + 8
+               print_string(serial_data, "Image width is: ")
+               print_word_dec(serial_data, width)
+               serial_data = " "
+               print_string(serial_data, "Image height is: ")
+               print_word_dec(serial_data, height)
+               serial_data = " "
+               print_string(serial_data, "Image size is: ")
+               print_dword_dec(serial_data, image_size)
+               print_crlf(serial_data)
+               -- Reset some values for the next phase.
+               x_coord = 0
+               y_coord = 0
+               index = 0
+               image_size_counter = 0
+               -- We have to do a correction when the width is odd.
+               if (width % 2) > 0 then
+                  odd_even = 1
+               else
+                  odd_even = 0
+               end if 
+            elsif (data_counter >= data_location) &
+                  (image_size_counter < image_size) then
+               -- Data reception. Send it to the display.
+               data_low = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               data_high = fat32_sector_buffer[step2]
+               step2 = step2 + 1
+               -- Fill the image buffer and send it to the display when full.
+               image_buffer[index] = data
+               image_size_counter = image_size_counter + 1
+               index = index + 1
+               -- If we are done for the width or buffer full, send it.
+               if (index == IMAGE_BUFFER_SIZE) then
+                  -- Buffer full, send to display and adjust coordinates.
+                  st7789_draw_image(image_buffer, x_coord, y_coord, 
+                                     index, 1)
+                  -- It can be that we also reached the width. 
+                  if ((word(index) + x_coord) == (width + odd_even)) then
+                     x_coord = 0
+                     y_coord = y_coord + 1
+                  else
+                     x_coord = x_coord + IMAGE_BUFFER_SIZE
+                  end if 
+                  index = 0
+               elsif ((word(index) + x_coord) == (width + odd_even)) then
+                  -- Bufer not full but width reached.
+                  st7789_draw_image(image_buffer, x_coord, y_coord, 
+                                     index, 1)
+                  index = 0
+                  x_coord = 0
+                  y_coord = y_coord + 1
+              end if 
+            else
+               -- Next.
+               data_counter = data_counter + 1
+               step2 = step2 + 1
+            end if 
+         end loop
+      end loop
+      fat32_file_close()
+      print_string(serial_data, "Done!\r\n")
+   end if
+
+end loop
