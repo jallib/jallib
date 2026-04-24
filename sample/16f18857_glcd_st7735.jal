@@ -1,0 +1,285 @@
+-- -----------------------------------------------------------------------------
+-- Title: GLCD ST7735 demo sample showing text (fonts) and pixel based graphics.
+-- Author: Rob Jansen, Copyright (c) 2026..2026, all rights reserved.
+-- Adapted-by:
+--
+-- Compiler: 2.5r9
+--
+-- This file is part of jallib (https://github.com/jallib/jallib)
+-- Released under the ZLIB license (http://www.opensource.org/licenses/zlib-license.html)
+--
+-- Description: Demo program showing how to use GLCD ST7735. It demonstrates
+--              all features of the glcd_st7735.jal library. This sample shows 
+--              both the text (font usage) features as well as the graphics 
+--              features drawing a line, a boxe, a circle and an ellipse.
+--              Last but not least it shows the drawing of images.
+--
+-- Notes:       A way to generate the bitmap from a bmp, png or jpg file: 
+--              Converter: https://online-converting.com/image/convert2bmp/
+--              Choose: 16 (5:6:5 RGB Hi-Color), rows direction Top - Bottom
+--
+
+include 16f18857
+-- When using internal oscillator at 16 MHz (PIC running at 3.3 Volt).
+pragma target clock    16_000_000       -- oscillator frequency
+pragma target OSC      OFF              -- internal oscillator
+pragma target RSTOSC   HFINT32          -- select 32 MHz
+pragma target CLKOUTEN DISABLED         -- no clock output
+pragma target WDT      DISABLED         -- watchdog
+pragma target BROWNOUT DISABLED         -- no brownout reset
+pragma target FCMEN    DISABLED         -- no clock monitoring
+pragma target CSWEN    ENABLED          -- allow writing OSCCON1 NOSC and NDIV
+pragma target LVP      ENABLED          -- low voltage programming
+pragma target MCLR     EXTERNAL         -- external reset
+OSCFRQ_HFFRQ = 0b101                    -- Fosc 16 MHz
+
+enable_digital_io()
+-- Enable weak pull-up.
+WPUA = 0b1111_1111
+WPUB = 0b1111_1111
+WPUC = 0b1111_1111
+-- Wait some time for the hardware to power up.
+_usec_delay(100_000)
+
+-- Define the SPI pins and other used pins to control the display and
+-- initiaize the pin direction.
+alias st7735_sck is pin_C3   -- PIC SCK to pin SCL of the module.
+pin_C3_direction = output    -- Pin 14 of 28 pin DIP.
+alias st7735_sdo is pin_C5   -- PIC SDO to pin SDA of the module.
+pin_C5_direction = output    -- Pin 16 of 28 pin DIP. 
+alias st7735_csn is pin_C2   -- PIC CS to pin CS of the module.
+st7735_csn = HIGH            -- Disable.
+pin_C2_direction = output    -- Pin 13 of 28 pin DIP.  
+alias st7735_dc is pin_C1    -- PIC DC to pin DC of the module. 
+pin_C1_direction = output    -- Pin 12 of 28 pin DIP.
+-- Optional hardware reset pin. If not defined, software reset will be used. 
+-- If software reset is used make sure the RST pin is HIGH.
+alias st7735_rst is pin_C0   -- PIC RST to pin RST of the module.
+pin_C0 = HIGH                -- No reset.
+pin_C0_direction = output    -- Pin 11 of 28 pin DIP. 
+
+-- You can use - a slower - software SPI by setting this constant.
+-- const ST7735_SOFTWARE_SPI = TRUE 
+if !defined(ST7735_SOFTWARE_SPI) then
+   -- Set the pinning for the hardware pins of SPI. This is default but still
+   -- needed for this chip. Do not use this when using software SPI since the  
+   -- pins are then assigned for hardware SPI.
+   include pps
+   pps_control_lock(FALSE)                
+   RC3PPS = PPS_SCK1 -- SPI clock 
+   RC5PPS = PPS_SDO1 -- SPI data out
+   pps_control_lock(TRUE)                 
+   -- Include and initialize the SPI hardware interface.
+   include spi_master_hw
+   spi_init(SPI_MODE_00, SPI_RATE_FOSC_4) 
+   -- Define the interface alias for the ST7789.
+   alias st7735_spi_host is spi_master_hw
+end if 
+
+-- There are displays which require dynamic mirroring because they
+-- are assembled in a different way. This can be done using the following 
+-- procedures: st7735_mirror_x_on(), st7735_mirror_x_off()
+--             st7735_mirror_y_on(), st7735_mirror_y_off()
+-- After calling one of these procedures you must call the procedure:
+--             st7735_set_display_rotation() to activate the mirroring. 
+
+-- Some utility libraries.
+include print
+include delay
+-- Font library.
+include glcd_6x8_font
+include glcd_8x14_font
+
+-- Include and initialize the GLCD lib.
+include glcd_st7735
+st7735_init()
+
+-- Include the JAL logo.
+include glcd_90x90_jal_logo
+
+-- Variables.
+var byte counter, radius
+var word x_coord, y_coord
+
+-- Main program starts here.
+
+forever  loop   
+
+   -- First write the demo text.
+   glcd_clear_screen()
+   glcd_pen_color = ST7735_RED
+   glcd_font_use(FONT_8X14)
+   st7735_goto_pixel(15,20)
+   print_string(glcd,"JAL ST7735")
+   st7735_goto_pixel(15,40)
+   glcd_pen_color = ST7735_GREEN
+   print_string(glcd,"Library Demo")
+   st7735_goto_pixel(15,60)
+   glcd_pen_color = ST7735_WHITE
+   print_string(glcd,"2026-04-11")
+   st7735_goto_pixel(15,80)
+   glcd_pen_color = ST7735_YELLOW
+   print_string(glcd,"Font 8X14")
+   delay_1s(1)
+
+   -- Show some display features.
+   glcd_pen_color = ST7735_WHITE
+   glcd_font_use(FONT_6X8)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"INVERSE DISPLAY")
+   st7735_display_inverse()
+   delay_1s(3)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"NORMAL DISPLAY ")
+   st7735_display_normal()
+   delay_1s(3)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"DISPLAY OFF    ")
+   delay_1s(1)
+   st7735_display_off()
+   delay_1s(3)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"DISPLAY ON     ")
+   st7735_display_on()
+   delay_1s(3)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"DISPLAY SLEEP  ")
+   delay_1s(1)
+   st7735_display_sleep()
+   delay_1s(3)
+   st7735_goto_pixel(20,140)
+   print_string(glcd,"DISPLAY WAKEUP ")
+   st7735_display_wakeup()
+   delay_1s(3)
+
+   -- Rotation feature.
+   st7735_goto_pixel(0,0)
+   print_string(glcd,"DISPLAY ROTATION 0")
+   delay_1s(1)
+   st7735_set_display_rotation(ST7735_ROTATE_90_DEGREES)
+   st7735_goto_pixel(0,0)
+   print_string(glcd,"DISPLAY ROTATION 90")
+   delay_1s(1)
+   st7735_set_display_rotation(ST7735_ROTATE_180_DEGREES)
+   st7735_goto_pixel(0,0)
+   print_string(glcd,"DISPLAY ROTATION 180")
+   delay_1s(1)
+   st7735_set_display_rotation(ST7735_ROTATE_270_DEGREES)
+   st7735_goto_pixel(0,0)
+   print_string(glcd,"DISPLAY ROTATION 270")
+   delay_1s(3)
+   -- Restore rotation.
+   st7735_set_display_rotation(ST7735_ROTATE_0_DEGREES)
+
+  -- Change the color of the screen a few times.
+   glcd_clear_screen()
+   delay_1s(1)
+   st7735_fill_screen(ST7735_RED)
+   delay_1s(1)
+   st7735_fill_screen(ST7735_GREEN)
+   delay_1s(1)
+   st7735_fill_screen(ST7735_BLUE)
+   delay_1s(1)
+   st7735_fill_screen(ST7735_YELLOW)
+   delay_1s(1)
+
+   -- ------------------Do some graphics stuff ---------------------
+
+   -- Draw some lines. 
+   -- From top left to bottom right.
+   glcd_clear_screen()
+   glcd_pen_color = ST7735_RED
+   glcd_line(0, 0, glcd_display_x_size - 1, glcd_display_y_size - 1)
+   -- From top right to bottom left.
+   glcd_pen_color = ST7735_GREEN
+   glcd_line(glcd_display_x_size - 1, 0, 0, glcd_display_y_size - 1)
+   -- In the middle from left to right.
+   glcd_pen_color = ST7735_BLUE
+   glcd_line(0, glcd_display_y_size / 2 , glcd_display_x_size - 1 , glcd_display_y_size / 2)
+   -- In the middel from top to bottom
+   glcd_pen_color = ST7735_GREENYELLOW
+   glcd_line(glcd_display_x_size / 2 , 0, glcd_display_x_size / 2, glcd_display_y_size - 1)
+   delay_1s(3)
+
+  -- Draw boxes on the screen.
+   x_coord = 0
+   y_coord = 0
+   glcd_clear_screen()
+   glcd_pen_color = ST7735_GREEN
+   while (x_coord <= (glcd_display_x_size / 2)) loop
+      glcd_box(x_coord, y_coord, glcd_display_x_size - x_coord , glcd_display_y_size - y_coord)
+      x_coord = x_coord + 1
+      y_coord = y_coord + 1
+      -- Change color do that we can see the boxes.
+      if (glcd_pen_color == ST7735_GREEN) then
+         glcd_pen_color = ST7735_RED
+      else 
+         glcd_pen_color = ST7735_GREEN
+      end if 
+   end loop
+   delay_1s(3)
+
+  -- Draw circels on the screen.
+   radius = 1
+   st7735_fill_screen(ST7735_GREENYELLOW)
+   glcd_pen_color = ST7735_MAGENTA
+   while (radius < (glcd_display_x_size / 2)) loop
+      glcd_circle(glcd_display_x_size / 2, glcd_display_y_size / 2, radius)
+      radius = radius + 1
+      -- Change color do that we can see the circles.
+      if (glcd_pen_color == ST7735_MAGENTA) then
+         glcd_pen_color = ST7735_MAROON
+      else 
+         glcd_pen_color = ST7735_MAGENTA
+      end if 
+   end loop
+   delay_1s(3)
+
+  -- Draw elipses on a rotated screen.
+   x_coord = 1
+   y_coord = 1
+   radius = 1
+   st7735_fill_screen(ST7735_RED)
+   -- Let's rotate the screen for this one.
+   st7735_set_display_rotation(ST7735_ROTATE_90_DEGREES)
+   glcd_pen_color = ST7735_CYAN
+   while (x_coord <= (glcd_display_x_size / 2)) loop
+      glcd_ellipse(glcd_display_x_size / 2, glcd_display_y_size / 2, x_coord, y_coord)
+      x_coord = x_coord + 1
+      if (x_coord % 2) == 0 then
+         y_coord = y_coord + 1
+      end if
+      -- Change color do that we can see the elipses.
+      if (glcd_pen_color == ST7735_CYAN) then
+         glcd_pen_color = ST7735_MAGENTA
+      else 
+         glcd_pen_color = ST7735_CYAN
+      end if 
+   end loop
+   delay_1s(3)
+
+   -- Draw an image 4 times, rotating each 90 degrees.
+   st7735_set_display_rotation(st7735_ROTATE_0_DEGREES)
+   glcd_clear_screen()
+   st7735_draw_image(JAL_LOGO_BITMAP, 19, 35, JAL_LOGO_WIDTH,
+                     JAL_LOGO_HEIGHT)
+   delay_1s(3)
+   st7735_set_display_rotation(st7735_ROTATE_90_DEGREES)
+   st7735_draw_image(JAL_LOGO_BITMAP, 35, 19, JAL_LOGO_WIDTH,
+                     JAL_LOGO_HEIGHT)
+
+   delay_1s(3)
+   st7735_set_display_rotation(st7735_ROTATE_180_DEGREES)
+   st7735_draw_image(JAL_LOGO_BITMAP, 19, 35, JAL_LOGO_WIDTH,
+                     JAL_LOGO_HEIGHT)
+
+   delay_1s(3)
+   st7735_set_display_rotation(st7735_ROTATE_270_DEGREES)
+   st7735_draw_image(JAL_LOGO_BITMAP, 35, 19, JAL_LOGO_WIDTH,
+                     JAL_LOGO_HEIGHT)
+   delay_1s(10)
+
+   -- Restore rotation.
+   st7735_set_display_rotation(st7735_ROTATE_0_DEGREES)
+
+end loop
